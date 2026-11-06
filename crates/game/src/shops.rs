@@ -384,6 +384,10 @@ impl World {
         u.extra.decaying = false;
         u.reviving = false;
         u.hidden = false;
+        // The revival takes away its being set to explode (`FUN_6f695620` clears the
+        // unit's flag 0x2000, SetUnitExploded's): one exploded as it fell to rise again
+        // dies the next time as others do.
+        u.explode_on_death = false;
         u.x = x;
         u.y = y;
         u.life = u.max_life * life_f;

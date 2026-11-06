@@ -582,17 +582,24 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // creeps' Reincarnation, ACrn, is for units: its hook, `FUN_6f5197e0`, asks nothing
     // of the unit's being a hero).  Starting, it forgets the unit's killer (`FUN_6f51fd50`
     // clears it, `FUN_6f6989c0`), so that the fall pays no bounty, experience, or score
-    // (`FUN_6f69c210` asks the killer); it keeps its food (the rising adds it and takes
-    // it away again, `FUN_6f50e870`).  One set to explode rises too, as the hook runs on
-    // that path as well (provisional: whether the hook's checks pass then).  Its fall
-    // fires no death events (provisional), and it rises with its orders gone (the
-    // revival empties them, `FUN_6f695620`).
+    // (`FUN_6f69c210` asks the killer); it keeps its food (its effect takes the unit's
+    // food flags away unspent, `FUN_6f5253c0`, and the rising adds the food and takes it
+    // away again, `FUN_6f50e870`).  Its fall fires no death events: the death's events
+    // (`FUN_6f67b8a0`) come only for a unit without the effect (`FUN_6f6744d0`,
+    // `FUN_6f48e180`).  One set to explode rises too: the hook runs on that path as well
+    // and asks nothing of the flag, and starting empties the unit's queued work
+    // (`FUN_6f673fe0`), its burst's art and its removal among it.  Its orders and its
+    // walk end then, and it rises with none (the revival empties them, `FUN_6f695620`).
     if w.unit(h).is_some_and(|u| !u.dead) && w.try_reincarnate(h) {
         if let Some(u) = w.unit_mut(h) {
             u.dead = true;
             u.life = 0.0;
             u.action = Action::Idle;
             u.extra.order_queue.clear();
+            u.path.clear();
+            u.extra.player_walk = false;
+            u.extra.mover = None;
+            u.extra.step_from = None;
             u.anim = "death".into();
             u.anim_serial = u.anim_serial.wrapping_add(1);
         }

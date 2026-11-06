@@ -701,6 +701,13 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // udebug <unit>: every field of a unit.
+            "udebug" => {
+                if let Some(u) = scene.game.as_ref().and_then(|g| g.world.unit(hnd(&a[i + 1]))) {
+                    eprintln!("udebug {u:?}");
+                }
+                i += 2;
+            }
             "mine" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;

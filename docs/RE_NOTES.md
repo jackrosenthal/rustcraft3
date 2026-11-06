@@ -113,19 +113,52 @@ original images.
   vf 0x280 and 0x284): Reincarnation's, ready (its cooldown done; the creeps' version
   `FUN_6f5197e0`, the hero's `FUN_6f519bf0`, neither asking whether the unit is a
   hero), starts it (vf 0x3e8, `FUN_6f51fd50`), which first forgets the unit's killer
-  (`FUN_6f6989c0(0)`: its +0x250 and +0x254).  The death's own work is queued on the
-  unit (`FUN_6f691f20` puts a task on its list at +0x174): its bounty, experience, and
-  score (event 0xd0153, `FUN_6f69c210`, which asks the killer, so none for a fall to
-  rise from), and its food given back (`FUN_6f6744d0`, the unit's food flag 0x200).
-  The rising (CEffectReincarnation's `FUN_6f50e870`) revives the unit (`FUN_6f695620`,
-  which empties its task list and, with its flags 0x500, adds its food used and made)
-  and then takes the food used and made away again: the food is the unit's all along
-  (were it given back at the fall, each rising would leave the owner its food short;
-  read so, provisional where the queued work goes).  The hook runs too on the path of
-  a unit set to explode (after its explosion's art, 0xd0157); whether its checks (the
-  unit's flags 0xc0000000, `FUN_6f50d710`, `FUN_6f04e090`) then pass is not read.
-  Mafarazzo TD's bosses (levels 30 and 40, ACrn, 7 seconds, cooldown 240) fall
-  unpaid, keep their food (the round goes on), and rise 7 seconds later, idle.
+  (`FUN_6f6989c0(0)`: its +0x250 and +0x254), puts the effect XOre on it
+  (CEffectReincarnation, whose vf30 `FUN_6f518510` calls vf31 `FUN_6f5253c0`, clearing
+  the unit's flags 0x10, 0x200, and 0x800 at +0x64, its type counted and its food used
+  and made, without giving them back), sets its flag 0x1000, and empties its queued
+  work (`FUN_6f673fe0`).  The death's work is queued on the unit as a stack
+  (`FUN_6f691f20` puts a task first on its list at +0x174; `FUN_6f67df00` runs them,
+  the last put first, at once, till one waits): the course's own (its removal 0xd015a,
+  a burst's art 0xd0157, a corpse's decay 0xd0158) before the hooks, so that a unit
+  starting to rise loses them; then 0xd0154 and the corpse's wait (0xd0155, or 0xd0156
+  for a burst, no wait), and the death's 0xd0153 (`FUN_6f69c210`: its bounty,
+  experience, and score, which ask the killer, so none for a fall to rise from; then
+  `FUN_6f6744d0`, giving back the food only of a unit whose flags still have it, so
+  none for the fall, and firing its death events only for a unit without XOre,
+  `FUN_6f48e180`; see below).  The rising (CEffectReincarnation's vf32 `FUN_6f50e870`)
+  revives the unit (`FUN_6f695620`, which empties its task list, clears its flags
+  0x2c00 at +0x5c, SetUnitExploded's 0x2000 among them, and with its flags 0x500 adds
+  its food used and made, setting the unit's flags again) and takes the food used and
+  made away again: the food stays the unit's all along.  The creeps' hook with the
+  ability not ready (its cooldown) empties the work too and puts its removal and a
+  dissipation (0xd015b, `FUN_6f69c2d0`, the effect `Xdis`) in its place.
+- A unit set to explode (SetUnitExploded, the flag 0x2000 at +0x5c, `6f215110`) and
+  killed takes the course's burst path, where the dying hooks run as well
+  (`FUN_6f678280`, after its art's task is put); the creeps' Reincarnation's checks
+  (`FUN_6f5197e0`: the unit's flags 0xc0000000 at +0x5c, 0x40000000 given at its
+  making by its flag 0x10000, `FUN_6f677870`, read as an illusion's, and 0x80000000 by
+  `FUN_6f4e66f0`; its +0x20 bit 0; the effect not on it already, `FUN_6f50d710`; and a
+  pathing test at its place, `FUN_6f04e090`) ask nothing of the flag, so that one ready
+  rises: its burst's art and removal are emptied with its queued work, and it lies and
+  rises where it fell.  Mafarazzo TD's level 30 and 40 bosses, exploded as they reach
+  WalkEnd, so rise at its edge 7 seconds later, idle and without orders (the round goes
+  on while they stand, their food kept), and attack a structure within their
+  acquisition range (1200), else stand.
+- A region's enter and leave events (TriggerRegisterEnterRegion's registration on the
+  region, 0x401900c8 and 0x401900c9, `FUN_6f27a820`) come of a unit's place moving to
+  another cell (CPoPosCl's vf 0x54, `FUN_6f16fa00`: the regions over its old cell and
+  its new, those in both left out, `cp&l` sent to the old ones and `cp&e` to the new,
+  CTriggerRegion's `FUN_6f05fe00`), its cell first none (`FUN_6f170d30`, from its
+  making, `FUN_6f16ea70`), so that a unit made inside a region enters it.  A death and
+  a rising in place change no cell: a unit risen inside a region does not enter it
+  again (provisional: the rising places it where it lies, vf 0x180, read as keeping
+  its cell).  IsUnitInRegion asks the place alone (`FUN_6f05f9d0`).
+- A unit's death events (EVENT_PLAYER_UNIT_DEATH, 0x80214 to the owner,
+  `FUN_6f260ab0`; then EVENT_UNIT_DEATH, 0x80235 to the unit) come in `FUN_6f67b8a0`,
+  from the death's 0xd0153 task after its bounty and its food given back
+  (`FUN_6f6744d0`), only for a unit that is not to rise: a fall to Reincarnation fires
+  none.
 
 ## Rendering
 

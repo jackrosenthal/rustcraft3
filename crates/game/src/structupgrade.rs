@@ -120,6 +120,45 @@ impl World {
             u.extra.day_ref = Some((s, birth));
             u.extra.sight_stamp = Some((at + 3.0) as f32);
         }
+        self.retype_splashes(h, from, to);
+    }
+
+    /// The attack's splash objects as its weapons become the new type's (`FUN_6f49cab0`
+    /// from the change of type, after its sight's modifier): for each of its two weapons
+    /// one made as its kind becomes a splashing one (artillery, msplash, mbounce, mline,
+    /// or aline; `FUN_6f4977e0`), kept while it stays one, let go at once as it becomes
+    /// another (its vf 0x5c, then its last reference).  (Measured: Mafarazzo TD's Arrow
+    /// Tower, a missile's, becoming the Cannon Tower, an artillery's, made one more
+    /// object as its upgrade began, turn 212 of the maft3 game; provisional: the
+    /// order, a let go one's.)
+    fn retype_splashes(&mut self, h: u32, from: Id, to: Id) {
+        let splash = |t: &str| matches!(t.trim(), "msplash" | "artillery" | "aline" | "mline" | "mbounce");
+        let kinds = |id: Id| self.objects.units.get(id).map(|o| [o.str("weapTp1"), o.str("weapTp2")]).unwrap_or_default();
+        let (was, now) = (kinds(from), kinds(to));
+        let splashes = |w: &World| w.unit(h).map(|u| u.extra.object_slots[2].iter().enumerate().filter(|(_, o)| w.tags.live.get(&o.0).is_some_and(|e| &e.0 == codes::class::SPLASH && e.1 == o.1)).map(|(k, _)| k).collect::<Vec<usize>>()).unwrap_or_default();
+        // Its splash objects stand after its attack, the first weapon's first.
+        let mut held = 0;
+        for k in 0..2 {
+            match (splash(&was[k]), splash(&now[k])) {
+                (true, false) => {
+                    let at = splashes(self).get(held).copied();
+                    if let Some((s, _)) = at.and_then(|i| self.unit_mut(h).map(|u| u.extra.object_slots[2].remove(i))) {
+                        self.tags.release(s);
+                    }
+                }
+                (false, true) => {
+                    let after = splashes(self).get(held.wrapping_sub(1)).copied().or_else(|| self.unit(h).and_then(|u| u.extra.object_slots[2].iter().position(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::ATTACK && e.1 == b))));
+                    let made = self.tags.take_id(codes::class::SPLASH);
+                    if let Some(u) = self.unit_mut(h) {
+                        let k = after.map_or(u.extra.object_slots[2].len(), |i| i + 1);
+                        u.extra.object_slots[2].insert(k, made);
+                    }
+                    held += 1;
+                }
+                (true, true) => held += 1,
+                (false, false) => {}
+            }
+        }
     }
 
     /// The upgrades due on the main clock by main tick `tick` (by the turn's last with

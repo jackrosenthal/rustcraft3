@@ -4972,7 +4972,17 @@ Formats the port made its own, to be replaced by the original's:
   the Zombie Tower becoming the St George Bank frees its Critical Strike's and Slow
   Poison's and makes Pillage's (`Asal`), each before the rise's listener goes; it had
   changed them as the upgrade began, their objects kept.  Provisional, not yet traced:
-  the objects' slots and order (a taken ability's own object freed first).  A cancel (vf206,
+  the objects' slots and order (a taken ability's own object freed first).
+  The change of type remakes the attack's splash objects (`spla`) by its two
+  weapons' new kinds (`FUN_6f49cab0`, after the sight's modifier): one made as a
+  weapon's kind becomes a splashing one (artillery, msplash, mbounce, mline, or aline;
+  `FUN_6f4977e0`), kept while it stays one, let go at once as it becomes another (its
+  vf 0x5c, then its last reference).  Measured: the maft game's Arrow Tower (a
+  missile) becoming the Cannon Tower (an artillery) made one more object as the
+  upgrade began, turn 212, born one past the port's and its slot the free list's
+  last; with it the maft3 capture's keepalives agree for all 3273 turns
+  (`World::retype_splashes`).  Provisional: a let-go one's (the Fan Knifes Tower's
+  bounce becoming the Assasin Tower's missile).  A cancel (vf206,
   0x6f5a73b0) gives back UpgradeRefundRate of the cost and the old type
   (`FUN_6f670950` with 0x102); not traced.
 - A built structure's Blight Growth (a human one's dispel, Abds: 64 every 0.08 to

@@ -4141,8 +4141,13 @@ Formats the port made its own, to be replaced by the original's:
     (+0x2c), its actions listed.  A unit's speed in its move ability and position is
     as SetUnitMoveSpeed set it; a script's move order names its unit's owner (its
     third word); a unit whose pathing a script turned off lacks agent flag 0x40, its
-    walking byte, and its position's first flag, its position's first real 0.49
-    (provisional); a collision of none is one in its position.
+    walking byte, and its position's first flag, its position's first real 0.49, its
+    cluster's word 0x20000, and its path's owner word 0x200 (provisional); a collision
+    of none is one in its position and its path.  A walk's path's long way names the
+    corner it walks to, from the goal's 0 (3 of 8 halfway down the creeps' road).
+  The original loads the port's save so written (`savetest/mafsv30_v1.w3z`) and
+  plays on as from its own: daylight, the leaderboard shown, the creeps walking
+  their route, the lives falling, the defeat dialog by 270 seconds.
   - A player: its race preference (+0x25c: a map fixing its players' settings, w3i
     flag 0x20, its race's bit alone; the neutral players 0x60), its start location
     (+0x274, an empty slot of the map's its own) then its team (+0x278, none unless
@@ -4158,8 +4163,11 @@ Formats the port made its own, to be replaced by the original's:
   log (the game's third part's first list: each text shown), the local player's
   interface's six `` `fcl `` and the creep camps' `+ccu` in the second table, the
   game state's fifteen context stacks and free handles (tail 10 and 11), a walk
-  without pathing's cluster and path as the original keeps them, the slot table's
-  empty slots, the map setup's flags 0x300000.
+  without pathing's unit's own path (the original's a partial way of some 32 cells,
+  its cluster's local goal that way's end), the slot table's empty slots, the map
+  setup's flags 0x300000.  The single-player game's draws: the original's creeps'
+  speeds are the port's shifted by 23 draws (its first creep's the port's 24th), some
+  draws at the start the port does not make (the network game's agree).
 - A unit moving among others has its position cluster (`` `pcu ``) end in its
   separation's record (CPoSeparate, `FUN_6f16f9d0`: two reals and a word), its
   second flag set (read, the hero map's 18 dragons on the move).

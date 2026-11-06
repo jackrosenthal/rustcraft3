@@ -1141,16 +1141,23 @@ impl World {
         let moving = u.extra.mover.as_ref().is_some_and(|m| f32::from_bits(m.vx) != 0.0 || f32::from_bits(m.vy) != 0.0);
         let speed = if moving { self.walk_speed_cells(h) } else { 0.0 };
         let array = Array { words: [528, 528, 0, 12], entries: vec![([pcu.0, pcu.1, 0], [0.0, 0.0, lx, ly, speed, heading], 0)] };
-        out.push((clu.0, First::Cluster2 { array, words: [u32::MAX, u32::MAX, 0], reals: [gx, gy, lx, ly], more: [0, 0, 0, 0, 0], last_reals: [heading, f32::MAX], word: 0x2_0000, refs: [NONE, NONE, rf(path)] }, None));
-        let collision = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("collision")) / 32.0;
+        // (A walker whose pathing a script turned off: its cluster's word 0, and its
+        // path's owner word without 0x200; read, Mafarazzo TD's creeps; provisional.)
+        let pathing = !u.extra.no_pathing;
+        out.push((clu.0, First::Cluster2 { array, words: [u32::MAX, u32::MAX, 0], reals: [gx, gy, lx, ly], more: [0, 0, 0, 0, 0], last_reals: [heading, f32::MAX], word: if pathing { 0x2_0000 } else { 0 }, refs: [NONE, NONE, rf(path)] }, None));
+        // (A collision of none as one: read, Mafarazzo TD's creeps' 0.03125.)
+        let collision = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("collision")).max(1.0) / 32.0;
         let local = if u.owner == self.local_player { 0x8 } else { 0 };
-        let word = ((0x206 | local) << 4 | (u.owner as u32 & 0xf)) << 16;
+        let word = (((if pathing { 0x206 } else { 0x006 }) | local) << 4 | (u.owner as u32 & 0xf)) << 16;
         let corners: Vec<[f32; 2]> = match u.extra.coarse.as_ref() {
             Some(c) => c.points.iter().map(|&(x, y)| [x, y]).collect(),
             None => vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]],
         };
         let short = (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, 700);
-        let long = (path_array(corners), 0, 0, 5000);
+        // (Its long way's corner it walks to, from the goal's 0: read, Mafarazzo TD's
+        // creeps' 3 of 8 halfway.)
+        let index = u.extra.coarse.as_ref().map_or(0, |c| c.index as u32);
+        let long = (path_array(corners), index, 0, 5000);
         out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, NONE] }, None));
         out
     }

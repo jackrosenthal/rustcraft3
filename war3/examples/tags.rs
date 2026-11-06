@@ -437,6 +437,21 @@ fn main() -> anyhow::Result<()> {
                 println!("res {n} {} {}", st(w3_game::types::player_state::RESOURCE_GOLD), st(w3_game::types::player_state::RESOURCE_LUMBER));
             }
         }
+        // TAGS_GLOBALS="name,...[;player]": at each turn's end where one has changed, those
+        // script globals' values (and that player's live units' count).
+        if let Some(v) = std::env::var("TAGS_GLOBALS").ok() {
+            let (names, p) = v.split_once(';').map_or((&*v, None), |(a, b)| (a, b.parse::<u8>().ok()));
+            let mut line: Vec<String> = names.split(',').map(|name| format!("{name}={:?}", g.vm.global(name))).collect();
+            if let Some(p) = p {
+                let w = &g.world;
+                line.push(format!("alive={}", w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| u.owner == p && !u.dead).count()));
+            }
+            let line = line.join(" ");
+            thread_local!(static LAST: std::cell::RefCell<String> = Default::default());
+            if LAST.with(|l| l.replace(line.clone())) != line {
+                println!("globals {n} {line}");
+            }
+        }
         // TAGS_TRACKP=player: each turn, the player's units' places, actions, orders,
         // speeds (their own and now), and buffs.
         if let Some(p) = std::env::var("TAGS_TRACKP").ok().and_then(|v| v.parse::<u8>().ok()) {

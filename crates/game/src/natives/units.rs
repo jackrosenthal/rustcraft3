@@ -692,6 +692,17 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         }
     }
     if let Some(k) = w.unit(killer).map(|k| k.owner) {
+        // The kill counts in its killer's owner's tech tree, under the dead unit's type,
+        // unless that owner is passive toward the dead unit's (its death's 0xd0153,
+        // `FUN_6f69c210`: `FUN_6f68bd60`, the killer's owner's alliance mask of type 0,
+        // as GetPlayerAlliance reads it, then `FUN_6f266fb0`, `FUN_6f23b060`, the
+        // registration made last if it had none).  Measured: the flyer game's keepalive
+        // at turn 275 wants its first kill's registration, the Arrow Tower's owner's of
+        // the creep's type, killed 1.
+        let passive = w.players.get(k as usize).is_some_and(|p| p.alliances[owner as usize % PLAYER_COUNT][crate::natives::players::ALLIANCE_PASSIVE]);
+        if !passive {
+            w.tech_reg(k, type_id).killed += 1;
+        }
         w.score_killed(k, owner, type_id, hero);
     }
     let ctx = EventCtx {

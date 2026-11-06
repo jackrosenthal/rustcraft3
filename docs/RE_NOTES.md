@@ -570,8 +570,16 @@ these are the findings behind them.
   a cancel (`FUN_6f228ed0`) takes one from in production; a unit removed
   (`FUN_6f6744d0`) cancels if it was started and takes one from present if it was
   added (its +0x64 bits 8 and 0x10); a change of type (`FUN_6f6703b0`) does both for
-  the old type and starts or adds the new; a unit killed (`FUN_6f69c210`) by another
-  player's unit adds one killed to the killer's owner's registration of its type.  At
+  the old type and starts or adds the new; a unit killed adds one killed to its
+  killer's owner's registration of its type, made last if there is none, unless that
+  owner is passive toward the dead unit's (its death's 0xd0153, `FUN_6f69c210`: the
+  killer at +0x250, `FUN_6f68bd60`, which reads the killer's owner (+0x58) alliance
+  mask of type 0 at the dead unit's owner's bit, as GetPlayerAlliance and IsUnitAlly
+  do, then `FUN_6f266fb0` → `FUN_6f23b060`, +0x2c; a player is passive toward itself,
+  so its own kills count none).  Measured: the flyer game's keepalive at turn 275,
+  after its first kill, wants the game module of the Arrow Tower's owner's tree with
+  a registration of the creep's type (0x7fffffff, killed 1, flags 8) after its
+  tower's; the port, which had none, kept the keepalives only to turn 274.  At
   Booty Bay's start each slot has hrtt, otbk, and uske (InitSummonableCaps), HERO
   and the 24 hero types (MeleeStartingHeroLimit), and a playing slot its town hall
   and workers; the port keeps the same registrations (`crate::techreg`) and computes

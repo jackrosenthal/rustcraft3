@@ -4202,10 +4202,10 @@ Formats the port made its own, to be replaced by the original's:
   185.6532).  The port's, never blocked there, walks on round the north.  Open:
   what blocks it at 0.33 (no other walker is near; the Tree of Life's footprint is
   166 to 173 by 190 to 197, its collision 144 a region from 165 by its cells' rule,
-  which would have held it at 0.30 too).  A measurement: at that step, inside
-  `FUN_6f166140` after its region collection (the switch's call), the collected
-  count (`DAT_6fd53a84` + 200) and the regions listed at +0xac, with their flags
-  (+0x34, +0x40) and the units they belong to.
+  which would have held it at 0.30 too).  Measured (after the collection's call in
+  `FUN_6f166140`, 0x6f1662cc, at 0.33): that wisp's (its way 0xbdb7f08) collects one
+  region (`DAT_6fd53a84` + 0xc8, 1), the two others' none; which region, not yet
+  read.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -5185,12 +5185,21 @@ Formats the port made its own, to be replaced by the original's:
   path's goal first its cluster's point (189.5, 179.5), straight for it from
   60.2951 (heading 5.8523), then from 62.99 the tree at (190, 174) (its walk to
   reach it from 63.74).  That tree is the third of the port's eight places ((186,
-  174), (192, 178), (190, 174), ...), where the port's turn gives the second: so
-  the AI's +0x150 stands one further on in the original by 60.1, from a call of
-  `FUN_6f9c6cf0` the port does not make (its passes take a wood worker only at 0.2
-  and 60.2), or its places' order differs.  A measurement: a break at
-  `FUN_6f9c70a0`'s entry from 0.1 to 61.0, its ecx's +0x150 and the clock (and the
-  eight places, +0xac, with their costs, +0x110, at 60.1).
+  174), (192, 178), (190, 174), ...), where the port's turn gives the second.
+  Measured (a break at `FUN_6f9c70a0`'s entry, 0.1 to 61.0): one call, at 60.0951,
+  its +0x150 0 (so the second place), the places' first four costs 21, 21, 22, and
+  24.  So the places' order differs: `FUN_6f9c5950` costs each tree by
+  `FUN_6f059590` from the tree to the drop-off, not from the drop-off, and the
+  port's plans so give 21 for (186, 174) and (190, 174) and 22 for (192, 178), the
+  second place the farm peasant's tree (`World::ai_town_trees`; the fourth, (196,
+  178), 22 where the original's fourth costs 24, not yet read).  Next: the original's
+  walk to it is a cluster walk, its way's point 10 on (189.5, 179.5), where it stops
+  within its harvest's reach (4.01 off at 62.99; Ahar's 116 and its 16 over 32 is
+  4.125) and plans anew to the tree; the port walks to the tree's footprint straight
+  and reaches it in turn 634, three before the original's.  Tried: a lumber run's
+  walk so stepped through its cluster's point (`World::coarse_goal`,
+  `World::coarse_step_arrive` with the harvest's range), the keepalives part at turn
+  29 (the first wood worker's walk at 0.1, 23 cells, so too, not read).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

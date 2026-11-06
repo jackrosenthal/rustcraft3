@@ -1343,8 +1343,12 @@ impl World {
 
     /// The trees a computer's town sends its wood workers to (`FUN_6f9c55d0`, each tree
     /// about a drop-off judged by `FUN_6f9c5950`), by the accelerator plan's cost from
-    /// the drop-off, both lifted, 32 pops (read: Twisted Meadows' human computer's
-    /// oldest peasant sent to a tree 689 from its town hall where one stood 680 away).
+    /// the tree to the drop-off (`FUN_6f059590` given the tree's place first), both
+    /// lifted, 32 pops (read: Twisted Meadows' human computer's oldest peasant sent to a
+    /// tree 689 from its town hall where one stood 680 away; its AI's places at 60.1 the
+    /// first three costing 21, 21, and 22, the fourth 24, the second (190, 174) the
+    /// farm peasant's tree, where the plan from the hall had them 22, 22, and 23, the
+    /// second (192, 178)).
     /// Its AI keeps eight places (`kept`, as they were, those gone none): a tree not
     /// among them takes the first empty place, else the first dearest when it costs less
     /// (`FUN_6f9c60a0`, `FUN_6f9c7a20`); then each place in turn takes the first
@@ -1373,7 +1377,7 @@ impl World {
             }
             let Some((x, y)) = self.widget_pos(d) else { continue };
             let Some(pyr) = self.accel_pyramid_lifting(Some(hall), &[d]) else { continue };
-            let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) else { continue };
+            let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(x, p.origin[0]), acc(y, p.origin[1])), (acc(fx, p.origin[0]), acc(fy, p.origin[1])), 0x20) else { continue };
             log::trace!("town tree from {hall}: ({x}, {y}) cost {cost}");
             let k = places.iter().position(|q| q.is_none()).unwrap_or_else(|| {
                 (1..8).fold(0, |k, i| if places[i].map_or(0, |q| q.0) > places[k].map_or(0, |q| q.0) { i } else { k })

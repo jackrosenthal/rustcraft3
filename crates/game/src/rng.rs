@@ -83,6 +83,23 @@ impl Rng {
         lo + r * (hi - lo)
     }
 
+    /// GetRandomReal (`jass_GetRandomReal`) in the engine's arithmetic: the first bound
+    /// and the bounds' distance times a draw in [0, 1), so past the first when it is the
+    /// greater (as GetRandomInt); the first when they are nearer than an epsilon
+    /// (`FUN_6f06fa90`, `FUN_6f06fbb0`, `FUN_6f06f9c0`; measured: Mafarazzo TD's creep
+    /// speeds in the original, four of 120 a unit in their last place off by the
+    /// processor's rounding, 180.2281 where it gave 180.2282).
+    pub fn real_script(&mut self, a: f32, b: f32) -> f32 {
+        use crate::efloat::{add, mul, sub};
+        if f32::from_bits(sub(a.to_bits(), b.to_bits())).abs() < f32::EPSILON {
+            return a;
+        }
+        let range = if a <= b { sub(b.to_bits(), a.to_bits()) } else { sub(a.to_bits(), b.to_bits()) };
+        let r = (self.next_u32() & 0x7f_ffff) | 0x3f80_0000;
+        let u = add(r, (-1.0f32).to_bits());
+        f32::from_bits(add(a.to_bits(), mul(range, u)))
+    }
+
     pub fn int(&mut self, lo: i32, hi: i32) -> i32 {
         if lo == hi {
             return lo;

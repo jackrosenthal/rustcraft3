@@ -60,6 +60,14 @@ original images.
 - RNG: state update `FUN_6f1b7130`, seeding `FUN_6f1cc4e0`, table at `0x6fa92f10`.
   `GetRandomInt` (`0x6f201e30`) returns `lo + rand*(|hi-lo|+1)>>32`, which exceeds
   `lo` when `hi < lo`.
+- `GetRandomReal` (`0x6f201e70`) computes in the engine's own arithmetic
+  (`FUN_6f06fa90`, `FUN_6f06fbb0`, `FUN_6f06f9c0`): the first bound plus the bounds'
+  distance times a draw in [0, 1) (the draw's bits as a single in [1, 2), less 1), so
+  past the first bound when it is the greater, as `GetRandomInt` is; the first bound
+  when the two are nearer than an epsilon.  Measured: Mafarazzo TD's 120 first creep
+  speeds (GetRandomReal(speed - 50, speed + 50) each, a breakpoint on the move
+  ability's speed setter `FUN_6f5fee60`) all the port's to the last place only so;
+  with the processor's rounding four were a unit off there.
 - `StringHash` is Storm ordinal 590: Jenkins lookup2 over the upper-cased string with
   `/` mapped to `\`.
 - `R2S` formats with 3 decimals; `S2I` is `atoi`.

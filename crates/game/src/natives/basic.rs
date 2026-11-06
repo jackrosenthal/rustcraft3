@@ -210,7 +210,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetRandomInt => |w, _, a| int(w.rng.int(a.i(0), a.i(1))),
         GetRandomReal => |w, _, a| {
-            real(w.rng.real(a.r(0), a.r(1)))
+            real(w.rng.real_script(a.r(0), a.r(1)))
         },
         // The main generator is seeded and drawn once, the draw seeding the other 45
         // (FUN_6f214140).

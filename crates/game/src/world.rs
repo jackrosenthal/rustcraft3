@@ -389,6 +389,11 @@ pub struct World {
     /// The tick's movement steps are done (its logic after them runs).
     #[serde(skip)]
     pub after_steps: bool,
+    /// The detectors' looks of this turn yet to be taken among its steps, each with its
+    /// due (seconds since the game began) and its in-range object's birth, or none when
+    /// they wait for the turn's end (`World::plan_detection_looks`).
+    #[serde(skip)]
+    pub looks_due: Option<Vec<(f64, u32, u32)>>,
     /// The main clock a missile landing now lands at (`World::missiles_land`).
     #[serde(skip)]
     pub landing_clock: Option<f64>,
@@ -1035,6 +1040,7 @@ impl World {
             budgets: Default::default(),
             script_clock: None,
             after_steps: false,
+            looks_due: None,
             landing_clock: None,
             steps_free_until: None,
             net_sum: 0,
@@ -2420,6 +2426,7 @@ impl World {
         // a wanderer's order is given after it, a walk's end found in it handled then).
         self.train_before_steps(vm, dt);
         self.update_wander(true);
+        self.plan_detection_looks(dt);
         self.first_steps(vm);
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(false));

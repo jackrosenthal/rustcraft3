@@ -1690,6 +1690,8 @@ impl World {
         if self.wrap_step.is_some_and(|(k, _)| k == 0 && !self.step_clocks.is_empty()) {
             self.wrap_clocks(&mut []);
         }
+        // The detectors' looks due before the step (`World::plan_detection_looks`).
+        self.looks_before(self.step_abs(0).map(|s| s.1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The game's first step (its clock 0) moves no one: the walks ordered as the map
         // is set up are searched and steered from the next (read: the waypoint provider,
@@ -1848,6 +1850,7 @@ impl World {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
             self.tags.mark_step(k);
+            self.looks_before(self.step_abs(k).map(|s| s.1));
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
             // The payouts by a wanderer's main tick go ahead of its order (read: a night
@@ -1977,6 +1980,8 @@ impl World {
             self.build_ends_to(end);
         }
         self.mine_payouts_to(vm, last);
+        // (Looks due after the last step; provisional: where among the rest.)
+        self.looks_before(None);
         self.step_range = (1, n);
     }
 

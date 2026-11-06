@@ -625,8 +625,8 @@ pub struct UnitExtra {
     /// A meld's fade-in at dawn: its timer and listener, freed as it ends.
     #[serde(default)]
     pub fade_slots: Vec<u32>,
-    /// A detector's clock since its in-range object was made, which looks every half
-    /// second (`World::update_detection`).
+    /// A detector's clock since its in-range object was made, in milliseconds, which
+    /// looks every half second (`World::detection_looks`).
     #[serde(default)]
     pub detect_clock: Option<f32>,
     /// The players' detectors that found this unit, each with its record (`Cdet`).

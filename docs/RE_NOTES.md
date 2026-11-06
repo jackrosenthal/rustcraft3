@@ -1682,12 +1682,36 @@ these are the findings behind them.
   0xd01b4, `FUN_6f407060`, its in-range object's set at +0x84); the unit's one record
   (`Cdet`, at its +0x130) is made by the first detector of any player to find it
   (`FUN_6f688990`), each player's count kept in it (`FUN_6f688940`; leaving, event
-  0xd01b5, `FUN_6f43aca0` and `FUN_6f678150`, only counts down).  Mafarazzo's
-  peasants, collision 0, are found by none.  Measured (a breakpoint on `FUN_6f688990`
+  0xd01b5, `FUN_6f43aca0` and `FUN_6f678150`, only counts down).  Measured (a
+  breakpoint on `FUN_6f688990`
   from 0x6f4070f8, its ecx the unit found): at 0.5 seconds the Red peasant's look finds
   h00Y, h00X, e000, h00Z, and h013 in that order, the towers where the script asked
   for them (above), the reverse of the units' 256-unit blocks (`spatial_order`); the
   port's look now finds the same in the same order.
+  - A unit's position's collision is its type's held to at least 1 (`CUnit::vf91_6f6945a0`
+    against `DAT_6fd3c748`, from_int(1) by the static initializer at 0x6f001b80;
+    `DAT_6fd3c744`, the test's 0, is from_int(0) at 0x6f001a80), over 32
+    (`FUN_6f05c2e0`, `FUN_6f15fef0`), so a unit of collision 0 is found within the
+    range and 1.  Read: Mafarazzo TD's creeps (n000, ucol 0) found by Red's flying
+    peasant, six at 21.5 seconds in the flyer game (`abtest/mafb_detect.txt`), one at
+    46.0, three at 46.5, and on in the LAN game (its trace from turn 391).
+  - The test takes the position where its velocity carries it by the look's moment
+    (`FUN_6f161040`), not where its last step left it: at 21.5 the six within 901 so,
+    where the places after the turn's steps had eight.
+  - The look's timer is on the agent queue, due each half second from the detector's
+    making (for Red's peasant made with the map, on the half second), so it comes
+    among the turn's movement steps by their agent dues: at 46.5 after the turn's
+    first step (due 46.49865), its region trigger's order and frees, and before the
+    paths freed at the second (46.52865); at 47.0 before the first step's (47.00863).
+    The port so takes the looks due in a turn among its steps
+    (`World::plan_detection_looks`, `World::looks_before`), its walkers placed at the
+    look's main tick; provisional: only on a map without aura bearers, where an aura's
+    scans (the same queue) would come with them, which the port keeps at the turn's
+    end with the looks (`update_auras`).  The port's detector clock had summed tenths
+    in f32 and looked a turn late by 46 seconds; it counts whole milliseconds now.
+    Mafarazzo TD's LAN game so agrees for all 502 turns of its keepalives and its
+    objects through turn 501 (the trace ends in 502), and the flyer game to turn 217
+    (from 216; at 217 the original's tower takes up a creep).
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.
@@ -4594,7 +4618,7 @@ Formats the port made its own, to be replaced by the original's:
   last first) freed after the structure's own (traced over LAN: the flying peasant's
   Arrow Tower, done at turn 192, a second after its begin).  The flying peasant's game
   so agrees to turn 216, where the original makes six `Cdet` (detections, the creeps
-  made at 20.0 coming near; not yet read) that the port does not.
+  made at 20.0 coming near), now the port's too (a burrow detection's test, above).
 - A construction is done (`CAbilityBuildInProgress`'s vf205, 0x6f427e40, from
   `FUN_6f424320` on its listener's event 0xd01c4) on the main clock at its build time
   from the step its rise began in: the step it was begun in, or for a builder still

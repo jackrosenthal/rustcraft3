@@ -645,8 +645,9 @@ impl World {
     /// finds it (read: the 18 of three dragons and fifteen whelps each finding the
     /// others of its camp).
     /// Returns the detectors looking now, each with the birth of its in-range object
-    /// (the queue's order, `update_auras`).
-    pub(crate) fn detection_looks(&mut self, dt: f32) -> Vec<(u32, u32)> {
+    /// (the queue's order, `update_auras`) and how long before the turn's start its look
+    /// fell due, in milliseconds.
+    pub(crate) fn detection_looks(&mut self, dt: f32) -> Vec<(u32, u32, f32)> {
         let detectors: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.extra.sleeping && u.extra.flyer_pil.is_some())).collect();
         let mut looks = Vec::new();
         for h in detectors {
@@ -656,28 +657,86 @@ impl World {
                 u.extra.detect_clock = Some(0.0);
                 continue;
             };
-            let now = prev + dt;
+            // (Counted in whole milliseconds: tenths of a second summed drift, a look a
+            // turn late by 46 seconds where the original's fall on the half second, read
+            // in Mafarazzo TD's LAN game at turn 461.)
+            let now = prev + (dt * 1000.0).round();
             u.extra.detect_clock = Some(now);
-            if (now / 0.5).floor() <= (prev / 0.5).floor() {
+            if (now / 500.0).floor() <= (prev / 500.0).floor() {
                 continue;
             }
+            let behind = now - (now / 500.0).floor() * 500.0;
             let pil = u.extra.flyer_pil.unwrap_or(0);
-            looks.push((h, self.tags.live.get(&pil).map_or(0, |e| e.1)));
+            looks.push((h, self.tags.live.get(&pil).map_or(0, |e| e.1), behind));
         }
         looks
     }
 
-    /// One detector's look (`detection_looks`).
-    fn detection_look(&mut self, h: u32) {
+    /// The detectors' looks due this turn, each to be taken among its movement steps as
+    /// its timer falls due on the agent queue (`World::looks_before`): read, Mafarazzo
+    /// TD's peasant's look due at 46.5 seconds, its three detections made after the
+    /// first step (due 46.49865) and the objects of its tick's region trigger's order,
+    /// before an old path freed in the second step (46.52865); the one due at 47.0, its
+    /// detection before the paths freed in the first step (47.00863).  Provisional: only
+    /// on a map with no aura bearers; where an aura's scans may share the queue the
+    /// looks wait with them for the turn's end (`update_auras`, its buffs' regeneration
+    /// and lapses counted from there).
+    pub(crate) fn plan_detection_looks(&mut self, dt: f32) {
+        self.looks_due = None;
+        if self.unit_order.iter().any(|&h| self.aura_bearer(h)) {
+            return;
+        }
+        let start = self.game_ms.wrapping_sub((dt as f64 * 1000.0).round() as u32) as f64;
+        let mut looks: Vec<(f64, u32, u32)> = self.detection_looks(dt).into_iter().map(|(h, birth, behind)| ((start - behind as f64) / 1000.0, birth, h)).collect();
+        looks.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        self.looks_due = Some(looks);
+    }
+
+    /// Takes the looks due before `until` (seconds since the game began, an agent due),
+    /// or all those left.
+    pub(crate) fn looks_before(&mut self, until: Option<f64>) {
+        let Some(due) = self.looks_due.as_mut() else { return };
+        let n = due.iter().take_while(|l| until.is_none_or(|u| l.0 < u)).count();
+        let now: Vec<(f64, u32, u32)> = due.drain(..n).collect();
+        for (at, _, h) in now {
+            let clock = self.main_tick_clock_abs(at);
+            self.detection_look(h, clock);
+        }
+    }
+
+    /// The main clock of this tick's main tick in which an agent event due at `at`
+    /// (seconds since the game began) takes place: the last whose clock is short of it,
+    /// else the first (`World::agent_tick`).
+    fn main_tick_clock_abs(&self, at: f64) -> Option<u32> {
+        let n = self.tick_clocks.1.len();
+        let i = (0..n.saturating_sub(1)).rev().find(|&i| self.tick_abs(i).is_some_and(|c| c < at)).unwrap_or(0);
+        self.tick_clocks.1.get(i).copied()
+    }
+
+    /// Whether a unit bears one of the auras `update_auras` scans for.
+    fn aura_bearer(&self, h: u32) -> bool {
+        self.aura_sources(h).iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), codes::ability::PALADIN_DEVOTION_AURA | codes::ability::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::CHIEFTAIN_ENDURANCE_AURA | codes::ability::PRIESTESS_TRUESHOT_AURA | codes::ability::DREADLORD_VAMPIRIC_AURA | codes::ability::KEEPER_THORNS_AURA | codes::ability::AURA_REGENERATION_WARD | codes::ability::MANA_REGENERATION_AURA | codes::ability::AURA_WAR_DRUMS | codes::ability::COMMAND_AURA | codes::ability::AURA_SLOW))
+    }
+
+    /// One detector's look (`detection_looks`), the walkers taken where they are at the
+    /// main clock `clock` when given.
+    fn detection_look(&mut self, h: u32, clock: Option<u32>) {
         let Some(u) = self.unit(h) else { return };
         let (owner, x, y) = (u.owner, u.x, u.y);
         let range = self.ability_with_code(h, codes::ability::BURROW_DETECTION_FLYERS).map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
-        // (Within its range of the unit's collision circle, a unit of none never: the
-        // in-range listener's test, `FUN_6f15eac0`, the distance under the range plus
-        // the position's collision, which must be above 0; read, Plunder Isle's red
-        // drake's first look finding a gnoll 920.9 away, its collision 32, and not one
-        // 933.5 away.)
-        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && t.collision > 0.0 && (t.x - x).hypot(t.y - y) < range + t.collision && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+        // (Within its range of the unit's collision circle: the in-range listener's test,
+        // `FUN_6f15eac0`, the distance under the range plus the position's collision,
+        // which must be above 0; read, Plunder Isle's red drake's first look finding a
+        // gnoll 920.9 away, its collision 32, and not one 933.5 away.  The position's is
+        // the type's held to at least 1, `DAT_6fd3c748`, from_int(1) by the initializer
+        // at 0x6f001b80, `CUnit::vf91_6f6945a0`: read, Mafarazzo TD's creeps, of
+        // collision 0, found as they come within 900 of Red's peasant.)
+        // (Each walker where its velocity takes it by the look's main tick's clock,
+        // `FUN_6f161040`: read, the creeps found at 21.5 seconds, a turn before the
+        // port's places after its steps would have them.)
+        self.script_clock = clock;
+        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && !t.extra.detected_by.iter().any(|d| d.0 == owner)) && self.place_now(o).zip(self.unit(o)).is_some_and(|((tx, ty), t)| (tx - x).hypot(ty - y) < range + t.collision.max(1.0))).collect();
+        self.script_clock = None;
         // (Come in in the reverse of the order its search finds them, as an aura's,
         // `FUN_6f15f2a0`; one record a unit whoever's detectors find it, made by the
         // first, `FUN_6f688990` at the unit's +0x130.)
@@ -830,12 +889,7 @@ impl World {
     pub(crate) fn update_auras(&mut self, dt: f32) {
         let mut grants = Vec::new();
         let mut sweeps = Vec::new();
-        let bearers: Vec<u32> = self
-            .unit_order
-            .iter()
-            .copied()
-            .filter(|&h| self.aura_sources(h).iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), codes::ability::PALADIN_DEVOTION_AURA | codes::ability::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::CHIEFTAIN_ENDURANCE_AURA | codes::ability::PRIESTESS_TRUESHOT_AURA | codes::ability::DREADLORD_VAMPIRIC_AURA | codes::ability::KEEPER_THORNS_AURA | codes::ability::AURA_REGENERATION_WARD | codes::ability::MANA_REGENERATION_AURA | codes::ability::AURA_WAR_DRUMS | codes::ability::COMMAND_AURA | codes::ability::AURA_SLOW)))
-            .collect();
+        let bearers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.aura_bearer(h)).collect();
         let mut scanning = crate::collections::HashSet::default();
         // A new bearer has its own aura at once (measured: an Archmage that learns
         // Brilliance Aura regains its 0.75 a second from then, 17.00 mana in 10 seconds
@@ -968,12 +1022,14 @@ impl World {
             .into_iter()
             .map(|(src, owner, x, y, area, b, reach, code)| (self.unit(src).map_or(0, |u| u.extra.oid.1), Due::Grant(src, owner, x, y, area, Box::new(b), reach, code)))
             .collect();
-        due.extend(self.detection_looks(dt).into_iter().map(|(h, k)| (k, Due::Look(h))));
+        if self.looks_due.take().is_none() {
+            due.extend(self.detection_looks(dt).into_iter().map(|(h, k, _)| (k, Due::Look(h))));
+        }
         due.sort_by_key(|d| d.0);
         for (_, d) in due {
             let (src, owner, x, y, area, b, reach, code) = match d {
                 Due::Look(h) => {
-                    self.detection_look(h);
+                    self.detection_look(h, None);
                     continue;
                 }
                 Due::Grant(src, owner, x, y, area, b, reach, code) => (src, owner, x, y, area, *b, reach, code),

@@ -1422,6 +1422,48 @@ these are the findings behind them.
   its objects as an arrival does, at its end, its path as the next step starts; the
   port takes "on the bearing" as within 0.2 after one turn (provisional).  With these
   the quiet game's replay agrees with the original's for all 15624 turns.
+- A trigger's sleep ends by the network's word (`w3_game::world::Execution`).  The
+  sleep runs on its execution's own timer (CTriggerExecution +0x34, a
+  CAgentTimerExtended started once by `FUN_6f2998f0` on the timer queue +0x44), and
+  that queue moves by real time: CNetEventAsyncIdleTick 0x40090094 carries the
+  milliseconds since the last tick (`FUN_6f32d670`, its stamp from
+  QueryPerformanceCounter or GetTickCount, `FUN_6f092a20`) to `FUN_6f36ab40` and
+  `FUN_6f04c0d0`, so each computer times a sleep by its own clock.  The timer's end
+  (event 0 in CTriggerExecution vf3, `FUN_6f298c80`; a sound wait's poll, event 1,
+  `FUN_6f299020`, ends the same way) sends action 0x62 (CNetCommandResumeTriggerExec,
+  `FUN_6f270430`): the execution's id (tag and birth) and its count, +0x90, which is 1 as
+  the execution starts (`FUN_6f298250`) and is written nowhere else but on a load
+  (`0x6f298885`) and by `FUN_6f299380`.  Every computer sends its own: the filter that
+  holds back most actions of a player not playing lets 0x62 through (`FUN_6f32bbd0`,
+  from the sender `FUN_6f32c920`).  Carried out (the handler at 0x6f26f360 looks the
+  execution up by the id and passes only the count), `FUN_6f299380` lets the thread go
+  on (`FUN_6f2975c0`) and counts one more when the count is the execution's: so the first
+  0x62 to come, whoever sent it, ends the sleep on every computer at the same turn,
+  and the rest, their count gone by, do nothing; one that comes before this computer's
+  own timer is done ends the sleep all the same.  The script's run returns state 4 when a
+  native set the thread's +0x3c (TriggerSyncStart, `jass_TriggerSyncStart`;
+  `FUN_6f91b460` after a native call: state 3 for a sleep, +0x34, first): the execution
+  then notes the players whose slot state is playing and controller user (+0x8c,
+  `FUN_6f299c00`), holds the thread with no timer, and sends its 0x62 at once.
+  TriggerSyncReady (`jass_TriggerSyncReady`, nothing outside an execution) sends 0x63
+  (CNetCommandTriggerSyncReady, `FUN_6f2711a0`: the execution's id, read by
+  `FUN_6f331280`) and sleeps 0 on the execution; each 0x63 carried out (handler
+  0x6f26fce0, passing the sender) takes its sender off the noted players, and those
+  neither user nor playing, and with none left lets the thread go on, the count
+  unchanged (`FUN_6f299b80`).  Read in a LAN game of Mafarazzo TD whose host
+  (`crates/net/examples/host.rs`, then sending its backlog of turns at once) ran no
+  game: the original sent 0x62 with count 1 at turn 198 and count 2 at turn 909 for
+  its Initialization trigger's execution (0x560), the first and second of its sleeps
+  (2 and 4 seconds of its real time; the game time ran far faster), each ending as its
+  own 0x62 came back, and the execution lived on (its third sleep, 2 seconds, not yet
+  over at the capture's end).  A game played alone sends them too (a replay of one,
+  `Replay/victory.w3g`, holds a 0x62 with count 1).  The port does this in a network
+  game and in turns from one (a replay's, the tags example's), timing the sleep by its
+  own sleep clock and sending its 0x62 and 0x63 to the host; alone it still wakes its
+  sleeps itself.  Open: whether an ExecuteFunc's execution (`FUN_6f298060`, which
+  leaves +0x90 as its constructor `FUN_6f295130` does) counts from 0 or from what its
+  memory held; the port's ExecuteFunc and timer callbacks keep no execution of their
+  own, so their sleeps wake as alone.
 
 ## Units and structures
 

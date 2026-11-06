@@ -95,6 +95,7 @@ impl World {
 
     /// The net module's part of a turn without actions, as its message comes in.
     pub fn net_turn(&mut self, ms: u16) {
+        self.net_turns = true;
         self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &ms.to_le_bytes()));
     }
 
@@ -103,6 +104,7 @@ impl World {
     /// turn record does (read: the original's messages and sums for turns with a
     /// selection, a control group, a training order, and a rally point).
     pub fn net_turn_actions(&mut self, ms: u16, actions: &[(u8, Vec<u8>)]) {
+        self.net_turns = true;
         let mut payload = ms.to_le_bytes().to_vec();
         for (pid, a) in actions {
             payload.push(*pid);

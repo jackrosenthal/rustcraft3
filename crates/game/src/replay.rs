@@ -80,6 +80,13 @@ pub enum Command {
     /// One event registration hears a player's input, as the original sends it: a chat
     /// line (`text`) a chat event registration matches, or a trackable's hit or track.
     EventHeard { player: u8, event: u32, text: String },
+    /// A trigger execution's thread may go on, as the sender's sleep in it ended (the
+    /// original's action 0x62, CNetCommandResumeTriggerExec): the execution by its id
+    /// (tag and birth) and its count of resumptions so far plus one.
+    ResumeTrigger { player: u8, execution: (u32, u32), count: u32 },
+    /// A player's TriggerSyncReady in a trigger execution (action 0x63,
+    /// CNetCommandTriggerSyncReady).
+    TriggerSyncReady { player: u8, execution: (u32, u32) },
 }
 
 impl Command {
@@ -121,7 +128,9 @@ impl Command {
             | C::Signal { player, .. }
             | C::Alliance { player, .. }
             | C::Trade { player, .. }
-            | C::SelectionOrder { player, .. } => Some(*player),
+            | C::SelectionOrder { player, .. }
+            | C::ResumeTrigger { player, .. }
+            | C::TriggerSyncReady { player, .. } => Some(*player),
             _ => None,
         }
     }
@@ -610,5 +619,26 @@ mod tests {
         // local player's leaving.
         assert!(!w.records.iter().any(|r| matches!(r, w3_formats::w3g::Record::Other { id: SETUP_RECORD, .. })));
         assert!(matches!(w.records.last(), Some(w3_formats::w3g::Record::Leave { reason: 12, pid: 1, result: 7, unknown: 1 })));
+    }
+
+    /// A network game's turn with a trigger's resumption (the original's 0x62 from its
+    /// second player, as Mafarazzo TD's came) is written as it came and reads back as a
+    /// turn whose block plays as that player's resumption.
+    #[test]
+    fn a_network_turns_resumption_keeps() {
+        let slot = |player: u8, fill: crate::SlotFill| crate::LobbySlot { player, fill, name: Some(format!("P{player}")), race: None, team: player as i32, color: player as i32, handicap: 100.0, difficulty: 1 };
+        let block = vec![0x62, 0x60, 5, 0, 0, 0x60, 5, 0, 0, 1, 0, 0, 0];
+        let r = Replay {
+            map: "Maps\\(2)BootyBay.w3m".into(),
+            lobby: Some(vec![slot(0, crate::SlotFill::Local), slot(1, crate::SlotFill::Remote)]),
+            frames: vec![Frame { dt: 0.1, commands: vec![], actions: Some(vec![(1, block.clone())]), turn: Some((100, vec![(2, block.clone())])), checksum: None }],
+            ..Default::default()
+        };
+        let back = Replay::parse(&r.to_bytes().unwrap()).unwrap();
+        let f = &back.frames[0];
+        assert_eq!((&f.turn, &f.actions), (&Some((100, vec![(2, block.clone())])), &Some(vec![(1, block.clone())])));
+        let w = crate::world::World::new(std::sync::Arc::new(w3_mpq::Chain::default()), crate::objects::ObjectDb::default());
+        let cs = crate::actions::Codec::default().decode(&w, 1, &block).unwrap();
+        assert_eq!(cs, vec![Command::ResumeTrigger { player: 1, execution: (0x560, 0x560), count: 1 }]);
     }
 }

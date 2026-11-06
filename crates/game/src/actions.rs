@@ -227,6 +227,11 @@ impl Codec {
                     V::Str(None) => Action::CacheString(0x74),
                 });
             }
+            // A trigger execution's thread let go on (62: the execution and its count) and
+            // a TriggerSyncReady (63: the execution), as `FUN_6f270430` and `FUN_6f2711a0`
+            // build them (62 measured).
+            Command::ResumeTrigger { execution, count, .. } => acts.push(Action::ResumeTrigger { execution: ObjectId(execution.0, execution.1), count: *count }),
+            Command::TriggerSyncReady { execution, .. } => acts.push(Action::TriggerSyncReady(ObjectId(execution.0, execution.1))),
             // A network game saved under a name (measured: 06 and the name).
             Command::Save { name } => acts.push(Action::SaveGame(name.clone())),
             // A pause (measured: 01 as the original's game ends) and its resume (02).
@@ -376,6 +381,8 @@ impl Codec {
                         }
                         Action::CacheString(_) => {}
                         Action::Trade { player: other, gold, lumber } => out.push(Command::Trade { player, other, gold: gold as i32, lumber: lumber as i32 }),
+                        Action::ResumeTrigger { execution, count } => out.push(Command::ResumeTrigger { player, execution: (execution.0, execution.1), count }),
+                        Action::TriggerSyncReady(execution) => out.push(Command::TriggerSyncReady { player, execution: (execution.0, execution.1) }),
                         Action::SaveGame(name) => out.push(Command::Save { name }),
                         Action::SaveDone(_) => {}
                         Action::Pause => out.push(Command::Pause { player, on: true }),
@@ -484,5 +491,19 @@ mod tests {
         assert_eq!(u.items[4], Some((*crate::codes::item::id::CLAWS_OF_ATTACK_15, 0)));
         assert_eq!(u.items.iter().filter(|i| i.is_some()).count(), 2);
         assert_eq!(u.record, b);
+    }
+
+    /// A trigger's resumption and a TriggerSyncReady go as the original's 62 and 63 and
+    /// come back as they went, from the player whose block holds them (62 as the
+    /// original sent Mafarazzo TD's Initialization's first).
+    #[test]
+    fn trigger_resumptions_go_as_the_originals() {
+        let w = World::new(std::sync::Arc::new(w3_mpq::Chain::default()), crate::objects::ObjectDb::default());
+        let mut c = Codec::default();
+        let resume = Command::ResumeTrigger { player: 1, execution: (0x560, 0x560), count: 1 };
+        let ready = Command::TriggerSyncReady { player: 1, execution: (0x560, 0x560) };
+        let bytes = [c.encode(&w, 1, &resume), c.encode(&w, 1, &ready)].concat();
+        assert_eq!(bytes, [&[0x62, 0x60, 5, 0, 0, 0x60, 5, 0, 0, 1, 0, 0, 0][..], &[0x63, 0x60, 5, 0, 0, 0x60, 5, 0, 0]].concat());
+        assert_eq!(c.decode(&w, 1, &bytes).unwrap(), vec![resume, ready]);
     }
 }

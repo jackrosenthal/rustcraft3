@@ -1963,8 +1963,10 @@ impl World {
     /// event's id; the event's own objects, 4 and 5, none); its timer to its thread's
     /// waking (kind 4, its sleep, once), the sleep again in chunks; the thread's place;
     /// the action it runs, and the actions listed; 0.0, none, 0, 0; its trigger on event
-    /// 0x80274; none; and 1.  One whose thread does not sleep (within SaveGame, say) has
-    /// no timer.  Provisional: the actions listed (the one).
+    /// 0x80274; none; and its count of resumptions plus one (+0x90, 1 until a network's
+    /// word resumed it: `world::Execution`).  One whose thread does not sleep (within
+    /// SaveGame, say) has no timer, nor one TriggerSyncStart stopped.  Provisional: the
+    /// actions listed (the one).
     pub fn execution_records(&self) -> Vec<(u32, First, Option<Second>)> {
         let mut out = Vec::new();
         let live: Vec<u32> = self.tags.live.iter().filter(|(_, (c, _))| c == codes::class::TRIGGER_EXECUTION).map(|(&s, _)| s).collect();
@@ -1982,9 +1984,11 @@ impl World {
                 words[2] = jass(s.ctx.trigger);
                 words[3] = if s.ctx.has_player { jass(player) } else { 0 };
                 words[6] = s.ctx.event_id as u32;
-                let left = (s.wake_at - crate::world::SLEEP_SLACK - self.sleep_time).max(0.0);
-                let (chunks, rest) = timer_chunks(s.sleep);
-                tail_timer = (Field::Timer(rf(me), 4, Timing(Some((self.time + left, s.sleep, s.timer_count, 0, 0)))), chunks, rest);
+                if s.wake_at.is_finite() {
+                    let left = (s.wake_at - crate::world::SLEEP_SLACK - self.sleep_time).max(0.0);
+                    let (chunks, rest) = timer_chunks(s.sleep);
+                    tail_timer = (Field::Timer(rf(me), 4, Timing(Some((self.time + left, s.sleep, s.timer_count, 0, 0)))), chunks, rest);
+                }
                 place = s.thread.place;
                 if let Some(Obj::Trigger(t)) = self.handles.get(s.ctx.trigger) {
                     // (The action its thread runs: the one whose function is its run's.)
@@ -2013,7 +2017,7 @@ impl World {
                 Field::Word(0),
                 Field::List(trigger.into_iter().map(|t| vec![Field::Ref(rf(t)), Field::Word(0x8_0274)]).collect()),
                 Field::List(Vec::new()),
-                Field::Word(1),
+                Field::Word(self.executions.get(&slot).map_or(1, |e| e.count)),
             ];
             let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
             out.push((me.0, agent_first(me, codes::class::TRIGGER_EXECUTION, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers, tail })));

@@ -770,7 +770,7 @@ impl Game {
                     places.free.retain(|&p| p != thread.place);
                     places.len = places.len.max(thread.place + 1);
                 }
-                w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0, execution: 0, sleep: *sleep, timer_count: 0 });
+                w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0, execution: 0, sleep: *sleep, timer_count: 0, held: false });
             }
         }
         // Each trigger's enabled flag (its second, kind 1; read, a trigger the original

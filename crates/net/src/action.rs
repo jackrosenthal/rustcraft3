@@ -71,8 +71,13 @@ pub enum Action {
     TriggerChat { event: ObjectId, text: String },
     /// 0x61: Escape (sent with or without a registration for it; measured).
     Escape,
-    /// 0x62: a trigger's sync (TriggerSyncReady and the like).
-    TriggerSync { a: u32, b: u32, c: u32 },
+    /// 0x62 (CNetCommandResumeTriggerExec, `FUN_6f270430`): a trigger execution's thread
+    /// may go on, by the execution's id and the count of its resumptions so far plus one
+    /// (its +0x90), as its sleep's timer ended or TriggerSyncStart stopped it.
+    ResumeTrigger { execution: ObjectId, count: u32 },
+    /// 0x63 (CNetCommandTriggerSyncReady, `FUN_6f2711a0`): the sender's TriggerSyncReady in
+    /// that trigger execution.
+    TriggerSyncReady(ObjectId),
     /// 0x66, 0x67: the skill or build menu is opened.
     SkillMenu,
     BuildMenu,
@@ -176,7 +181,8 @@ impl Action {
             0x51 => A::Trade { player: r.u8()?, gold: r.u32()?, lumber: r.u32()? },
             0x60 => A::TriggerChat { event: object(r)?, text: r.cstr()? },
             0x61 => A::Escape,
-            0x62 => A::TriggerSync { a: r.u32()?, b: r.u32()?, c: r.u32()? },
+            0x62 => A::ResumeTrigger { execution: object(r)?, count: r.u32()? },
+            0x63 => A::TriggerSyncReady(object(r)?),
             0x66 => A::SkillMenu,
             0x67 => A::BuildMenu,
             0x68 => A::Signal { x: f32(r)?, y: f32(r)?, a: r.u32()? },
@@ -295,8 +301,14 @@ impl Action {
             A::Escape => {
                 w.u8(0x61);
             }
-            A::TriggerSync { a, b, c } => {
-                w.u8(0x62).u32(*a).u32(*b).u32(*c);
+            A::ResumeTrigger { execution, count } => {
+                w.u8(0x62);
+                obj(w, execution);
+                w.u32(*count);
+            }
+            A::TriggerSyncReady(execution) => {
+                w.u8(0x63);
+                obj(w, execution);
             }
             A::SkillMenu => {
                 w.u8(0x66);
@@ -428,5 +440,17 @@ mod measured {
         // A real, a boolean, a unit, and a string not stored, then the rest as before.
         let missing = round_trip(&hex("7165762e773376006d69006e72007265762e773376006d69006e62007365762e773376006d69006e7500746b65762e773376006d69006b6900d20400006c65762e773376006d72006b7200000020406d65762e773376006d62006b6200010000006f"));
         assert_eq!(missing.iter().take(4).map(|a| match a { Action::Cache { id, value, .. } if value.is_empty() => *id, Action::CacheString(id) => *id, _ => 0 }).collect::<Vec<_>>(), [0x71, 0x72, 0x73, 0x74]);
+    }
+
+    /// The original's resumptions of Mafarazzo TD's Initialization trigger, sent to a
+    /// hosted game as its first and second sleeps ended (its execution's tag and birth
+    /// 0x560, the counts 1 and 2); and a TriggerSyncReady's as `FUN_6f331280` reads one
+    /// (not yet measured).
+    #[test]
+    fn the_originals_trigger_resumptions() {
+        let o = ObjectId(0x560, 0x560);
+        assert_eq!(round_trip(&hex("62600500006005000001000000")), vec![Action::ResumeTrigger { execution: o, count: 1 }]);
+        assert_eq!(round_trip(&hex("62600500006005000002000000")), vec![Action::ResumeTrigger { execution: o, count: 2 }]);
+        assert_eq!(round_trip(&hex("636005000060050000")), vec![Action::TriggerSyncReady(o)]);
     }
 }

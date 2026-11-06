@@ -148,6 +148,36 @@ pub struct Sleeper {
     /// Its execution's timer to its waking: its count among the timers started.
     #[serde(default)]
     pub timer_count: u32,
+    /// Its own wait is over (or it has none: TriggerSyncStart's): in a network game it
+    /// goes on only as the network's word comes (`World::resume_execution`).
+    #[serde(default)]
+    pub held: bool,
+}
+
+/// A trigger execution's part in a network game (CTriggerExecution's +0x90 and +0x8c):
+/// there its thread's sleep ends on every computer at once, at the first word that it
+/// has.  Each computer times the sleep by its own clock (the execution's timer, +0x34, on
+/// the queue the asynchronous idle tick moves by real time: CNetEventAsyncIdleTick
+/// 0x40090094, `FUN_6f32d670` to `FUN_6f36ab40` and `FUN_6f04c0d0`; the port's sleep
+/// clock instead); its end (the timer's event 0, CTriggerExecution vf3 `FUN_6f298c80`)
+/// sends action 0x62, the execution and its count (`FUN_6f270430`), and the first 0x62
+/// carried out with the count it has lets the thread go on and counts one more
+/// (`FUN_6f299380`, from the command's handler at 0x6f26f360); the later ones, the count
+/// gone by, do nothing.  TriggerSyncStart stops the thread without a timer and sends its
+/// 0x62 at once, noting the users playing (state 4 of the script's run, `FUN_6f2975c0`,
+/// `FUN_6f299c00`); each player's TriggerSyncReady sends 0x63 (`FUN_6f2711a0`) and
+/// sleeps 0, and the 0x63s carried out take their senders off that list, the thread
+/// going on once none is left (`FUN_6f299b80`, from the handler at 0x6f26fce0), its
+/// count as it was.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Execution {
+    /// Its object's birth (with its slot, its id in the actions).
+    pub birth: u32,
+    /// Its resumptions so far plus one (+0x90: 1 as it starts, `FUN_6f298250`).
+    pub count: u32,
+    /// The players whose TriggerSyncReady it waits on, by bit (+0x8c; none until a
+    /// TriggerSyncStart: provisional, its constructor `FUN_6f295130` leaving it).
+    pub waiting: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -198,6 +228,22 @@ pub struct World {
     /// The trigger execution whose thread runs (its `+tex`), for a sleep to keep.
     #[serde(skip)]
     pub running_execution: u32,
+    /// The trigger executions alive, by their objects' slots, with their part in a
+    /// network game.
+    #[serde(default)]
+    pub executions: std::collections::BTreeMap<u32, Execution>,
+    /// Turns have come from a network game's host (`World::net_turn`): in a network game,
+    /// a replay of one, or the tags example's, a trigger's sleep ends by the network's word
+    /// (`World::net_sleeps`).
+    #[serde(default)]
+    pub net_turns: bool,
+    /// What this computer's game sends for its player as the script runs (a trigger's
+    /// resumption, a TriggerSyncReady), which `Game` sends in a network game.
+    #[serde(skip)]
+    pub net_out: Vec<crate::replay::Command>,
+    /// TriggerSyncStart has just stopped the running thread (its run's state 4).
+    #[serde(skip)]
+    pub sync_start: bool,
     #[serde(skip)]
     pub handle_sweep_timer: f32,
     /// Threads started by natives (TriggerExecute, ExecuteFunc) that must run once the
@@ -877,6 +923,10 @@ impl World {
             sleepers: Vec::new(),
             sound_wait: 0,
             running_execution: 0,
+            executions: Default::default(),
+            net_turns: false,
+            net_out: Vec::new(),
+            sync_start: false,
             handle_sweep_timer: 0.0,
             pending: Vec::new(),
             requests: Vec::new(),
@@ -1362,6 +1412,8 @@ impl World {
         // initialization, run by ConditionalTriggerExecute, takes a +tex, and the time
         // of day's trigger another when SetFloatGameState fires it).
         let execution = self.tags.take(codes::class::TRIGGER_EXECUTION);
+        let birth = self.tags.live.get(&execution).map_or(0, |e| e.1);
+        self.executions.insert(execution, Execution { birth, count: 1, waiting: 0 });
         let mut kept = false;
         for a in actions {
             let f = match self.handles.get(a) {
@@ -1379,6 +1431,7 @@ impl World {
         // thread ends (read: the original's save of a trigger waiting, its `+tex` with
         // the wake timer).
         if !kept {
+            self.executions.remove(&execution);
             if self.exec_at_tick_end {
                 self.tags.issued.push(execution);
             } else {
@@ -1391,15 +1444,28 @@ impl World {
     pub fn run_thread(&mut self, vm: &mut Vm, mut t: Thread, ctx: EventCtx) -> bool {
         let saved = std::mem::replace(&mut self.ctx, ctx);
         let mut slept = false;
-        match vm.run(self, &mut t) {
+        let outcome = vm.run(self, &mut t);
+        // TriggerSyncStart's stop starts no timer: the thread waits on the network's word,
+        // its 0x62 sent at once, noting the users playing (`FUN_6f2975c0`'s state 4,
+        // `FUN_6f299c00`: slot state playing, controller user).
+        let sync = std::mem::take(&mut self.sync_start) && self.running_execution != 0;
+        match outcome {
             Outcome::Finished(_) => {}
             Outcome::Sleeping(secs) => {
                 let ctx = self.ctx.clone();
                 let sound = std::mem::take(&mut self.sound_wait);
                 // (A trigger's thread sleeps on its execution's timer, started as it
                 // sleeps: read, the original's save of a trigger waiting, its count.)
-                let timer_count = if self.running_execution != 0 { self.tags.start_timer("trigger sleep") } else { 0 };
-                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx, sound, execution: self.running_execution, sleep: secs.max(0.0), timer_count });
+                let timer_count = if self.running_execution != 0 && !sync { self.tags.start_timer("trigger sleep") } else { 0 };
+                let wake_at = if sync { f32::INFINITY } else { self.sleep_time + secs.max(0.0) + SLEEP_SLACK };
+                self.sleepers.push(Sleeper { wake_at, thread: t, ctx, sound, execution: self.running_execution, sleep: secs.max(0.0), timer_count, held: sync });
+                if sync {
+                    let users = (0..12).filter(|&p| self.players.get(p).is_some_and(|pl| pl.slot_state == slot_state::PLAYING && pl.controller == map_control::USER)).fold(0, |m, p| m | 1 << p);
+                    if let Some(e) = self.executions.get_mut(&self.running_execution) {
+                        e.waiting = users;
+                    }
+                    self.send_resume(self.running_execution);
+                }
                 slept = true;
             }
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
@@ -2414,6 +2480,10 @@ impl World {
         let now = SLEEP_POLL_PHASE + poll(self.sleep_time) * SLEEP_POLL;
         let mut i = 0;
         while polled && i < self.sleepers.len() {
+            if self.sleepers[i].held {
+                i += 1;
+                continue;
+            }
             // A wait for a sound ends too once the sound is stopped (measured: Escape
             // during NightElf07's Furion transmission, whose wait is WaitForSoundBJ,
             // stops it by CancelCineSceneBJ and the script goes on at once in the
@@ -2422,17 +2492,93 @@ impl World {
             let sound = self.sleepers[i].sound;
             let stopped = sound != 0 && crate::natives::presentation::sound_position(self, sound).is_none();
             if self.sleepers[i].wake_at < now || stopped {
-                let s = self.sleepers.swap_remove(i);
-                let outer = std::mem::replace(&mut self.running_execution, s.execution);
-                let slept = self.run_thread(vm, s.thread, s.ctx);
-                self.running_execution = outer;
-                // Its execution's object goes as its thread ends.
-                if !slept && s.execution != 0 && !self.sleepers.iter().any(|o| o.execution == s.execution) {
-                    self.tags.doom(s.execution);
+                // In a network game a trigger's thread, its own wait done, waits on the
+                // network's word: this computer sends its own (`Execution`).
+                if self.net_sleeps() && self.sleepers[i].execution != 0 && self.executions.contains_key(&self.sleepers[i].execution) {
+                    self.sleepers[i].held = true;
+                    self.send_resume(self.sleepers[i].execution);
+                    i += 1;
+                    continue;
                 }
+                let s = self.sleepers.swap_remove(i);
+                self.resume(vm, s);
             } else {
                 i += 1;
             }
+        }
+    }
+
+    /// A sleeping thread goes on; its execution's object goes as its thread ends.
+    fn resume(&mut self, vm: &mut Vm, s: Sleeper) {
+        let outer = std::mem::replace(&mut self.running_execution, s.execution);
+        let slept = self.run_thread(vm, s.thread, s.ctx);
+        self.running_execution = outer;
+        if !slept && s.execution != 0 && !self.sleepers.iter().any(|o| o.execution == s.execution) {
+            self.tags.doom(s.execution);
+            self.executions.remove(&s.execution);
+        }
+    }
+
+    /// Whether a trigger's sleep ends by the network's word (`Execution`): in a network
+    /// game and in turns from one (a replay's, the tags example's).  A game played alone
+    /// wakes them by its own clock (the original's sends its 0x62s there too, read in a
+    /// replay of one; not yet modeled).
+    pub fn net_sleeps(&self) -> bool {
+        self.network || self.net_turns
+    }
+
+    /// This computer's word that an execution's wait is over: 0x62 with its id and count.
+    fn send_resume(&mut self, execution: u32) {
+        if let Some(e) = self.executions.get(&execution) {
+            self.net_out.push(crate::replay::Command::ResumeTrigger { player: self.local_player, execution: (execution, e.birth), count: e.count });
+        }
+    }
+
+    /// This computer's TriggerSyncReady in an execution: 0x63 with its id.
+    pub fn send_sync_ready(&mut self, execution: u32) {
+        if let Some(e) = self.executions.get(&execution) {
+            self.net_out.push(crate::replay::Command::TriggerSyncReady { player: self.local_player, execution: (execution, e.birth) });
+        }
+    }
+
+    /// A player's word that an execution's wait is over, carried out (0x62,
+    /// `FUN_6f299380`): the first with its count lets its thread go on and counts one
+    /// more, whoever sent it; one whose count is gone by does nothing.
+    pub fn resume_execution(&mut self, vm: &mut Vm, id: (u32, u32), count: u32) {
+        if !self.net_sleeps() {
+            return;
+        }
+        let Some(e) = self.executions.get_mut(&id.0).filter(|e| e.birth == id.1) else { return };
+        if e.count != count {
+            return;
+        }
+        e.count += 1;
+        self.go_on(vm, id.0);
+    }
+
+    /// A player's TriggerSyncReady carried out (0x63, `FUN_6f299b80`): its execution
+    /// waits on that player no more, nor on any neither a user nor playing; waiting on
+    /// none, its thread goes on, its count as it was.
+    pub fn sync_ready(&mut self, vm: &mut Vm, player: u8, id: (u32, u32)) {
+        if !self.net_sleeps() {
+            return;
+        }
+        let gone = (0..12).filter(|&p| self.players.get(p).is_some_and(|pl| pl.controller != map_control::USER && pl.slot_state != slot_state::PLAYING)).fold(0, |m, p| m | 1 << p);
+        let Some(e) = self.executions.get_mut(&id.0).filter(|e| e.birth == id.1) else { return };
+        e.waiting &= !(1 << (player & 31)) & !gone;
+        if e.waiting == 0 {
+            self.go_on(vm, id.0);
+        }
+    }
+
+    /// An execution's thread goes on from its wait, whether or not this computer's own
+    /// is done (`FUN_6f2975c0`); with none waiting, nothing.  (The port runs each of a
+    /// trigger's actions on a thread of its own, the original one after another: the
+    /// first waiting goes on.)
+    fn go_on(&mut self, vm: &mut Vm, execution: u32) {
+        if let Some(i) = self.sleepers.iter().position(|s| s.execution == execution) {
+            let s = self.sleepers.remove(i);
+            self.resume(vm, s);
         }
     }
 
@@ -2730,4 +2876,129 @@ fn yes2() -> (bool, bool) {
 
 fn light2() -> (i32, i32) {
     (1, 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::replay::Command;
+
+    const SCRIPT: &str = "type agent extends handle
+type trigger extends agent
+type triggeraction extends agent
+native CreateTrigger takes nothing returns trigger
+native TriggerAddAction takes trigger whichTrigger, code actionFunc returns triggeraction
+native TriggerExecute takes trigger whichTrigger returns nothing
+native TriggerSleepAction takes real timeout returns nothing
+native TriggerSyncStart takes nothing returns nothing
+native TriggerSyncReady takes nothing returns nothing
+globals
+    integer stage = 0
+endglobals
+function Sleeps takes nothing returns nothing
+    set stage = 1
+    call TriggerSleepAction(2.0)
+    set stage = 2
+    call TriggerSleepAction(4.0)
+    set stage = 3
+endfunction
+function Syncs takes nothing returns nothing
+    set stage = 10
+    call TriggerSyncStart()
+    set stage = 11
+    call TriggerSyncReady()
+    set stage = 12
+endfunction
+function Run takes code f returns nothing
+    local trigger t = CreateTrigger()
+    call TriggerAddAction(t, f)
+    call TriggerExecute(t)
+endfunction
+function StartSleeps takes nothing returns nothing
+    call Run(function Sleeps)
+endfunction
+function StartSyncs takes nothing returns nothing
+    call Run(function Syncs)
+endfunction
+";
+
+    /// A network game's world with the script above, players 0 and 1 users playing.
+    fn world() -> (World, Vm) {
+        let mut vm = Vm::new(w3_jass::compile([("test.j", SCRIPT)]).unwrap());
+        let mut w = World::new(Arc::new(Chain::default()), ObjectDb::default());
+        w.bind_natives(&vm);
+        vm.init_globals(&mut w).unwrap();
+        for p in 0..2 {
+            w.players[p].controller = map_control::USER;
+            w.players[p].slot_state = slot_state::PLAYING;
+        }
+        w.network = true;
+        (w, vm)
+    }
+
+    fn stage(vm: &Vm) -> Option<Value> {
+        vm.global("stage")
+    }
+
+    /// Runs a function and returns the id of the execution it left waiting.
+    fn start(w: &mut World, vm: &mut Vm, name: &str) -> (u32, u32) {
+        let f = vm.module.function(name).unwrap();
+        w.run_main(vm, f);
+        let (&slot, e) = w.executions.iter().next().unwrap();
+        (slot, e.birth)
+    }
+
+    /// A trigger's sleep in a network game: its end by this computer's clock sends 0x62
+    /// once and holds the thread; the first 0x62 with the execution's count lets it go
+    /// on, one with a count gone by does nothing, and one before this computer's sleep
+    /// is done lets it go on too (`FUN_6f299380`).
+    #[test]
+    fn a_network_games_sleep_ends_by_the_first_word() {
+        let (mut w, mut vm) = world();
+        let id = start(&mut w, &mut vm, "StartSleeps");
+        assert_eq!(stage(&vm), Some(Value::Int(1)));
+        for _ in 0..60 {
+            w.wake_sleepers(&mut vm, 0.05);
+        }
+        assert_eq!(std::mem::take(&mut w.net_out), vec![Command::ResumeTrigger { player: w.local_player, execution: id, count: 1 }]);
+        assert_eq!(stage(&vm), Some(Value::Int(1)));
+        w.resume_execution(&mut vm, id, 1);
+        assert_eq!(stage(&vm), Some(Value::Int(2)));
+        w.resume_execution(&mut vm, id, 1);
+        assert_eq!(stage(&vm), Some(Value::Int(2)));
+        w.resume_execution(&mut vm, id, 2);
+        assert_eq!(stage(&vm), Some(Value::Int(3)));
+        assert!(w.executions.is_empty() && w.sleepers.is_empty() && w.net_out.is_empty());
+    }
+
+    /// TriggerSyncStart sends 0x62 at once and waits for one; TriggerSyncReady sends 0x63
+    /// and goes on once every user playing has said it (`FUN_6f299b80`).
+    #[test]
+    fn sync_ready_waits_on_every_user() {
+        let (mut w, mut vm) = world();
+        let id = start(&mut w, &mut vm, "StartSyncs");
+        assert_eq!(stage(&vm), Some(Value::Int(10)));
+        assert_eq!(std::mem::take(&mut w.net_out), vec![Command::ResumeTrigger { player: w.local_player, execution: id, count: 1 }]);
+        w.resume_execution(&mut vm, id, 1);
+        assert_eq!(stage(&vm), Some(Value::Int(11)));
+        assert_eq!(std::mem::take(&mut w.net_out), vec![Command::TriggerSyncReady { player: w.local_player, execution: id }]);
+        w.sync_ready(&mut vm, 1, id);
+        assert_eq!(stage(&vm), Some(Value::Int(11)));
+        w.sync_ready(&mut vm, 0, id);
+        assert_eq!(stage(&vm), Some(Value::Int(12)));
+        assert!(w.executions.is_empty());
+    }
+
+    /// A game played alone wakes a trigger's sleep by its own clock, sending nothing.
+    #[test]
+    fn a_game_played_alone_sleeps_by_its_clock() {
+        let (mut w, mut vm) = world();
+        w.network = false;
+        start(&mut w, &mut vm, "StartSleeps");
+        for _ in 0..60 {
+            w.wake_sleepers(&mut vm, 0.05);
+        }
+        assert_eq!(stage(&vm), Some(Value::Int(2)));
+        assert!(w.net_out.is_empty());
+    }
 }

@@ -224,16 +224,40 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.sound_wait = a.h(0);
             NativeResult::Sleep(super::presentation::sound_wait(w, a.h(0), a.r(1)))
         },
-        TriggerSyncStart => |_, _, _| none(),
-        // Waits for the synced values: in a network game long enough for them to go
-        // round (the frames carrying them come within it), else at once.
-        TriggerSyncReady => |w, _, _| NativeResult::Sleep(if w.network { 0.5 } else { 0.0 }),
+        // In a network game it stops its execution's thread until the network's word
+        // (the script's run returns state 4 for the thread's +0x3c it sets,
+        // `jass_TriggerSyncStart`; `World::run_thread`).  Provisional: outside an
+        // execution, nothing (the original's thread would stop for good).
+        TriggerSyncStart => |w, _, _| {
+            if w.net_sleeps() && w.running_execution != 0 {
+                w.sync_start = true;
+                return NativeResult::Sleep(0.0);
+            }
+            none()
+        },
+        // In a network game its execution sends 0x63 and sleeps 0 (`jass_TriggerSyncReady`:
+        // nothing outside an execution); its sleep ends by the network's word, the 0x62
+        // its end sends or a 0x63 from each player TriggerSyncStart noted.  Alone, a
+        // sleep of 0.
+        TriggerSyncReady => |w, _, _| {
+            if w.net_sleeps() {
+                if w.running_execution == 0 {
+                    return none();
+                }
+                w.send_sync_ready(w.running_execution);
+            }
+            NativeResult::Sleep(0.0)
+        },
+        // (Its thread has an execution of its own, `FUN_6f298060`, which the port does not
+        // make yet: not the caller's, so its sleep wakes by the port's clock, as alone.)
         ExecuteFunc => |w, vm, a| {
             let name = a.s(0);
             if let Some(f) = vm.module.function(&name) {
                 let ctx = w.ctx.clone();
                 let t = vm.new_thread(f, &[], true);
+                let outer = std::mem::take(&mut w.running_execution);
                 w.run_thread(vm, t, ctx);
+                w.running_execution = outer;
             }
             none()
         },

@@ -825,6 +825,18 @@ impl Game {
     /// go on.
     pub fn tick_paused(&mut self, dt: f32) {
         self.world.wake_sleepers(&mut self.vm, dt);
+        self.send_net_out();
+    }
+
+    /// What the game sends for its player as the script runs (`World::net_out`: a
+    /// trigger's resumption, a TriggerSyncReady): to the host in a network game; dropped
+    /// where frames come from elsewhere (a replay, the tags example), which carry their
+    /// own.
+    fn send_net_out(&mut self) {
+        let out = std::mem::take(&mut self.world.net_out);
+        if let Some(o) = self.outbox.as_mut() {
+            o.extend(out);
+        }
     }
 
     /// Advances the simulation.
@@ -836,11 +848,16 @@ impl Game {
             }
         }
         self.world.tick(&mut self.vm, dt);
+        self.send_net_out();
     }
 
     /// Plays one frame (of a replay or from a network game's host): its commands, then
-    /// its step; returns what each command answered, with its player.
+    /// its step; returns what each command answered, with its player.  A network game's
+    /// turn has its sleeps end by the network's word (`World::net_sleeps`).
     pub fn play_frame(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
+        if f.turn.is_some() {
+            self.world.net_turns = true;
+        }
         let out = self.play_commands(f);
         self.play_step(f);
         out
@@ -875,6 +892,7 @@ impl Game {
         if self.world.net_paused.is_none() {
             self.world.tick(&mut self.vm, f.dt);
         }
+        self.send_net_out();
     }
 
     /// A frame's commands without its step: the original carries out a turn's actions
@@ -891,7 +909,7 @@ impl Game {
                 }
             }
         }
-        commands
+        let out = commands
             .into_iter()
             .map(|(p, c)| {
                 log::debug!("player {p}: {c:?}");
@@ -899,7 +917,9 @@ impl Game {
                 log::debug!("  answered {o:?}");
                 (p, o)
             })
-            .collect()
+            .collect();
+        self.send_net_out();
+        out
     }
 
     /// A command from the interface (noted for the replay); none while a replay plays,
@@ -1099,6 +1119,15 @@ impl Game {
                         V::Unit(v) => set(&mut c.units, &k, v),
                     }
                 }
+                O::Done
+            }
+            // A trigger execution's wait over, by a player's word (`world::Execution`).
+            C::ResumeTrigger { execution, count, .. } => {
+                self.world.resume_execution(&mut self.vm, execution, count);
+                O::Done
+            }
+            C::TriggerSyncReady { player, execution } => {
+                self.world.sync_ready(&mut self.vm, player, execution);
                 O::Done
             }
             C::Save { name } => {

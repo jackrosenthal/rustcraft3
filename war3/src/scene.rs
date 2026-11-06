@@ -2501,6 +2501,7 @@ impl Scene {
             A::Cancel => {
                 self.targeting = None;
                 self.placing = None;
+                self.item_target = None;
                 if let Some(h) = self.hud.as_mut() {
                     h.page = crate::card::Page::Main;
                 }

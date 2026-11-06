@@ -5877,6 +5877,19 @@ Formats the port made its own, to be replaced by the original's:
   wisp is sent again at 15.1 as the original's.  The keepalives agree to turn 155,
   from 152, the objects to 163.  Next: at turn 164 the port's Moon Well is begun, the
   original's at 178.
+- A computer's wisp made as the game runs counts its town's tree counter on twice.
+  Read (`FUN_6f9c70a0`'s entry and return, Twisted Meadows' night elf computer's game):
+  at 14.100000, as the wisp is trained, it runs twice from `FUN_6f9c96c0`
+  (0x6f9c97f3), at the AI's +0x150 0 and then 1, and at the pass at 15.098467 at 2;
+  the eight places' costs 21, 22, 22, 24, 24, 24, 24, and 24, as the port's.  The
+  wisp's walk from 14.1 is to (150, 202), the first's (the port's place 1), and its
+  walk from 15.1 for the cluster's point (169.5, 175.5) toward (172, 170), the
+  port's place 3 (the wisp then begun on the Moon Well from (163, 185) at 17.8).
+  The port had counted on once, sending it at 15.1 to (148, 198), place 2, the well
+  begun at 16.4 (`World::tag_unit`; provisional: which of its two harvests takes
+  which call's tree).  The keepalives agree to turn 178, from 155.  Next (turn 178):
+  the original makes a `` `pil `` with the well's beginning, after the builder's order
+  and before the structure's `pucs`, which the port does not.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

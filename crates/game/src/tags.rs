@@ -1363,9 +1363,18 @@ impl crate::world::World {
         if let Some(r) = ai_gold_run {
             if let Some(mine) = ai_mine {
                 let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
-                // (One made as the game runs, its town's next tree: read, Twisted Meadows'
-                // night elf computer's wisp trained at 14.1, its goal (150, 202).)
-                let next = if wisp && !self.tick_clocks.1.is_empty() { self.town_next_tree(owner) } else { None };
+                // (One made as the game runs, its town's next tree, the town's counter
+                // counted on twice, once for each of its two harvests: read, Twisted
+                // Meadows' night elf computer's wisp trained at 14.1, `FUN_6f9c70a0` from
+                // `FUN_6f9c96c0` at its counter 0 and 1, its goal (150, 202), the first's;
+                // the next, at the pass at 15.098, from 2.)
+                let next = if wisp && !self.tick_clocks.1.is_empty() {
+                    let first = self.town_next_tree(owner);
+                    self.town_next_tree(owner);
+                    first
+                } else {
+                    None
+                };
                 let mine = if wisp { next.or_else(|| self.ai_setup_tree(h)).unwrap_or(mine) } else { mine };
                 self.run_order_made = Some(slots[r..r + n].to_vec());
                 self.run_setup = true;

@@ -293,6 +293,10 @@ pub struct Frame {
     pub item_images: Vec<String>,
     /// A text frame given its text's width (fit_text_widths), which its text fills.
     pub fitted: bool,
+    /// A scroll bar's range and step as its list sets them (CMapList sets its maximum to
+    /// the rows past the first page), in place of its definition's; a bar with one takes
+    /// the pointer.
+    pub range: Option<(f32, f32, f32)>,
 }
 
 #[derive(Default)]
@@ -312,6 +316,10 @@ pub struct FrameTree {
     /// Enabled buttons' text takes FontColor rather than FontHighlightColor (in-game
     /// menus, as the original draws them; glue screens use the highlight color).
     pub plain_button_text: bool,
+    /// A scroll bar whose value the pointer changed, for its list to follow.
+    pub scrolled: Option<usize>,
+    /// A scroll bar whose thumb the pointer holds.
+    pub dragging: Option<usize>,
 }
 
 impl FrameTree {
@@ -358,6 +366,7 @@ impl FrameTree {
             pulldown: None,
             item_images: Vec::new(),
             fitted: false,
+            range: None,
         });
         t
     }
@@ -424,6 +433,7 @@ impl FrameTree {
             pulldown: None,
             item_images: Vec::new(),
             fitted: false,
+            range: None,
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -706,10 +716,48 @@ impl FrameTree {
                 return false;
             }
         }
+        // A scroll bar takes the pointer once its list has given it a range.
+        if kind == "SCROLLBAR" {
+            return self.frames[i].range.is_some();
+        }
         matches!(
             kind,
             "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "SIMPLECHECKBOX" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "GLUEEDITBOX" | "SLIDER" | "LISTBOX"
         )
+    }
+
+    /// The scroll bar with a range that a frame is a part of (its arrows or thumb), and
+    /// which part.
+    fn scroll_bar_part(&self, i: usize) -> Option<(usize, &'static str)> {
+        let bar = self.frames[i].parent.filter(|&p| self.frames[p].def.kind == "SCROLLBAR" && self.frames[p].range.is_some())?;
+        let name = self.frames[i].def.name.as_str();
+        ["ScrollBarIncButtonFrame", "ScrollBarDecButtonFrame", "SliderThumbButtonFrame"].into_iter().find(|k| self.frames[bar].def.str(k) == Some(name)).map(|k| (bar, k))
+    }
+
+    /// Steps a scroll bar's value by `steps` of its step, within its range.
+    pub fn scroll_by(&mut self, bar: usize, steps: f32) {
+        let (min, max, step) = self.slider_range(bar);
+        let step = if step > 0.0 { step } else { (max - min) / 10.0 };
+        self.frames[bar].value = (self.frames[bar].value + steps * step).clamp(min.min(max), max.max(min));
+        self.place_scroll_bar_parts();
+    }
+
+    /// Moves a vertical scroll bar's thumb to `y`, in its steps: its top is its highest
+    /// value.
+    fn scroll_to(&mut self, bar: usize, y: f32) {
+        let Some(r) = self.frames[bar].rect else { return };
+        let part = |key: &str| self.frames[bar].def.str(key).and_then(|n| self.frames[bar].children.iter().copied().find(|&c| self.frames[c].def.name == n));
+        let h = |c: Option<usize>, d: f32| c.map_or(0.0, |c| self.frames[c].def.num("Height").unwrap_or(d));
+        let (inc, dec, thumb) = (h(part("ScrollBarIncButtonFrame"), 0.015), h(part("ScrollBarDecButtonFrame"), 0.015), h(part("SliderThumbButtonFrame"), 0.01));
+        let (top, bottom) = (r.y1 - inc, r.y0 + dec);
+        let k = ((y - bottom - thumb / 2.0) / (top - bottom - thumb).max(1e-4)).clamp(0.0, 1.0);
+        let (min, max, step) = self.slider_range(bar);
+        let mut v = min + k * (max - min);
+        if step > 0.0 {
+            v = min + ((v - min) / step).round() * step;
+        }
+        self.frames[bar].value = v.clamp(min.min(max), max.max(min));
+        self.place_scroll_bar_parts();
     }
 
     pub fn is_popup(&self, i: usize) -> bool {
@@ -778,6 +826,11 @@ impl FrameTree {
         if let Some(i) = self.frames.iter().position(|f| f.pushed && f.def.kind == "SLIDER") {
             self.slide_to(i, x);
         }
+        // So does a held scroll bar thumb.
+        if let Some(bar) = self.dragging {
+            self.scroll_to(bar, y);
+            self.scrolled = Some(bar);
+        }
         let hit = self.control_at(x, y);
         for (i, f) in self.frames.iter_mut().enumerate() {
             f.hovered = Some(i) == hit;
@@ -805,11 +858,31 @@ impl FrameTree {
         if self.frames[hit].def.kind == "SLIDER" {
             self.slide_to(hit, x);
         }
+        // A scroll bar's arrows step it; its thumb is held; a press on its track moves the
+        // thumb there and holds it.
+        match self.scroll_bar_part(hit) {
+            Some((bar, "ScrollBarIncButtonFrame")) => self.scroll_by(bar, 1.0),
+            Some((bar, "ScrollBarDecButtonFrame")) => self.scroll_by(bar, -1.0),
+            Some((bar, _)) => self.dragging = Some(bar),
+            None if self.frames[hit].def.kind == "SCROLLBAR" => {
+                self.scroll_to(hit, y);
+                self.dragging = Some(hit);
+            }
+            None => {}
+        }
+        if let Some((bar, _)) = self.scroll_bar_part(hit) {
+            self.scrolled = Some(bar);
+        } else if self.frames[hit].def.kind == "SCROLLBAR" {
+            self.scrolled = Some(hit);
+        }
         Some(hit)
     }
 
     /// A slider's SliderMinValue, SliderMaxValue, and SliderStepSize.
     pub fn slider_range(&self, i: usize) -> (f32, f32, f32) {
+        if let Some(r) = self.frames[i].range {
+            return r;
+        }
         let d = &self.frames[i].def;
         (d.num("SliderMinValue").unwrap_or(0.0), d.num("SliderMaxValue").unwrap_or(1.0), d.num("SliderStepSize").unwrap_or(0.0))
     }
@@ -872,6 +945,7 @@ impl FrameTree {
         for f in &mut self.frames {
             f.pushed = false;
         }
+        self.dragging = None;
         if let Some(p) = self.popup_changed.take() {
             return Some(p);
         }

@@ -369,12 +369,14 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
                 if let Some(scene) = r.scene.as_mut() {
-                    let lines = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
-                        MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
-                    };
                     scene.zoom(lines);
+                } else if let Some(glue) = r.glue.as_mut() {
+                    glue.wheel(lines);
                 }
             }
             WindowEvent::RedrawRequested => {

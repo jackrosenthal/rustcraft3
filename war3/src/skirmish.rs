@@ -120,6 +120,8 @@ pub struct Skirmish {
     pub entries: Vec<Entry>,
     pub selected: Option<usize>,
     scroll: usize,
+    /// Wheel movement short of a notch.
+    wheel_lines: f32,
     pub summary: Option<MapSummary>,
     /// Map list rows' rectangle, from MapListContainer.
     list: Option<Rect>,
@@ -175,6 +177,7 @@ impl Skirmish {
             entries: Vec::new(),
             selected: None,
             scroll: 0,
+            wheel_lines: 0.0,
             summary: None,
             list: None,
             world_edit: w3_formats::profile::Profile::default(),
@@ -598,10 +601,7 @@ impl Skirmish {
         // games list has none, as in the original).
         let rows = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect).map(|r| ((r.h() - 2.0 * MAP_LIST_INSET) / self.row_h()) as usize);
         tree.set_visible("MapListScrollBar", rows.map_or(!self.entries.is_empty(), |n| self.entries.len() > n));
-        // Its value runs from 1 at the list's top to 0 at its end (FUN_6f2ac2a0).
-        if let Some(n) = rows.filter(|&n| self.entries.len() > n) {
-            tree.set_value("MapListScrollBar", 1.0 - self.scroll as f32 / (self.entries.len() - n) as f32);
-        }
+        self.set_bar(tree);
         // The player count and the Blizzard logo show only with a map, the logo only
         // for a signed one.
         tree.set_visible("MaxPlayersIcon", self.summary.is_some());
@@ -646,6 +646,67 @@ impl Skirmish {
         tree.set_text("MapTilesetValue", &tileset);
         tree.set_text("MapDescValue", &s.text(&s.info.description));
         let _ = db;
+    }
+
+    /// The list's scroll bar: the map list's MapListScrollBar, or the one inside a file
+    /// list.
+    fn bar(&self, tree: &FrameTree) -> Option<usize> {
+        if self.list_frame == "MapListContainer" {
+            return tree.get("MapListScrollBar");
+        }
+        let list = tree.get(self.list_frame.split('#').next().unwrap_or_default())?;
+        (0..tree.frames.len()).find(|&i| {
+            let mut p = tree.frames[i].parent;
+            while let Some(k) = p.filter(|&k| k != list) {
+                p = tree.frames[k].parent;
+            }
+            tree.frames[i].def.kind == "SCROLLBAR" && p == Some(list)
+        })
+    }
+
+    /// The rows the list shows at once, inside its margins.
+    fn rows(&self, tree: &FrameTree) -> usize {
+        let Some(r) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return 0 };
+        let inset = if self.list_frame == "MapListContainer" { MAP_LIST_INSET } else { 0.008 };
+        ((r.h() - 2.0 * inset) / self.row_h()) as usize
+    }
+
+    /// Sets the scroll bar to the list: its range runs from 0 to the rows past the first
+    /// page, a row a step, its value from that at the list's top to 0 at its end
+    /// (FUN_6f2ac2a0).
+    fn set_bar(&self, tree: &mut FrameTree) {
+        let Some(bar) = self.bar(tree) else { return };
+        let past = self.entries.len().saturating_sub(self.rows(tree)) as f32;
+        tree.frames[bar].range = (past > 0.0).then_some((0.0, past, 1.0));
+        tree.frames[bar].value = past - self.scroll as f32;
+        tree.layout();
+    }
+
+    /// The pointer moved the list's scroll bar: the list follows it.
+    pub fn follow_bar(&mut self, tree: &mut FrameTree) {
+        let Some(bar) = tree.scrolled.take() else { return };
+        if Some(bar) != self.bar(tree) {
+            return;
+        }
+        let past = self.entries.len().saturating_sub(self.rows(tree));
+        self.scroll = past.saturating_sub(tree.frames[bar].value.round().max(0.0) as usize);
+    }
+
+    /// The mouse wheel over the list scrolls it a row a notch (provisional: the
+    /// original's rows a notch were not measured).
+    pub fn wheel(&mut self, tree: &mut FrameTree, x: f32, y: f32, lines: f32) {
+        let Some(r) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return };
+        if !r.contains(x, y) {
+            return;
+        }
+        // A touchpad's small movements add up to notches.
+        self.wheel_lines += lines;
+        let notches = self.wheel_lines.trunc();
+        self.wheel_lines -= notches;
+        let notches = notches as i64;
+        let past = self.entries.len().saturating_sub(self.rows(tree)) as i64;
+        self.scroll = (self.scroll as i64 - notches).clamp(0, past.max(0)) as usize;
+        self.set_bar(tree);
     }
 
     /// The list's row height: the map list's (CMapList), or the saved games list's.
@@ -815,3 +876,74 @@ fn summarize_archive(ar: &w3_mpq::Archive, preview: bool) -> Option<MapSummary> 
 
 /// The run-time texture holding the selected map's preview.
 pub const MAP_PREVIEW: &str = "@mappreview";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The center of a frame's rectangle.
+    fn center(tree: &FrameTree, i: usize) -> (f32, f32) {
+        let r = tree.frames[i].rect.unwrap();
+        ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
+    }
+
+    #[test]
+    fn the_map_list_scrolls_by_its_bar_and_the_wheel() {
+        // The game's own frame files, where this checkout has them.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../Warcraft III");
+        let data = match crate::data::GameData::open(&dir, false) {
+            Ok(d) => d,
+            Err(e) => return eprintln!("skipped: {e}"),
+        };
+        let db = FrameDb::load(&data.chain);
+        let mut tree = FrameTree::new(4.0 / 3.0);
+        tree.create(&db, "Skirmish", 0).unwrap();
+        let mut s = Skirmish::new(&dir);
+        s.attach(&mut tree, &db);
+        tree.bind_points();
+        tree.layout();
+        s.entries = (0..40).map(|k| Entry { name: format!("map {k}"), path: PathBuf::new(), kind: EntryKind::Map, players: 2, melee: true }).collect();
+        s.scroll = 0;
+        s.fill_info(&mut tree, &db);
+        let past = s.entries.len() - s.rows(&tree);
+        assert!(past > 0);
+        let bar = tree.get("MapListScrollBar").unwrap();
+        let part = |tree: &FrameTree, key: &str| {
+            let name = tree.frames[bar].def.str(key).unwrap().to_string();
+            tree.frames[bar].children.iter().copied().find(|&c| tree.frames[c].def.name == name).unwrap()
+        };
+        // The down arrow steps a row.
+        let (x, y) = center(&tree, part(&tree, "ScrollBarDecButtonFrame"));
+        tree.pointer_down(x, y);
+        s.follow_bar(&mut tree);
+        tree.pointer_up(x, y);
+        assert_eq!(s.scroll, 1);
+        // The thumb dragged to the bottom shows the list's end.
+        let (x, y) = center(&tree, part(&tree, "SliderThumbButtonFrame"));
+        tree.pointer_down(x, y);
+        tree.pointer_move(x, tree.frames[bar].rect.unwrap().y0);
+        s.follow_bar(&mut tree);
+        tree.pointer_up(x, y);
+        assert_eq!(s.scroll, past);
+        // The up arrow steps back a row.
+        let (x, y) = center(&tree, part(&tree, "ScrollBarIncButtonFrame"));
+        tree.pointer_down(x, y);
+        s.follow_bar(&mut tree);
+        tree.pointer_up(x, y);
+        assert_eq!(s.scroll, past - 1);
+        // The wheel over the list: two notches up, then down past the end.
+        let list = tree.get("MapListContainer").unwrap();
+        let (x, y) = center(&tree, list);
+        s.wheel(&mut tree, x, y, 2.0);
+        assert_eq!(s.scroll, past - 3);
+        s.wheel(&mut tree, x, y, -10.0);
+        assert_eq!(s.scroll, past);
+        // A press on the track's top shows the list's start.
+        let r = tree.frames[bar].rect.unwrap();
+        let (x, y) = ((r.x0 + r.x1) / 2.0, r.y1 - 0.02);
+        tree.pointer_down(x, y);
+        s.follow_bar(&mut tree);
+        tree.pointer_up(x, y);
+        assert_eq!(s.scroll, 0);
+    }
+}

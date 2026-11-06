@@ -767,6 +767,15 @@ impl Glue {
     pub fn pointer_move(&mut self, x: f32, y: f32, size: (u32, u32)) {
         self.pointer = self.to_ui(x, y, size);
         self.tree.pointer_move(self.pointer.0, self.pointer.1);
+        self.skirmish.follow_bar(&mut self.tree);
+    }
+
+    /// The mouse wheel, in notches (up positive): it scrolls the list under the pointer.
+    pub fn wheel(&mut self, lines: f32) {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) {
+            let (x, y) = self.pointer;
+            self.skirmish.wheel(&mut self.tree, x, y, lines);
+        }
     }
 
     pub fn pointer_down(&mut self, assets: &mut Assets) -> bool {
@@ -776,6 +785,7 @@ impl Glue {
         }
         let (x, y) = self.pointer;
         if self.tree.pointer_down(x, y).is_some() {
+            self.skirmish.follow_bar(&mut self.tree);
             return true;
         }
         if self.screen == Screen::Score {

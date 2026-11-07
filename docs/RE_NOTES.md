@@ -5408,10 +5408,26 @@ Formats the port made its own, to be replaced by the original's:
   the first; the three LAN loads' keepalives agree through turn 192 (the second's
   through 193; their saves at 77 and 246 among them), then part at a few turns (the
   first's 193, 218, 219, and 267; the second's 194, 222, and 270; the third's 193,
-  218, 219, and 270), the births the same and the next slot another.  At 193 the
-  original's last free is the detection record of a creep that leaks later in the
-  port (provisional: creeps reaching WalkEnd in another order, their walks a little
-  apart).
+  218, 219, and 270), the births the same and the next slot another: in each, the
+  last freed detection record (`Cdet`) is the one the port gave another creep found in
+  the same look (0x23a8 and 0x216c, 0x1cd7 and 0x1f7e, each pair made together),
+  since the looks took their creeps in another order (below).
+- The in-range search's order (a detector's look, an aura's, `FUN_6f15f210`): the
+  query's rectangle of the path manager's 256 grid walked row by row (`FUN_6f15fa80`),
+  each cell's list from its head (`FUN_6f15f9b0`, a unit counted at the first of its
+  cells), the new units appended in that order and then taken last first
+  (`FUN_6f15f2a0`, to `FUN_6f15fdc0`).  A cell's list takes a unit at its head as the
+  unit is made and as it walks into the cell, so the search finds each block's latest
+  come into it first: Mafarazzo TD's creeps, walking a lane in file, are found in the
+  order they walked into their block, not the order they were made in, the port's tie
+  before (read: the LAN load's looks at 58.6 and 60.6 seconds, by the detection
+  records the original freed as the creeps leaked).  The port notes each unit's block
+  and when it came into it, as it is made and at each movement step
+  (`World::note_block`; a loaded game's units in their saved order), and orders its
+  searches by that (`natives::units::spatial_order`; provisional: a unit moved
+  otherwise counts as just come in).  With that the three LAN loads' keepalives agree
+  with the original's through every turn compared, the saved game's (mafsave)
+  through all 825 (from 712), and the plain game mafa7's through all 772 (from 728).
 - A creep KillUnit bursts (ExplodeUnitBJ, read at Mafarazzo TD's first creep to leak
   after the load, turn 144, and the second, 145): WalkEnd's trigger runs before
   Losing life's (the regions a step's walker enters taken oldest first, the two made

@@ -502,6 +502,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.unit_order.push(h);
+    w.note_block(h);
     // A structure that spreads blight blights the four cells about it at once, its
     // growth following (measured: a Necropolis made by script has blighted 0 to 96 to
     // its right before the script's next line, and 768 a second later).
@@ -1211,15 +1212,21 @@ fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, p
 
 /// The units a search of the map finds, in the order the original's finds them
 /// (`FUN_6f04c5a0`): by the 256-unit blocks from the map's corner that the corner of
-/// each's collision box falls in, row by row, each block's latest made first (as its
-/// trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on Forestwalk, the
-/// search's callback `FUN_6f233f20` traced at both starts: deer, satyrs, and the gold
-/// mine in that order).
+/// each's collision box falls in, row by row, each block's latest come into it first
+/// (as its trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on
+/// Forestwalk, the search's callback `FUN_6f233f20` traced at both starts: deer,
+/// satyrs, and the gold mine in that order).  A block's list takes a unit at its head
+/// as it is made and as it walks into the block (the in-range search's grid,
+/// `FUN_6f15fa80` row by row, `FUN_6f15f9b0` each cell's list from its head;
+/// `World::note_block`; read: Mafarazzo TD's flying peasants' looks, their creeps
+/// found in the order they walked into their blocks, not that they were made).  One
+/// whose block was not noted since it moved counts as just come in.
 pub(crate) fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
     let Some(origin) = w.pathing.as_ref().map(|p| p.origin) else { return units };
     let index: std::collections::HashMap<u32, usize> = w.unit_order.iter().enumerate().map(|(i, &h)| (h, i)).collect();
     let block = |h: u32| w.unit(h).map_or((0, 0), |u| (((u.y - u.collision - origin[1]) / 256.0).floor() as i32, ((u.x - u.collision - origin[0]) / 256.0).floor() as i32));
-    units.sort_by(|&a, &b| block(a).cmp(&block(b)).then(index.get(&b).cmp(&index.get(&a))));
+    let came = |h: u32| w.unit(h).and_then(|u| u.extra.block_entry).filter(|e| e.0 == block(h)).map_or(u64::MAX, |e| e.1);
+    units.sort_by(|&a, &b| block(a).cmp(&block(b)).then(came(b).cmp(&came(a))).then(index.get(&b).cmp(&index.get(&a))));
     units
 }
 

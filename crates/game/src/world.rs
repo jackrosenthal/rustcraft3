@@ -744,6 +744,9 @@ pub struct World {
     /// its kill's tasks still held, gone after those triggers (`World::burst_ends`).
     #[serde(default)]
     pub pending_bursts: Vec<(u32, [u32; 4])>,
+    /// The count of units come into an in-range search block's list (`World::note_block`).
+    #[serde(default)]
+    pub block_serial: u64,
     /// Build orders paid for and not yet begun: the worker, its owner, and the
     /// structure.
     #[serde(default)]
@@ -1197,6 +1200,7 @@ impl World {
             cache_alias: Default::default(),
             pending_removals: Vec::new(),
             pending_bursts: Vec::new(),
+            block_serial: 0,
             paid_builds: Vec::new(),
             region_inside: Default::default(),
             in_range: Default::default(),
@@ -1775,6 +1779,7 @@ impl World {
     /// remade them (read: the creep leaking in the LAN load's turn 144, WalkEnd's run
     /// first; `World::regions_reloaded`).
     pub(crate) fn step_regions(&mut self, vm: &mut Vm, h: u32) {
+        self.note_block(h);
         let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
         let mut regions: Vec<u32> = self.region_inside.keys().copied().collect();
         regions.sort_unstable();
@@ -1848,6 +1853,22 @@ impl World {
         self.after_steps = after;
         let n = self.tags.doomed.len();
         self.tags.doomed.split_off(doomed.min(n))
+    }
+
+    /// A unit come into another in-range search block (`World::detection_look`): noted
+    /// with the next count, as it goes into that block's list.
+    pub(crate) fn note_block(&mut self, h: u32) {
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return };
+        let Some(u) = self.unit(h) else { return };
+        let b = (((u.y - u.collision - origin[1]) / 256.0).floor() as i32, ((u.x - u.collision - origin[0]) / 256.0).floor() as i32);
+        if u.extra.block_entry.is_some_and(|e| e.0 == b) {
+            return;
+        }
+        self.block_serial += 1;
+        let n = self.block_serial;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.block_entry = Some((b, n));
+        }
     }
 
     /// Starts keeping who is inside a region, if not yet kept.

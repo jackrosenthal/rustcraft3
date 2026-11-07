@@ -650,6 +650,10 @@ pub struct UnitExtra {
     /// that turn's reach (`World::detection_looks`).
     #[serde(default)]
     pub detect_ahead: Option<f32>,
+    /// The in-range search's block it stands in (its place less its collision, in 256s)
+    /// and when it came into that block's list (`World::note_block`).
+    #[serde(default)]
+    pub block_entry: Option<((i32, i32), u64)>,
     /// The players' detectors that found this unit, each with its record (`Cdet`).
     #[serde(default)]
     pub detected_by: Vec<(u8, u32)>,
@@ -1134,6 +1138,7 @@ impl Default for UnitExtra {
             fade_slots: Vec::new(),
             detect_clock: None,
             detect_ahead: None,
+            block_entry: None,
             detected_by: Vec::new(),
             vision_record: None,
             sleep_effect: 0,

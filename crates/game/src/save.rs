@@ -1098,6 +1098,14 @@ impl Game {
         }
         let saved = s.objects.as_ref().map(|m| m.tables[0].clone()).unwrap_or_default();
         self.loaded_objects(&saved);
+        // (Each unit comes into its in-range search block as the save loads, in the
+        // units' order, `World::note_block`.)
+        for h in self.world.unit_order.clone() {
+            if let Some(u) = self.world.unit_mut(h) {
+                u.extra.block_entry = None;
+            }
+            self.world.note_block(h);
+        }
         Ok(())
     }
 

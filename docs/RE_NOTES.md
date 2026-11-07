@@ -480,7 +480,10 @@ these are the findings behind them.
 - A desync (`FUN_6f999b50`, as each keepalive comes): the players grouped by their
   keepalives for the turn; each told by 0x0E (the turn, its group's keepalive data, and
   the others of its group, itself first in the largest group); the others' connections
-  close after 2 s (`FUN_6f998880`).
+  close at their next packet, or after 2 s (`FUN_6f998880` sets +0x54, and the router
+  takes nothing more from them, `FUN_6f99b870`).  Measured: a player answering checksum
+  0 to the original's host got `f70e0e00 01000000 04 00000000 00` and the same for turn
+  2, and was gone at its next keepalive, 0.1 s later.
 - Turns: the LAN provider's turn is 100 ms (`FUN_6f974710`; Battle.net's 250,
   `FUN_6f970fa0`), each turn as long as the tick count since the last, at least 1 and
   at most four turns' (`FUN_6f99e310`).
@@ -488,7 +491,12 @@ these are the findings behind them.
   third word names by host counter, or all for 0, and otherwise says REFRESHGAME (host
   counter, people, slots for people: `FUN_6f9742f0`); a browser answers CREATEGAME, and
   REFRESHGAME from a game it does not know, with a search for that game (`FUN_6f974e40`,
-  `FUN_6f975020`).
+  `FUN_6f975020`).  Measured (the original hosting Booty Bay): CREATEGAME once as the
+  game is made, REFRESHGAME 10 s later and then each 5.0 s and at once on a join,
+  DECREATEGAME as the countdown ends, all broadcast to 6112 from the one UDP socket the
+  original binds, 0.0.0.0:6112, which its browser uses too; PING_FROM_HOST each 30 s
+  from the game's creation; turns 100, 99, and 95 ms.  The host never connected to its
+  joiner (no peer-to-peer from the host).
 - The player's 0x13 closes the connection with reason 0x0E, 0x1C with its word, and
   0x1B (the answer to its LEAVEGAME) closes it.  Its 0x14 and 0x16 to 0x1A are its
   states 9 and 10 (a host's handoff, as its strings name it), 0x3E, 0x40, 0x44, and 0x45

@@ -13,6 +13,12 @@ fn main() -> anyhow::Result<()> {
     let parsed = w3_game::replay::Replay::parse(&bytes)?;
     let stat = w3_net::GameStat::parse(&replay.stat)?;
     println!("version {} build {}, map {}, seed {:08x}, settings {:08x}, {} slots", replay.version, replay.build, stat.map_path, replay.seed, stat.settings, replay.slots.len());
+    // W3G_TRACE names a file for every tag given and freed, by turn, as the tags
+    // example's TAGS_TRACE: "A code slot", "F slot", "T", each keepalive "S 1000+turn".
+    let trace = std::env::var("W3G_TRACE").ok();
+    if trace.is_some() {
+        w3_game::tags::RECORD.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
     let map_file = match a.get(3) {
         Some(m) => m.clone(),
@@ -61,8 +67,9 @@ fn main() -> anyhow::Result<()> {
     let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, start)?;
     g.config()?;
     g.world.seed = replay.seed;
-    // The settings word holds the advanced options eight bits up.
-    let (flags, _speed) = war3::net::from_settings(stat.settings);
+    // The settings word holds the advanced options eight bits up, and the speed.
+    let (flags, speed) = war3::net::from_settings(stat.settings);
+    g.world.game_speed = speed.min(2) as i32;
     if loaded {
         // A map loaded directly, as the original's -loadfile begins it, its player the
         // record's.
@@ -83,16 +90,24 @@ fn main() -> anyhow::Result<()> {
     }
     // A network game's turns play as the client plays them (`Game::play_turn`); each
     // checksum record follows the turn whose state it sums.
+    // The players who left (the record's leaves before a turn) are taken with it.
     let (mut turn, mut checked, mut first_off) = (0u32, 0u32, None);
-    let mut last = None;
+    let (mut last, mut leaves) = (None, Vec::new());
     for rec in &replay.records {
         match rec {
+            w3_formats::w3g::Record::Leave { pid, result, .. } => {
+                let player = replay.slots.iter().position(|s| s.pid == *pid).unwrap_or(0) as u8;
+                leaves.push(w3_game::replay::Leave { pid: *pid, player, word: *result });
+            }
             w3_formats::w3g::Record::Turn { ms, actions } => {
                 turn += 1;
                 let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
                 // W3G_NONET: the turns as a game played alone takes them, no message.
-                let turn = std::env::var("W3G_NONET").is_err().then(|| (*ms, actions.clone()));
-                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, actions: Some(acts), turn, ..Default::default() };
+                let net = std::env::var("W3G_NONET").is_err().then(|| (*ms, actions.clone()));
+                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, actions: Some(acts), turn: net, leaves: std::mem::take(&mut leaves), ..Default::default() };
+                if trace.is_some() {
+                    g.world.tags.mark_step(1000 + turn as usize);
+                }
                 let (_, keepalive) = g.play_turn(&frame);
                 last = Some(keepalive);
             }
@@ -120,6 +135,16 @@ fn main() -> anyhow::Result<()> {
     }
     if std::env::var("W3G_DEBUG").is_ok() {
         println!("players removed, with their results: {:?}", g.world.player_results);
+    }
+    if let Some(out) = trace {
+        let lines: Vec<String> = g.world.tags.trace.clone().unwrap_or_default().iter().map(|e| match e {
+            w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
+            w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
+            w3_game::tags::TagEvent::Gone(s) => format!("f {s:#x}"),
+            w3_game::tags::TagEvent::Turn => "T".into(),
+            w3_game::tags::TagEvent::Step(k) => format!("S {k}"),
+        }).collect();
+        std::fs::write(out, lines.join("\n") + "\n")?;
     }
     if let (Some(path), Some(r)) = (write, g.recorder.take()) {
         std::fs::write(path, r.replay.to_bytes()?)?;

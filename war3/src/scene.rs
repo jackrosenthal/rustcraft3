@@ -4330,6 +4330,9 @@ impl Scene {
         // and the script's answers to them still go on.
         let script_paused = self.net.is_none() && self.game.as_ref().is_some_and(|g| g.world.script_paused);
         let gdt = if paused || script_paused { 0.0 } else { dt * speed };
+        // The turns' time is real time, the speed in how far each of their ticks moves
+        // the game (`Game::advance`, `DAT_6fce54dc`).
+        let tdt = if paused || script_paused { 0.0 } else { dt };
         // The selection: script changes come to the interface, the player's go to the
         // game (with its selection events).
         if let Some(g) = self.game.as_mut() {
@@ -4349,12 +4352,12 @@ impl Scene {
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
             // Chat lines, sent and come, show as the game's (`Request::Chat`).
             let mut said = s.send_commands(&g.world, local, out);
-            said.extend(s.pump(gdt));
+            said.extend(s.pump(tdt));
             for (player, text, to) in said {
                 g.world.requests.push(w3_game::world::Request::Chat { player, text, to });
             }
             let mut errors = Vec::new();
-            let frames = s.due(gdt);
+            let frames = s.due(tdt);
             let first = s.played - frames.len() as u32;
             for (k, f) in frames.iter().enumerate() {
                 // Each turn's keepalive is the original's, made after its actions and
@@ -4399,7 +4402,7 @@ impl Scene {
                 // the game's own player and fog.
                 Some(p) => {
                     let panel = self.hud.as_mut().and_then(|h| h.replay.as_mut());
-                    p.owed += panel.as_ref().map_or(gdt, |r| r.scaled(gdt));
+                    p.owed += panel.as_ref().map_or(tdt, |r| r.scaled(tdt));
                     if let Some(r) = panel.as_ref() {
                         r.enter(&mut g.world);
                     }
@@ -4429,9 +4432,9 @@ impl Scene {
                 // A game played alone steps in whole milliseconds, as its replay's turns
                 // are (the original's are too: about 100 a turn, and 0 while paused).
                 None => {
-                    self.step_owed += gdt * 1000.0;
+                    self.step_owed += tdt * 1000.0;
                     let ms = self.step_owed.floor();
-                    if ms >= 1.0 || gdt == 0.0 {
+                    if ms >= 1.0 || tdt == 0.0 {
                         self.step_owed -= ms;
                         g.tick(ms / 1000.0);
                     }

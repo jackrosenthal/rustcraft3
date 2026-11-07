@@ -100,6 +100,10 @@ pub use world::World;
 
 use types::{Rect, map_control, slot_state};
 
+/// The turn time one tick of the original's turn loop takes, in milliseconds
+/// (`FUN_6f32d670`'s 0x19; `Game::advance`).
+pub const TICK_MS: u32 = 25;
+
 pub struct Game {
     pub vm: Vm,
     pub world: World,
@@ -958,7 +962,7 @@ impl Game {
         }
     }
 
-    /// Advances the simulation.
+    /// Advances the simulation: a turn of `dt` seconds (`advance`).
     pub fn tick(&mut self, dt: f32) {
         if self.recorder.is_some() {
             let checksum = self.world.keepalive();
@@ -970,18 +974,31 @@ impl Game {
         self.send_net_out();
     }
 
-    /// A step's time passes, but while a network game's save is under way
-    /// (`world::SaveWait`) only the first 25 ms of the save's own turn (state 5's one
-    /// tick, of five 5 ms steps at the fast speed, `DAT_6fce54dc`), and none after.
+    /// A turn's time passes as the original's turn loop (`FUN_6f32d670`) runs it: in
+    /// ticks of 25 ms of turn time (the net session's +0x284 less 0x19 each), the rest
+    /// kept for the next turn's (`world::World::turn_left`), each tick moving the game
+    /// three, four, or five steps of 5 ms by the speed (`DAT_6fce54dc`; the game's
+    /// +0x1c70 five more a step).  The next turn's message is taken only once less than
+    /// a tick's time is left, so a turn's actions come before the ticks its time makes.
+    /// (Read: the original's LAN host's turns of 100 and 99 ms left the keepalive's game
+    /// time at 175, and the port's of 113, 203, and 314 ms in all at 100, 200, and 300.)
+    /// While a network game's save is under way (`world::SaveWait`), only the save's
+    /// own turn's first tick moves the game (state 5's, then 6), and the rest pass.
     fn advance(&mut self, dt: f32) {
-        let mut dt = dt;
+        let left = self.world.turn_left + (dt * 1000.0).round() as u32;
+        let mut ticks = left / TICK_MS;
+        self.world.turn_left = left % TICK_MS;
         if let Some(w) = self.world.net_save.as_mut() {
-            if !std::mem::take(&mut w.first) {
+            if ticks == 0 || !std::mem::take(&mut w.first) {
                 return;
             }
-            dt = dt.min(0.025);
+            ticks = 1;
         }
-        self.world.tick(&mut self.vm, dt);
+        if ticks == 0 {
+            return;
+        }
+        let steps = [3, 4, 5][self.world.game_speed.clamp(0, 2) as usize];
+        self.world.tick(&mut self.vm, (ticks * steps * 5) as f32 / 1000.0);
     }
 
     /// Plays one frame (of a replay or from a network game's host): its commands, then
@@ -1017,6 +1034,7 @@ impl Game {
         let out = self.play_commands(f);
         self.save_turn(f.turn.as_ref().map_or((f.dt * 1000.0).round() as u16, |t| t.0));
         let keepalive = self.world.keepalive();
+        log::debug!(target: "keepalive", "{keepalive:08x}: {}", self.world.keepalive_inputs());
         self.after_keepalive();
         self.play_step(f);
         (out, keepalive)

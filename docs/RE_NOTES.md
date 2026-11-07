@@ -535,7 +535,23 @@ these are the findings behind them.
   network's.
 - The original's game takes game time in whole 25 ms ticks, keeping the rest of a turn
   for the next: its keepalive's time was 175 after turns of 100 and 99 ms, and 100, 200,
-  300 after the port's host sent turns making 113, 203, 314.
+  300 after the port's host sent turns making 113, 203, 314.  The turn loop
+  (`FUN_6f32d670`, each frame) runs while its real-time budget (+0x2250) holds 25 ms: a
+  tick takes 25 ms (0x19) off the turn time left (+0x284), taking the next turn's
+  message first (`FUN_6f32e690`) only while less than 25 ms is left, and moves the game
+  three, four, or five steps of 5 ms by the speed (`DAT_6fce54dc`: 3, 4, 5; times a World
+  Editor test game's own factor, `FUN_6f2a53d0`, 1 otherwise), the game's +0x1c70 five
+  more a step.  So a turn's actions (`FUN_6f325e10`, from `FUN_6f32e3f0`, which adds the
+  turn's milliseconds to +0x284 and then makes the keepalive) come before the ticks its
+  time makes, and the rest under 25 ms waits for the next turn's.  Games played alone
+  and replays run the same loop: with it (`Game::advance`, `World::turn_left`) the port
+  plays the original's replays of games played alone (turns of 0 to 110 ms) with their
+  keepalives agreeing to turn 6, two of them to turns 497 and 546, where they parted at
+  turns 3 to 5 by the time alone.  The speed is in the steps, not the turns: at the
+  normal speed a turn of 100 ms moves the game 80.  Left (provisional): the port's
+  half-second aura scans run at the end of the port's tick, a turn's; at turn 7 of
+  those replays (a tick from 475 to 600 ms) the original's six aura buffs were made
+  before the frees of the step due 0.54, the port's after them.
 - The player's 0x13 closes the connection with reason 0x0E, 0x1C with its word, and
   0x1B (the answer to its LEAVEGAME) closes it.  Its 0x14 and 0x16 to 0x1A are its
   states 9 and 10 (a host's handoff, as its strings name it), 0x3E, 0x40, 0x44, and 0x45

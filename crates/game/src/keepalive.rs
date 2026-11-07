@@ -181,6 +181,16 @@ impl World {
         c = c.rotate_left(3) ^ h;
         c.rotate_left(3)
     }
+
+    /// The keepalive's inputs as they stand, for reading which differs: the time, the
+    /// next tag, the births, the main generator's hash, the modules it folds, and the
+    /// generator's state.
+    pub fn keepalive_inputs(&self) -> String {
+        let state = self.rng.state();
+        let h = byte_hash((state >> 32) as u32).wrapping_add(byte_hash(state as u32));
+        let presence = self.tags.free.last().copied().unwrap_or(self.tags.slots);
+        format!("t {} presence {presence} born {} h {h:08x} net {:08x} rand {:08x} game {:08x} rng {state:016x}", self.game_ms, self.tags.born, self.net_sum, self.rand_data.checksum(), self.game_module())
+    }
 }
 
 #[cfg(test)]

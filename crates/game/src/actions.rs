@@ -272,6 +272,12 @@ impl Codec {
             Command::SaveDone { result, .. } => acts.push(Action::SaveDone(*result)),
             // A pause (measured: 01 as the original's game ends) and its resume (02).
             Command::Pause { on, .. } => acts.push(if *on { Action::Pause } else { Action::Resume }),
+            // A cheat as its action and a speed set (03 and the speed), as the original's
+            // game played alone sends them (measured: allyourbasearebelongtous 32,
+            // somebodysetupusthebomb 22, daylightsavings 2e with 12.0; the options' speed
+            // 03 with 1 and then 2).
+            Command::Cheat { id, data, .. } => acts.push(Action::Cheat { id: *id, data: data.clone() }),
+            Command::SetSpeed { speed, .. } => acts.push(Action::SetSpeed(*speed)),
             // An item moved: OrderTarget with flags 0x42, order moveslot (852002 and the
             // slot it goes to), the item as target at the unit's place.
             Command::MoveItem { unit, from, to } if self.subgroup.get(&player) == Some(unit) && *to < 6 => {
@@ -416,6 +422,11 @@ impl Codec {
                         Action::SaveDone(result) => out.push(Command::SaveDone { player, result }),
                         Action::Pause => out.push(Command::Pause { player, on: true }),
                         Action::Resume => out.push(Command::Pause { player, on: false }),
+                        Action::Cheat { id, data } => out.push(Command::Cheat { player, id, data }),
+                        // The speed set, or one faster or slower (04, 05: the speed keys).
+                        Action::SetSpeed(speed) => out.push(Command::SetSpeed { player, speed }),
+                        Action::IncreaseSpeed => out.push(Command::SetSpeed { player, speed: (w.game_speed + 1).clamp(0, 2) as u8 }),
+                        Action::DecreaseSpeed => out.push(Command::SetSpeed { player, speed: (w.game_speed - 1).clamp(0, 2) as u8 }),
                         Action::BuildMenu => out.push(Command::Submenu { player, build: true }),
                         Action::SkillMenu => out.push(Command::Submenu { player, build: false }),
                         Action::OrderTarget { flags, ability, target, .. } if target.object == ObjectId::NONE => out.push(order(ability, flags, Some((target.x, target.y)), 0)),
@@ -548,6 +559,23 @@ mod tests {
         assert_eq!(u.items[4], Some((*crate::codes::item::id::CLAWS_OF_ATTACK_15, 0)));
         assert_eq!(u.items.iter().filter(|i| i.is_some()).count(), 2);
         assert_eq!(u.record, b);
+    }
+
+    /// Cheats and the game's speed go as the original's game played alone sends them, and
+    /// come back so (read: its replays' 32, 22, 2e with 12.0, and 03 with 1).
+    #[test]
+    fn cheats_and_speed_go_as_the_originals() {
+        let w = World::new(std::sync::Arc::new(w3_mpq::Chain::default()), crate::objects::ObjectDb::default());
+        let mut c = Codec::default();
+        let cs = [
+            Command::Cheat { player: 0, id: 0x32, data: vec![] },
+            Command::Cheat { player: 0, id: 0x22, data: vec![] },
+            Command::Cheat { player: 0, id: 0x2e, data: 12.0f32.to_le_bytes().to_vec() },
+            Command::SetSpeed { player: 0, speed: 1 },
+        ];
+        let bytes: Vec<u8> = cs.iter().flat_map(|x| c.encode(&w, 0, x)).collect();
+        assert_eq!(bytes, [0x32, 0x22, 0x2e, 0, 0, 0x40, 0x41, 0x03, 1]);
+        assert_eq!(c.decode(&w, 0, &bytes).unwrap(), cs);
     }
 
     /// A trigger's resumption and a TriggerSyncReady go as the original's 62 and 63 and

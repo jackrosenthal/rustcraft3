@@ -131,6 +131,9 @@ fn cheat_len(id: u8) -> usize {
         0x27 | 0x28 | 0x2D => 5,
         // DayLightSavings: a time of day.
         0x2E => 4,
+        // The critter clicked too often: its object's id (`FUN_6f37b6b0`, its +0xc and
+        // +0x10).
+        0x21 => 8,
         _ => 0,
     }
 }

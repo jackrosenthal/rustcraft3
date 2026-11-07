@@ -1194,6 +1194,15 @@ impl Game {
             out.push(c);
             return replay::Outcome::Done;
         }
+        // A cheat typed in a game played alone goes as the original's cheat action, no
+        // chat line (read: its replays' 0x22 and 0x32, no 0x20).
+        let c = match c {
+            replay::Command::Chat { player, ref text, .. } if !self.world.network => match self.world.cheat_action(text) {
+                Some((id, data)) => replay::Command::Cheat { player, id, data },
+                None => c,
+            },
+            c => c,
+        };
         // A selection's change goes as the original's actions in a game played alone too,
         // which keep the synchronized selection (`selection`) as they do in a network
         // game's turns and in this game's replay.
@@ -1344,6 +1353,23 @@ impl Game {
             C::Upgrade { building, id } => res(self.world.upgrade_structure_by(building, id, true)),
             C::CancelLast { building } => {
                 self.world.cancel_last(building);
+                O::Done
+            }
+            // A cheat's action, outside network games; the defeat and victory cheats fire
+            // the player's event.
+            C::Cheat { id, data, .. } => {
+                if !self.world.network {
+                    if let Some(ctx) = self.world.apply_cheat(player, id, &data).filter(|c| c.event_id != 0) {
+                        self.player_event(player, ctx.event_id);
+                    }
+                }
+                O::Done
+            }
+            // The game's speed, not while MAP_LOCK_SPEED is set (as SetGameSpeed).
+            C::SetSpeed { speed, .. } => {
+                if self.world.map_flags & 0x4000 == 0 {
+                    self.world.game_speed = (speed as i32).clamp(0, 2);
+                }
                 O::Done
             }
             // Three pauses a player; an observer's are not counted, and only an observer

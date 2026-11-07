@@ -91,6 +91,11 @@ pub enum Command {
     /// A computer's save of a network game is done (action 0x07, CNetCommandSaveDone):
     /// its player and the save's result (1 written).
     SaveDone { player: u8, result: u32 },
+    /// A cheat typed in a game played alone, as the original's action carries it (0x20 to
+    /// 0x32, `cheats`): its id and its data.
+    Cheat { player: u8, id: u8, data: Vec<u8> },
+    /// A game played alone's speed set (0x03), as the options' Game Speed sends it.
+    SetSpeed { player: u8, speed: u8 },
 }
 
 impl Command {
@@ -135,7 +140,9 @@ impl Command {
             | C::SelectionOrder { player, .. }
             | C::ResumeTrigger { player, .. }
             | C::TriggerSyncReady { player, .. }
-            | C::SaveDone { player, .. } => Some(*player),
+            | C::SaveDone { player, .. }
+            | C::Cheat { player, .. }
+            | C::SetSpeed { player, .. } => Some(*player),
             _ => None,
         }
     }

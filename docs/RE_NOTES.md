@@ -1860,7 +1860,13 @@ these are the findings behind them.
     shows (Mafarazzo TD's at its turn 12); quit through the menu, its last Pause goes
     unanswered.  The port notes its menu's Pause and Resume for its replay
     (`Game::note`), its menu stopping the game by itself, so both fall in the turn after
-    the menu (the last Pause in a turn of no time); not yet a script dialog's.
+    the menu (the last Pause in a turn of no time); not yet a script dialog's.  A cheat
+    typed alone goes as its action, no chat line (allyourbasearebelongtous 0x32,
+    somebodysetupusthebomb 0x22, daylightsavings 12 as 0x2e and 12.0; game.dll's
+    CNetCommandCheat* classes, 0x20 to 0x32 by their command words 0xa00NN, `cheats`), and
+    the options' game speed as 0x03 and the speed (Normal 1, then Fast 2).  Each such
+    action of the original's game played alone comes in a turn of its own, of no time,
+    before the next turn of time; the port's go in its next step's turn.
     Settings: a map loaded directly MAP_LOCK_RANDOM_SEED alone (0x800002), a Custom
     Game the setup's options (0x64802 by default).  Turns of a game played alone are of
     96 to 101 ms of game time.  A campaign mission is recorded nowhere

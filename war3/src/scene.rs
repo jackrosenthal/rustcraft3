@@ -3202,8 +3202,16 @@ impl Scene {
             }
             "OptionsOKButton" => {
                 let speed = crate::options::panel::read(m, self.options_page, &mut self.options);
+                // A game played alone's speed changes as the original's does, by its action
+                // (0x03, read: the options' Normal and then Fast).
                 if let (Some(s), Some(g)) = (speed, self.game.as_mut()) {
-                    g.world.game_speed = s.min(2) as i32;
+                    let s = s.min(2);
+                    if self.net.is_some() {
+                        g.world.game_speed = s as i32;
+                    } else if g.world.game_speed != s as i32 {
+                        let player = g.world.local_player;
+                        g.apply(w3_game::replay::Command::SetSpeed { player, speed: s as u8 });
+                    }
                 }
                 self.options.store();
                 self.options_page = "OptionsPanel";

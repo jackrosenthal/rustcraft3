@@ -93,46 +93,63 @@ impl World {
         on
     }
 
-    /// The quantity cheats' player: the one named (0 to 15), else the one typing.
-    fn cheat_player(&self, arg: Option<&str>, player: u8) -> Option<u8> {
-        match arg.and_then(|a| a.parse::<i64>().ok()) {
-            None | Some(-1) => Some(player),
-            Some(n) if (0..16).contains(&n) => Some(n as u8),
-            _ => None,
-        }
-    }
-
     fn add_resource(&mut self, player: u8, state: i32, amount: i32) {
         if let Some(p) = self.players.get_mut(player as usize) {
             *p.state.entry(state).or_insert(0) += amount;
         }
     }
 
-    /// A chat line from `player` as a cheat; returns whether it was one.
-    pub fn console_command(&mut self, vm: &mut Vm, player: u8, text: &str) -> Option<crate::types::EventCtx> {
+    /// A chat line as the cheat action the original sends for it (`cheat_id`): its id and
+    /// data, the quantity cheats' a byte, the player named (0 to 15) or 0xff for the one
+    /// typing, and the amount (`FUN_6f37b500`); the time of day ones' the hour as a real
+    /// (`FUN_6f37b790`: riseandshine's [Misc] Dawn, lightsout's Dusk; read:
+    /// daylightsavings 12 as 12.0).  None for a line no cheat's, or a cheat the original
+    /// sends nothing for.
+    pub fn cheat_action(&self, text: &str) -> Option<(u8, Vec<u8>)> {
         let mut words = text.split_whitespace();
-        let word = words.next()?;
-        let key = self.cheat_key(word)?;
+        let key = self.cheat_key(words.next()?)?;
         let args: Vec<&str> = words.collect();
-        let _ = vm;
-        let amount = |a: Option<&&str>| a.and_then(|v| v.parse::<i32>().ok()).unwrap_or(500);
-        match key {
-            'a' => {
+        let id = cheat_id(key)?;
+        let data = match key {
+            // The player named (0 to 15), else the one typing.
+            'd' | 'e' | 'f' => {
+                let who = match args.get(1).and_then(|v| v.parse::<i64>().ok()) {
+                    None | Some(-1) => 0xff,
+                    Some(n) if (0..16).contains(&n) => n as u8,
+                    _ => return None,
+                };
+                let amount = args.first().and_then(|v| v.parse::<i32>().ok()).unwrap_or(500);
+                [&[who][..], &amount.to_le_bytes()].concat()
+            }
+            'o' => self.misc_f32("Dawn", 6.0).to_le_bytes().to_vec(),
+            'p' => self.misc_f32("Dusk", 18.0).to_le_bytes().to_vec(),
+            'q' => args.first().and_then(|v| v.parse::<f32>().ok())?.to_le_bytes().to_vec(),
+            _ => Vec::new(),
+        };
+        Some((id, data))
+    }
+
+    /// A cheat action carried out for the player who sent it; the defeat and victory
+    /// cheats return the player's event to fire.
+    pub fn apply_cheat(&mut self, player: u8, id: u8, data: &[u8]) -> Option<crate::types::EventCtx> {
+        let word = |k: usize| data.get(k..k + 4).map(|b| [b[0], b[1], b[2], b[3]]);
+        match id {
+            0x23 => {
                 self.toggle(player, flag::FAST_BUILD);
             }
-            'b' => {
+            0x24 => {
                 self.toggle(player, flag::FAST_DEATH);
             }
-            'c' => {
+            0x26 => {
                 self.toggle(player, flag::GOD);
             }
-            'g' => {
+            0x25 => {
                 self.toggle(player, flag::FOOD);
             }
-            'h' => {
+            0x29 => {
                 self.toggle(player, flag::MANA);
             }
-            'i' => {
+            0x20 => {
                 if self.toggle(player, flag::COOLDOWN) {
                     for &u in &self.unit_order.clone() {
                         if let Some(u) = self.unit_mut(u) {
@@ -141,16 +158,16 @@ impl World {
                     }
                 }
             }
-            'j' => {
+            0x2a => {
                 self.toggle(player, flag::NO_DEFEAT);
             }
-            'k' => {
+            0x2b => {
                 self.toggle(player, flag::NO_VICTORY);
             }
-            'l' => {
+            0x2c => {
                 self.toggle(player, flag::HERO_LEVEL);
             }
-            'm' => {
+            0x2f => {
                 let on = self.toggle(player, flag::SHOW_MAP);
                 if on {
                     self.cheat_fog = Some((self.fog_enabled, self.fog_mask_enabled));
@@ -161,39 +178,32 @@ impl World {
                     self.fog_mask_enabled = m;
                 }
             }
-            'n' => {
+            0x30 => {
                 self.toggle(player, flag::TECH_TREE);
             }
-            // keysersoze, leafittome, greedisgood [amount] [player].
-            'd' | 'e' | 'f' => {
-                let Some(p) = self.cheat_player(args.get(1).copied(), player) else { return Some(Default::default()) };
-                let n = amount(args.first());
-                if key != 'e' {
+            // keysersoze, leafittome, greedisgood: the player named, else the sender.
+            0x27 | 0x28 | 0x2d => {
+                let p = match data.first().copied() {
+                    None | Some(0xff) => player,
+                    Some(n) if n < 16 => n,
+                    _ => return None,
+                };
+                let n = word(1).map_or(0, i32::from_le_bytes);
+                if id != 0x28 {
                     self.add_resource(p, player_state::RESOURCE_GOLD, n);
                 }
-                if key != 'd' {
+                if id != 0x27 {
                     self.add_resource(p, player_state::RESOURCE_LUMBER, n);
                 }
                 self.announce(player, true);
             }
-            // riseandshine and lightsout: [Misc] Dawn and Dusk; daylightsavings [hour]
-            // sets the hour, or stops and starts the day.
-            'o' | 'p' => {
-                self.time_of_day = self.misc_f32(if key == 'o' { "Dawn" } else { "Dusk" }, if key == 'o' { 6.0 } else { 18.0 });
+            // riseandshine, lightsout, and daylightsavings [hour]: the hour.
+            0x2e => {
+                self.time_of_day = word(0).map_or(self.time_of_day, f32::from_le_bytes);
                 self.announce(player, true);
             }
-            'q' => match args.first().and_then(|v| v.parse::<f32>().ok()) {
-                Some(h) => {
-                    self.time_of_day = h;
-                    self.announce(player, true);
-                }
-                None => {
-                    let on = self.toggle(player, flag::TIME_STOPPED);
-                    self.time_of_day_suspended = on;
-                }
-            },
             // sharpandshiny: every upgrade researched.
-            'r' => {
+            0x31 => {
                 let ids: Vec<_> = self.objects.upgrades.objects.keys().copied().collect();
                 for id in ids {
                     let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
@@ -204,15 +214,40 @@ impl World {
                 self.research_changed(player);
                 self.announce(player, true);
             }
-            // tenthleveltaurenchieftain: Power of the Horde.
-            'v' => self.requests.push(Request::PlayMusic("Sound\\Music\\mp3Music\\PH1.mp3".into())),
             // somebodysetupusthebomb, allyourbasearebelongtous: the player's defeat or
             // victory event (0x8020d, 0x8020e).
-            't' | 'u' => {
+            0x22 | 0x32 => {
                 self.announce(player, true);
-                let event = if key == 't' { crate::event_ids::EVENT_PLAYER_DEFEAT } else { crate::event_ids::EVENT_PLAYER_VICTORY };
+                let event = if id == 0x22 { crate::event_ids::EVENT_PLAYER_DEFEAT } else { crate::event_ids::EVENT_PLAYER_VICTORY };
                 return Some(crate::types::EventCtx { player, has_player: true, event_id: event, ..Default::default() });
             }
+            _ => return None,
+        }
+        Some(Default::default())
+    }
+
+    /// A chat line from `player` as a cheat; returns whether it was one.  Those the
+    /// original sends as actions act through them (`cheat_action`, `apply_cheat`); the
+    /// rest here.
+    pub fn console_command(&mut self, vm: &mut Vm, player: u8, text: &str) -> Option<crate::types::EventCtx> {
+        let _ = vm;
+        if let Some((id, data)) = self.cheat_action(text) {
+            return self.apply_cheat(player, id, &data).or(Some(Default::default()));
+        }
+        let mut words = text.split_whitespace();
+        let word = words.next()?;
+        let key = self.cheat_key(word)?;
+        let args: Vec<&str> = words.collect();
+        match key {
+            // A quantity cheat naming no player: nothing.
+            'd' | 'e' | 'f' => {}
+            // daylightsavings alone stops and starts the day.
+            'q' => {
+                let on = self.toggle(player, flag::TIME_STOPPED);
+                self.time_of_day_suspended = on;
+            }
+            // tenthleveltaurenchieftain: Power of the Horde.
+            'v' => self.requests.push(Request::PlayMusic("Sound\\Music\\mp3Music\\PH1.mp3".into())),
             // motherland [race] [mission]: that campaign's mission, with those before it
             // opened (FUN_6f379c60).
             's' => {
@@ -234,6 +269,37 @@ impl World {
         }
         Some(Default::default())
     }
+}
+
+/// The original's action for each cheat that has one, by its [Telemetry] key: game.dll's
+/// CNetCommandCheat* classes, each built with the command word 0xa00NN of its action NN
+/// (Cooldown 20, Critter 21, Defeat 22, FastBuild 23, FastDeath 24, Food 25, God 26, Gold
+/// 27, Lumber 28, Mana 29, NoDefeat 2a, NoVictory 2b, Research 2c, Resources 2d, SetTOD 2e,
+/// ShowMap 2f, TechTree 30, Upgrade 31, Victory 32), matched to the cheats by what they do
+/// (Research to whoisjohngalt provisional).  Critter (21) is a critter clicked too often
+/// (`FUN_6f37b6b0`), no typed cheat.
+fn cheat_id(key: char) -> Option<u8> {
+    Some(match key {
+        'i' => 0x20,
+        't' => 0x22,
+        'a' => 0x23,
+        'b' => 0x24,
+        'g' => 0x25,
+        'c' => 0x26,
+        'd' => 0x27,
+        'e' => 0x28,
+        'h' => 0x29,
+        'j' => 0x2a,
+        'k' => 0x2b,
+        'l' => 0x2c,
+        'f' => 0x2d,
+        'o' | 'p' | 'q' => 0x2e,
+        'm' => 0x2f,
+        'n' => 0x30,
+        'r' => 0x31,
+        'u' => 0x32,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

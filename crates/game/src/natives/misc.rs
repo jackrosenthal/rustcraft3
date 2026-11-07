@@ -214,8 +214,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTutorialCleared => |w, _, a| { w.persist.tutorial_cleared = a.b(0); none() },
         GetDefaultDifficulty => |w, _, _| handle(w.persist.difficulty as u32),
         SetDefaultDifficulty => |w, _, a| { w.persist.difficulty = a.h(0) as i32; none() },
-        SetCustomCampaignButtonVisible => |w, _, a| { let (i, on) = (a.i(0), a.b(1)); w.persist.custom_campaign_buttons.insert(i, on); none() },
-        GetCustomCampaignButtonVisible => |w, _, a| boolean(w.persist.custom_campaign_buttons.get(&a.i(0)).copied().unwrap_or(true)),
+        // Only while a custom campaign is open (FUN_6f219630: the profile's file for the
+        // campaign archive mounted), written at once.
+        SetCustomCampaignButtonVisible => |w, _, a| {
+            if let Some(c) = w.persist.custom_campaign.as_mut() {
+                c.set_button(a.i(0), a.b(1));
+                w.requests.push(crate::world::Request::SaveCustomCampaign);
+            }
+            none()
+        },
+        GetCustomCampaignButtonVisible => |w, _, a| boolean(w.persist.custom_campaign.as_ref().is_some_and(|c| c.button(a.i(0)))),
         DoNotSaveReplay => |w, _, _| { w.no_replay = true; none() },
         DisableRestartMission => |w, _, a| { w.restart_disabled = a.b(0); none() },
         GetSaveBasicFilename => |w, _, _| string(w.load_game_name.clone()),

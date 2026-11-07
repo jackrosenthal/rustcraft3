@@ -277,7 +277,7 @@ impl Glue {
         skirmish.load_strings(&data.chain, data.version == Version::FrozenThrone);
         // The local player takes the profile's name (LOCAL_PLAYER without one).
         let local = assets.frames.string("LOCAL_PLAYER");
-        let profile = crate::profiles::ProfilePanel::new(&local);
+        let profile = crate::profiles::ProfilePanel::new();
         skirmish.player_name = profile.name().unwrap_or(local);
         // The Local Area Network screen keeps its own name, empty until one is typed
         // (setting 0x41).
@@ -311,7 +311,7 @@ impl Glue {
             saved_background: None,
             press_a_key: false,
             loading_sequence: None,
-            saves_dir: crate::data::save_dir(data.version).unwrap_or_default(),
+            saves_dir: crate::data::save_dir().unwrap_or_default(),
             score: None,
             sprite_sequences: HashMap::new(),
             options: crate::options::Options::load(),
@@ -409,7 +409,7 @@ impl Glue {
             }
             Screen::Skirmish => {
                 self.skirmish.detach_saves();
-                self.skirmish.attach(&mut self.tree, db);
+                self.skirmish.attach(&mut self.tree, db, &format!("skirmish_V{}", self.version as u32));
                 crate::advanced::attach(&mut self.tree, db, self.skirmish.flags, true);
             }
             Screen::LoadSaved => {
@@ -417,14 +417,23 @@ impl Glue {
                 self.skirmish.attach_saves(&mut self.tree, db, &dir);
             }
             Screen::Campaign => {
+                // A custom campaign's buttons as its file has them now (a mission may
+                // have shown some, though left before it ended).
+                if let Some(c) = self.persist.borrow_mut().custom_campaign.as_mut() {
+                    *c = crate::data::load_custom_campaign(&c.name, c.version);
+                }
                 self.tree.set_visible("MissionSelectFrame", false);
                 // SlidingDoors (Campaign-Fade) fades to black when a mission starts.
                 self.tree.set_visible("SlidingDoors", false);
                 if let Some(logo) = db.skin_value("MainMenuLogo") {
                     self.tree.set_model("WarCraftIIILogo", &logo);
                 }
-                // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty.
-                let hard = self.persist.borrow().difficulty == 2;
+                // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty (a
+                // custom campaign's from its file).
+                let hard = {
+                    let p = self.persist.borrow();
+                    p.custom_campaign.as_ref().and_then(|c| c.difficulty).unwrap_or(p.difficulty) == 2
+                };
                 self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
             }
             Screen::ViewReplay => {
@@ -444,7 +453,7 @@ impl Glue {
             }
             Screen::LanCreate => {
                 self.skirmish.detach_saves();
-                self.skirmish.attach(&mut self.tree, db);
+                self.skirmish.attach(&mut self.tree, db, &format!("lan_V{}", self.version as u32));
                 crate::advanced::attach(&mut self.tree, db, self.skirmish.flags, false);
                 self.tree.set_value("GameSpeedSlider", 2.0);
                 self.tree.set_text("GameSpeedValue", &db.string("FAST"));
@@ -904,7 +913,7 @@ impl Glue {
         match e {
             crate::profiles::Event::Chosen => {
                 *self.persist.borrow_mut() = crate::data::load_persist(self.version, &self.chain);
-                self.saves_dir = crate::data::save_dir(self.version).unwrap_or_default();
+                self.saves_dir = crate::data::save_dir().unwrap_or_default();
                 self.skirmish.player_name = self.profile.name().unwrap_or_else(|| assets.frames.string("LOCAL_PLAYER"));
             }
             crate::profiles::Event::ConfirmDelete(name) => {
@@ -953,8 +962,9 @@ impl Glue {
     }
 
     /// CCustomCampaignMenu's OK (FUN_6f2f7730): the chosen campaign's archive joins the
-    /// game's, its difficulty (Normal unless it lets the player choose) is set, and the
-    /// campaign screen shows its missions.
+    /// game's, the profile's file for it is read, its difficulty (Normal unless it lets
+    /// the player choose) is written there (FUN_6f2490d0, the main profile's left as it
+    /// was), and the campaign screen shows its missions.
     fn open_custom_campaign(&mut self, assets: &mut Assets) {
         let (Some(path), Some(summary)) = (self.skirmish.selected_campaign(), self.skirmish.campaign.clone()) else { return };
         let archive = match w3_mpq::Archive::open(&path) {
@@ -965,7 +975,11 @@ impl Glue {
             }
         };
         let hard = summary.info.flags & 1 != 0 && self.tree.get("DifficultySelect").is_some_and(|i| self.tree.frames[i].selected == 1);
-        self.persist.borrow_mut().difficulty = if hard { 2 } else { 1 };
+        let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let mut c = crate::data::load_custom_campaign(&name, summary.info.campaign_version);
+        c.difficulty = Some(if hard { 2 } else { 1 });
+        crate::data::save_custom_campaign(&c);
+        self.persist.borrow_mut().custom_campaign = Some(c);
         self.chain.unmount(crate::data::PRIORITY_CAMPAIGN);
         self.chain.mount(archive, None, crate::data::PRIORITY_CAMPAIGN);
         let world_edit = self.skirmish.world_edit.clone();
@@ -1141,6 +1155,7 @@ impl Glue {
             (Screen::CustomCampaign, "OKButton") => self.open_custom_campaign(assets),
             (Screen::Campaign, "BackButton") if self.campaigns.custom.is_some() => {
                 self.campaigns.close_custom();
+                self.persist.borrow_mut().custom_campaign = None;
                 self.chain.unmount(crate::data::PRIORITY_CAMPAIGN);
                 self.show(Screen::CustomCampaign, assets);
             }
@@ -1151,7 +1166,17 @@ impl Glue {
             }
             (Screen::Campaign, "DifficultySelect") => {
                 let sel = self.tree.get("DifficultySelect").map_or(0, |i| self.tree.frames[i].selected);
-                self.persist.borrow_mut().difficulty = if sel == 1 { 2 } else { 1 };
+                let d = if sel == 1 { 2 } else { 1 };
+                // A custom campaign's goes to its own file (provisional: the original's
+                // campaign screen with a custom campaign is not measured).
+                let mut p = self.persist.borrow_mut();
+                match p.custom_campaign.as_mut() {
+                    Some(c) => {
+                        c.difficulty = Some(d);
+                        crate::data::save_custom_campaign(c);
+                    }
+                    None => p.difficulty = d,
+                }
             }
             (Screen::Score, _) => self.score_button(name, assets),
             (Screen::MainMenu, "LocalAreaNetworkButton") => self.show(Screen::LanJoin, assets),

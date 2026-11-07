@@ -151,6 +151,74 @@ impl W3p {
     }
 }
 
+/// The section of a custom campaign's file holding its values (FUN_6f247390).
+fn custom_section(version: u32) -> String {
+    format!("Version{:06}", version as i32)
+}
+
+/// The section and key of a custom campaign file's checksum.
+const MOJO: (&str, &str) = ("Mojo", "Jojo");
+
+/// A string's word for the checksum (FUN_6f24d3d0): each 4 bytes as a little-endian
+/// word, then each byte left, XORed in and rotated left by 3.
+fn jojo_hash(s: &str) -> u32 {
+    let b = s.as_bytes();
+    let mut c = 0u32;
+    let words = b.chunks_exact(4);
+    let rest = words.remainder();
+    for w in words {
+        c = (c ^ u32::from_le_bytes(w.try_into().unwrap())).rotate_left(3);
+    }
+    for &x in rest {
+        c = (c ^ x as u32).rotate_left(3);
+    }
+    c
+}
+
+/// A custom campaign file's checksum (FUN_6f228bb0): every value but the checksum's own
+/// section's, in order, its key's and then its value's word XORed in and rotated left
+/// by 3 (LAB_6f24d470 skips [Mojo], by SStrCmpI).
+pub fn jojo(w: &W3p) -> i32 {
+    let mut acc = 0u32;
+    for (_, values) in w.sections.iter().filter(|s| !s.0.eq_ignore_ascii_case(MOJO.0)) {
+        for (k, v) in values {
+            acc = (acc ^ jojo_hash(k)).rotate_left(3);
+            acc = (acc ^ jojo_hash(v)).rotate_left(3);
+        }
+    }
+    acc as i32
+}
+
+/// A custom campaign's values from its file, in the section of its version.
+pub fn take_custom(text: &str, c: &mut w3_game::persist::CustomCampaign) {
+    let w = W3p::parse(text);
+    let Some((_, values)) = w.sections.iter().find(|s| s.0 == custom_section(c.version)) else { return };
+    for (k, v) in values {
+        let n = v.trim().parse::<i32>().ok();
+        if let (Some(i), Some(n)) = (k.strip_prefix("Button").and_then(|i| i.parse::<i32>().ok()), n) {
+            c.set_button(i, n != 0);
+        } else if k == "Difficulty" {
+            c.difficulty = n;
+        }
+    }
+}
+
+/// A custom campaign's file with its values put in, the rest of what it held kept, and
+/// its checksum anew (FUN_6f247160 by way of FUN_6f24ca40).
+pub fn put_custom(text: &str, c: &w3_game::persist::CustomCampaign) -> String {
+    let mut w = W3p::parse(text);
+    let section = custom_section(c.version);
+    if let Some(d) = c.difficulty {
+        w.set(&section, "Difficulty", d.to_string());
+    }
+    for &(i, on) in &c.buttons {
+        w.set(&section, &format!("Button{i:02}"), (on as i32).to_string());
+    }
+    let sum = jojo(&w);
+    w.set(MOJO.0, MOJO.1, sum.to_string());
+    w.to_text()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +239,19 @@ mod tests {
         out.put(1, &tft, "Test", &p1);
         out.put(0, &roc, "Test", &p0);
         assert_eq!(out.to_text(), ORIGINAL);
+    }
+
+    /// A custom campaign's file: its values in its version's section, the checksum
+    /// after, and back.
+    #[test]
+    fn custom_campaign_files_keep_their_buttons() {
+        let mut c = w3_game::persist::CustomCampaign { name: "BtnTest".into(), version: 158, difficulty: Some(1), ..Default::default() };
+        c.set_button(1, true);
+        c.set_button(2, false);
+        let text = put_custom("", &c);
+        assert_eq!(text, "[Version000158]\r\nDifficulty=1\r\nButton01=1\r\nButton02=0\r\n\r\n[Mojo]\r\nJojo=-324297440\r\n\r\n");
+        let mut back = w3_game::persist::CustomCampaign { name: "BtnTest".into(), version: 158, ..Default::default() };
+        take_custom(&text, &mut back);
+        assert_eq!((back.button(0), back.button(1), back.button(2), back.difficulty), (false, true, false, Some(1)));
     }
 }

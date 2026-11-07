@@ -139,8 +139,41 @@ pub struct Persist {
     pub menu_race: i32,
     /// SetTutorialCleared.
     pub tutorial_cleared: bool,
-    /// SetCustomCampaignButtonVisible, by button.
-    pub custom_campaign_buttons: HashMap<i32, bool>,
+    /// The custom campaign open on the campaign screen, if any, with what the profile
+    /// keeps for it.
+    pub custom_campaign: Option<CustomCampaign>,
+}
+
+/// What a profile keeps for one custom campaign, in its own file beside the profile's
+/// (CampaignProfiles.cpp: FUN_6f22bec0 makes it per profile and campaign, FUN_6f2325c0
+/// names it `<profile folder>\<campaign>.w3p`): in the section of the campaign's
+/// version, its mission buttons a script showed or hid (SetCustomCampaignButtonVisible,
+/// `Button%02d`, FUN_6f24d3b0) and the difficulty its missions were started at.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CustomCampaign {
+    /// The campaign's file name without its extension ("Campaigns\\X.w3n" is "X").
+    pub name: String,
+    /// war3campaign.w3f's campaign version (its second word), naming the section
+    /// (`Version%06d`, FUN_6f247390; set as a mission starts, FUN_6f2479d0).
+    pub version: u32,
+    /// The buttons' values by number, in the file's order (a button never set is
+    /// hidden, FUN_6f232970's default).
+    pub buttons: Vec<(i32, bool)>,
+    /// The difficulty the campaign's missions start at (`Difficulty`, FUN_6f2490d0).
+    pub difficulty: Option<i32>,
+}
+
+impl CustomCampaign {
+    pub fn button(&self, i: i32) -> bool {
+        self.buttons.iter().find(|b| b.0 == i).is_some_and(|b| b.1)
+    }
+
+    pub fn set_button(&mut self, i: i32, on: bool) {
+        match self.buttons.iter_mut().find(|b| b.0 == i) {
+            Some(b) => b.1 = on,
+            None => self.buttons.push((i, on)),
+        }
+    }
 }
 
 impl Persist {

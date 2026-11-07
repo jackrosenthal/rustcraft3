@@ -94,9 +94,13 @@ pub enum Request {
     EndGame { score: bool },
     /// RestartGame: the map starts over.
     Restart,
-    /// SaveGame and LoadGame: a saved game's name in the saved games folder.
+    /// SaveGame and LoadGame: a saved game's name in the script's saved games folder
+    /// (`World::saves_dir`).
     SaveGame(String),
     LoadGame(String),
+    /// The custom campaign's profile file is written, as the original writes it at each
+    /// change (FUN_6f249250 to FUN_6f247160).
+    SaveCustomCampaign,
     /// UnitAddIndicator and AddIndicator: a widget's indicator in a color.
     Indicator { widget: u32, color: [u8; 4] },
     /// PlayCinematic: a movie.
@@ -699,7 +703,9 @@ pub struct World {
     /// Damage being dealt now is not of DAMAGE_TYPE_NORMAL, so armor does not reduce it.
     #[serde(skip)]
     pub damage_ignores_armor: bool,
-    /// Where saved games are kept (set by the program running the game).
+    /// The folder the script's saved games are named in (SaveGame, LoadGame, and their
+    /// kin; set by the program running the game: the original's
+    /// `Save\<profile>\CustomSaves\<map>`, FUN_6f1fffd0).
     #[serde(skip)]
     pub saves_dir: Option<std::path::PathBuf>,
     /// The CustomMapData folder preload files are written to and run from (set by the
@@ -1267,26 +1273,17 @@ impl World {
 
     /// Resolves `TRIGSTR_n` references and interface string keys; other text is returned
     /// unchanged.
-    /// A saved game's file from the name a script gives (".w3z" when it has no
-    /// extension).
+    /// A saved game's file or folder from the name a script gives, with backslashes,
+    /// in the script's saved games folder: the name as given, no extension added
+    /// (measured: the original's SaveGame("mafsv30") writes the file mafsv30), and none
+    /// with ".." or ":" in it (FUN_6f1fffd0).
     pub fn save_path(&self, name: &str) -> Option<std::path::PathBuf> {
-        let mut p = self.save_dir_path(name)?;
-        let file = p.file_name()?.to_string_lossy().to_string();
-        if !file.contains('.') {
-            p.set_file_name(format!("{file}.w3z"));
+        if name.contains("..") || name.contains(':') {
+            return None;
         }
-        Some(p)
-    }
-
-    /// A folder (or file) within the saved games' folder, by a name with backslashes,
-    /// never outside it.
-    pub fn save_dir_path(&self, name: &str) -> Option<std::path::PathBuf> {
         let mut p = self.saves_dir.clone()?;
         let mut any = false;
         for part in name.split(['\\', '/']).filter(|s| !s.is_empty()) {
-            if part == ".." || part == "." || part.contains(':') {
-                return None;
-            }
             p.push(part);
             any = true;
         }

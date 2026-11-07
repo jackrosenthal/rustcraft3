@@ -783,18 +783,30 @@ impl Scene {
                 w3_game::Start { computers: computers + extra }
             }
         };
+        // The script's saved games' folder: the map's own, unless it is one of the game's
+        // (read from the archives with no custom campaign open).  A custom campaign is
+        // the game's only for its missions.
+        let in_game_archives = !map_path.is_file();
+        let custom_campaign = data.persist.borrow().custom_campaign.as_ref().filter(|_| campaign).map(|c| c.name.clone());
+        let script_save_dir = |w: &w3_game::world::World| crate::data::script_save_dir(in_game_archives, custom_campaign.as_deref(), &w.map_path);
         let mut game = match w3_game::Game::load_for(data.chain.clone(), data.version as i32, custom_keys.as_ref(), start) {
             Ok(mut g) => {
                 g.world.set_map_path(&map_path.to_string_lossy());
-                g.world.saves_dir = crate::data::save_dir(data.version);
+                g.world.saves_dir = script_save_dir(&g.world);
                 g.world.preload.dir = crate::data::custom_map_data_dir();
                 g.world.keepalive_modules = crate::net::data_modules(&data.chain);
                 // The profile comes in before the script runs (InitGameCache reads saved
                 // caches); campaign games take its difficulty.
                 g.world.persist = replay.as_ref().map_or_else(|| data.persist.borrow().clone(), |r| r.persist.clone());
+                if !campaign {
+                    g.world.persist.custom_campaign = None;
+                }
                 let persist_at_start = g.world.persist.clone();
-                if campaign && g.world.persist.difficulty > 0 {
-                    g.world.difficulty = g.world.persist.difficulty;
+                // A custom campaign's missions take the difficulty its own file keeps
+                // (FUN_6f2de600).
+                let difficulty = g.world.persist.custom_campaign.as_ref().and_then(|c| c.difficulty).unwrap_or(g.world.persist.difficulty);
+                if campaign && difficulty > 0 {
+                    g.world.difficulty = difficulty;
                 }
                 if let Err(e) = g.config() {
                     log::error!("config: {e:#}");
@@ -856,7 +868,7 @@ impl Scene {
                     (None, Some(r)) => r.local_name.clone(),
                     (None, None) if campaign => {
                         let local = assets.frames.string("LOCAL_PLAYER");
-                        Some(crate::data::Profiles::load(&local).current().map(|p| p.name.clone()).unwrap_or(local))
+                        Some(crate::data::Profiles::load().current().map(|p| p.name.clone()).unwrap_or(local))
                     }
                     (None, None) => Some("WorldEdit".to_string()),
                 };
@@ -948,7 +960,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1305,6 +1317,12 @@ impl Scene {
                 }
                 w3_game::world::Request::LoadGame(name) => {
                     self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
+                }
+                // (Not while a replay plays: its profile is the recorder's.)
+                w3_game::world::Request::SaveCustomCampaign if self.playback.is_none() => {
+                    if let Some(c) = self.game.as_ref().and_then(|g| g.world.persist.custom_campaign.as_ref()) {
+                        crate::data::save_custom_campaign(c);
+                    }
                 }
                 w3_game::world::Request::ChangeLevel { map, score } => {
                     self.change_level = Some(map);
@@ -3230,9 +3248,10 @@ impl Scene {
         self.write_save(path);
     }
 
-    /// F6: saves a game played alone as QuickSave in the saved games' folder, while it is
-    /// not yet won or lost (FUN_6f3c5a70, as the original names the file).
-    pub fn quick_save(&mut self) {
+    /// F6: saves a game played alone in the saved games' folder, while it is not yet won
+    /// or lost, named by UI\MiscUI.txt's [Misc] QuickSaveFile with ".w3z" (FUN_6f3c5a70,
+    /// and FUN_6f3c5980 loads it from `Save\<profile>`).
+    pub fn quick_save(&mut self, misc_ui: &w3_formats::profile::Profile) {
         if self.ended || !self.user_control() {
             return;
         }
@@ -3240,7 +3259,8 @@ impl Scene {
         if g.world.network || self.playback.is_some() {
             return;
         }
-        let Some(path) = g.world.save_path("QuickSave") else { return };
+        let name = misc_ui.get_str("Misc", "QuickSaveFile").unwrap_or_default();
+        let path = self.saves_dir.join(format!("{}.{}", name.trim(), crate::saveload::EXTENSION));
         self.write_save(&path);
     }
 

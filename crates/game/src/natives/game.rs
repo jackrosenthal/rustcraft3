@@ -183,11 +183,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         // Not in network games (FUN_6f1f8390).
         RenameSaveDirectory => |w, _, a| {
-            let (from, to) = (w.save_dir_path(&a.s(0)), w.save_dir_path(&a.s(1)));
+            let (from, to) = (w.save_path(&a.s(0)), w.save_path(&a.s(1)));
             boolean(!w.network && matches!((from, to), (Some(f), Some(t)) if f.is_dir() && !t.exists() && std::fs::rename(&f, &t).is_ok()))
         },
         RemoveSaveDirectory => |w, _, a| {
-            let d = w.save_dir_path(&a.s(0));
+            let d = w.save_path(&a.s(0));
             boolean(!w.network && d.is_some_and(|d| d.is_dir() && std::fs::remove_dir_all(d).is_ok()))
         },
         // Only while a game is saved or loaded, and sixteen times a game.

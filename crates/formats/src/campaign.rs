@@ -34,7 +34,9 @@ pub struct CampaignInfo {
 /// One of the campaign screen's mission buttons.
 #[derive(Clone, Debug, Default)]
 pub struct CampaignMission {
-    /// Shown from the start (any nonzero value: the editor leaves the rest undefined).
+    /// Shown from the start: bit 0 of its word (the original's custom campaign screen
+    /// tests that bit alone, FUN_6f308600; DemoCampaign.w3n's three words are
+    /// 0x12f8e5, 0x12f8e4, and 0x12f8e4, the editor leaving the rest undefined).
     pub visible: bool,
     pub chapter: String,
     pub title: String,
@@ -67,7 +69,7 @@ impl CampaignInfo {
         }
         let n = r.u32()?;
         for _ in 0..n {
-            let visible = r.u32()? != 0;
+            let visible = r.u32()? & 1 != 0;
             c.missions.push(CampaignMission { visible, chapter: r.cstr()?, title: r.cstr()?, map: r.cstr()? });
         }
         if r.remaining() >= 4 {

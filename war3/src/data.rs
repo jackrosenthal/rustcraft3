@@ -56,7 +56,7 @@ pub struct GameData {
     patch: Option<Arc<Archive>>,
     pub misc: Profile,
     /// The player's profile (campaign progress and saved game caches), kept on disk
-    /// per data version.
+    /// in the original's files (`load_persist`, `save_profile`).
     pub persist: std::rc::Rc<std::cell::RefCell<w3_game::persist::Persist>>,
     /// Whether the next game is a campaign mission (it takes the profile's difficulty).
     pub campaign_game: std::cell::Cell<bool>,
@@ -67,18 +67,18 @@ pub struct GameData {
     pub setup_seed: std::cell::Cell<u32>,
 }
 
-/// The player profiles, as the original keeps them: a folder each, `Save\ProfileN`,
-/// named by its Campaigns.w3p's PlayerName, the chosen one's name in the registry's
-/// Misc\campaignprofile (FUN_6f22b790 makes the first free folder).  A list this port
-/// kept before (`profiles.json`) still serves.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+/// The player profiles, as the original keeps them: a folder each in `Save` holding its
+/// Campaigns.w3p, named by that file's PlayerName (FUN_6f244450 by way of FUN_6f228e00;
+/// FUN_6f22b790 makes the first free `Save\ProfileN`), the chosen one's name in the
+/// registry's Misc\campaignprofile.
+#[derive(Clone, Debug, Default)]
 pub struct Profiles {
     pub entries: Vec<ProfileEntry>,
     /// The chosen profile, by position.
     pub current: Option<usize>,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ProfileEntry {
     pub name: String,
     /// Its folder under the user's data directory.
@@ -88,74 +88,57 @@ pub struct ProfileEntry {
 /// The longest profile name (NewProfileEditBox's limit, FUN_6f104350 with 15).
 pub const PROFILE_NAME_MAX: usize = 15;
 
+/// The profile a map loaded directly (-loadfile) is played with, made when missing: the
+/// World Editor's "Test Map - Player Profile" setting, whose default this is (its
+/// table at 0x6fb817a8; FUN_6f2e2850 chooses it with FUN_6f247560).
+pub const TEST_PROFILE: &str = "WorldEdit";
+
 fn data_root() -> Option<PathBuf> {
     Some(dirs::data_dir()?.join("rustcraft3"))
 }
 
 impl Profiles {
-    fn path() -> Option<PathBuf> {
-        Some(data_root()?.join("profiles.json"))
-    }
-
-    /// The profiles; before any were kept, progress from earlier versions of this port
-    /// (kept directly in the data directory) is the one profile, under `legacy_name`.
-    pub fn load(legacy_name: &str) -> Profiles {
-        if let Some(p) = Self::path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()) {
-            return p;
-        }
-        if let Some(p) = Self::scan() {
-            return p;
-        }
-        let root = data_root();
-        let legacy = root.as_ref().is_some_and(|r| ["profile_v0.json", "profile_v1.json", "Save"].iter().any(|f| r.join(f).exists()));
-        if legacy {
-            return Profiles { entries: vec![ProfileEntry { name: legacy_name.to_string(), dir: String::new() }], current: Some(0) };
-        }
-        Profiles::default()
-    }
-
-    /// The profiles in `Save\ProfileN`, in folder order, and the chosen one by the
-    /// registry's name; none when there are none.
-    fn scan() -> Option<Profiles> {
-        let save = data_root()?.join("Save");
-        let mut found: Vec<(u32, ProfileEntry)> = std::fs::read_dir(&save)
-            .ok()?
+    /// The profiles: each folder in `Save` with a Campaigns.w3p naming a player
+    /// (FUN_6f228e00), in the folders' order (provisional: by name, ignoring case, as
+    /// Windows lists them), and the chosen one by the registry's name; when that names
+    /// none of them, the first (FUN_6f247560 makes the first current).
+    pub fn load() -> Profiles {
+        let Some(save) = data_root().map(|r| r.join("Save")) else { return Profiles::default() };
+        let Ok(rd) = std::fs::read_dir(&save) else { return Profiles::default() };
+        let mut entries: Vec<ProfileEntry> = rd
             .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
             .filter_map(|e| {
-                let n: u32 = e.file_name().to_string_lossy().strip_prefix("Profile")?.parse().ok()?;
+                let folder = e.file_name().to_string_lossy().to_string();
                 let w3p = std::fs::read_to_string(e.path().join("Campaigns.w3p")).ok()?;
                 let name = crate::w3p::W3p::parse(&w3p).player_name()?.to_string();
-                Some((n, ProfileEntry { name, dir: format!("Save\\Profile{n}") }))
+                Some(ProfileEntry { name, dir: format!("Save\\{folder}") })
             })
             .collect();
-        if found.is_empty() {
-            return None;
-        }
-        found.sort_by_key(|f| f.0);
-        let entries: Vec<ProfileEntry> = found.into_iter().map(|f| f.1).collect();
+        entries.sort_by_key(|e| e.dir.to_ascii_uppercase());
         let chosen = crate::options::Options::load().campaignprofile;
-        let current = entries.iter().position(|e| e.name.eq_ignore_ascii_case(&chosen));
-        Some(Profiles { entries, current })
+        let current = entries.iter().position(|e| e.name.eq_ignore_ascii_case(&chosen)).or((!entries.is_empty()).then_some(0));
+        Profiles { entries, current }
     }
 
+    /// The chosen one's name goes to the registry, as the original keeps it.
     pub fn store(&self) {
-        // The chosen one's name goes to the registry, as the original keeps it.
         let mut o = crate::options::Options::load();
         o.campaignprofile = self.current().map(|p| p.name.clone()).unwrap_or_default();
         o.store();
-        // A list kept before the original's folders goes on being kept.
-        if !Self::path().is_some_and(|p| p.exists()) {
-            return;
-        }
-        let Some(path) = Self::path() else { return };
-        if let Some(d) = path.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        if let Ok(b) = serde_json::to_vec_pretty(self) {
-            if let Err(e) = std::fs::write(&path, b) {
-                log::warn!("writing {}: {e}", path.display());
+    }
+
+    /// Chooses the profile of a name, made when there is none (FUN_6f247560 with its
+    /// second argument set), and keeps the choice.
+    pub fn choose(name: &str) {
+        let mut p = Profiles::load();
+        match p.find(name) {
+            Some(k) => p.current = Some(k),
+            None => {
+                p.add(name);
             }
         }
+        p.store();
     }
 
     pub fn current(&self) -> Option<&ProfileEntry> {
@@ -205,19 +188,57 @@ impl Profiles {
 
 /// The current profile's folder.
 fn profile_dir() -> Option<PathBuf> {
-    let p = Profiles::load("");
+    let p = Profiles::load();
     let dir = p.current()?.dir.clone();
     Some(data_root()?.join(dir.replace('\\', "/")))
 }
 
-/// Where the current profile's progress lives, one file per data version.
-pub fn profile_path(version: Version) -> Option<PathBuf> {
-    Some(profile_dir()?.join(format!("profile_v{}.json", version as u32)))
+/// Where games played alone are saved (from the game menu, and quick saves) and the
+/// saved game caches kept: the current profile's folder, `Save\ProfileN`, or without a
+/// profile `Save\WorldEdit` (FUN_6f2bfc90, FUN_6f237f60).
+pub fn save_dir() -> Option<PathBuf> {
+    profile_dir().or_else(|| Some(data_root()?.join("Save").join("WorldEdit")))
 }
 
-/// Where the current profile's saved games live, one folder per data version.
-pub fn save_dir(version: Version) -> Option<PathBuf> {
-    Some(profile_dir()?.join("Save").join(format!("v{}", version as u32)))
+/// The folder a game's script names its saved games in (SaveGame, LoadGame,
+/// SaveGameExists, CopySaveGame, RenameSaveDirectory, and RemoveSaveDirectory;
+/// FUN_6f1fffd0): `CustomSaves\<name>` in the saved games' folder, the name the custom
+/// campaign's file's (FUN_6f1e0a30) or else the map's, without its folders or
+/// extension; for a map from the game's own archives (game type bit 8, set by
+/// FUN_6f03e1a0 for the campaigns' maps) the saved games' folder itself.
+pub fn script_save_dir(in_game_archives: bool, custom_campaign: Option<&str>, map_path: &str) -> Option<PathBuf> {
+    let dir = save_dir()?;
+    if in_game_archives && custom_campaign.is_none() {
+        return Some(dir);
+    }
+    let file = map_path.rsplit(['\\', '/']).next().unwrap_or_default();
+    let name = custom_campaign.map_or_else(|| file.rsplit_once('.').map_or(file, |(stem, _)| stem), |c| c);
+    Some(dir.join("CustomSaves").join(name))
+}
+
+/// A custom campaign's file in the current profile's folder (FUN_6f2325c0).
+fn custom_campaign_path(name: &str) -> Option<PathBuf> {
+    Some(profile_dir()?.join(format!("{name}.w3p")))
+}
+
+/// What the current profile keeps for a custom campaign, from its file: its file name
+/// without its extension, and its war3campaign.w3f's campaign version.
+pub fn load_custom_campaign(name: &str, version: u32) -> w3_game::persist::CustomCampaign {
+    let mut c = w3_game::persist::CustomCampaign { name: name.to_string(), version, ..Default::default() };
+    if let Some(text) = custom_campaign_path(name).and_then(|p| std::fs::read_to_string(p).ok()) {
+        crate::w3p::take_custom(&text, &mut c);
+    }
+    c
+}
+
+/// Writes what the profile keeps for a custom campaign to its file, with what else the
+/// file held (none without a profile: FUN_6f219630 finds no file).
+pub fn save_custom_campaign(c: &w3_game::persist::CustomCampaign) {
+    let Some(path) = custom_campaign_path(&c.name) else { return };
+    let text = crate::w3p::put_custom(&std::fs::read_to_string(&path).unwrap_or_default(), c);
+    if let Err(e) = std::fs::write(&path, text) {
+        log::warn!("saving {}: {e}", path.display());
+    }
 }
 
 /// Where replays live (the original's Replay folder).
@@ -225,7 +246,6 @@ pub fn replay_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Replay"))
 }
 
-/// Where network games are saved (the original's Save\Multiplayer).
 /// Where screen captures go (the original's Screenshots).
 pub fn screenshot_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Screenshots"))
@@ -236,34 +256,31 @@ pub fn custom_map_data_dir() -> Option<PathBuf> {
     Some(data_root()?.join("CustomMapData"))
 }
 
+/// Where network games are saved (the original's Save\Multiplayer, FUN_6f2bfc90).
 pub fn multiplayer_save_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Save").join("Multiplayer"))
 }
 
-/// The current profile's progress (a fresh one at Normal difficulty when it has none):
-/// the campaigns, menu race, tutorial, and difficulty from the original's
-/// Campaigns.w3p when it is there, the rest from this port's own file.
+/// The current profile's progress, from the original's files alone (a fresh one at
+/// Normal difficulty when it has none): the campaigns, menu race, tutorial, and
+/// difficulty from Campaigns.w3p, and the saved game caches from Campaigns.w3v.
 pub fn load_persist(version: Version, chain: &Chain) -> w3_game::persist::Persist {
-    let mut p = profile_path(version)
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() });
+    let mut p = w3_game::persist::Persist { difficulty: 1, ..Default::default() };
     if let Some(w) = profile_dir().and_then(|d| std::fs::read_to_string(d.join("Campaigns.w3p")).ok()) {
         let w = crate::w3p::W3p::parse(&w);
         // A file with no progress yet (a profile just made) or a broken Magic leaves
-        // the port's own.
+        // a fresh profile's.
         if w.has_progress(version as u32) && !w.take(version as u32, &campaign_names(chain, version), &mut p) {
-            log::warn!("Campaigns.w3p: its Magic does not match; progress from the port's own file");
+            log::warn!("Campaigns.w3p: its Magic does not match; no progress taken");
         }
     }
-    // The saved game caches from the original's Campaigns.w3v when it is there (or from
-    // the one W3_CAMPAIGNS_W3V names: another profile's, to compare a save with the
-    // original's).
-    let w3v = std::env::var_os("W3_CAMPAIGNS_W3V").map(PathBuf::from).or_else(|| Some(profile_dir()?.join("Campaigns.w3v")));
+    // The saved game caches from Campaigns.w3v (or from the one W3_CAMPAIGNS_W3V names:
+    // another profile's, to compare a save with the original's).
+    let w3v = std::env::var_os("W3_CAMPAIGNS_W3V").map(PathBuf::from).or_else(|| Some(save_dir()?.join("Campaigns.w3v")));
     if let Some(b) = w3v.and_then(|p| std::fs::read(p).ok()) {
         match w3_formats::w3v::Caches::parse(&b) {
             Ok(c) => p.take_caches_w3v(&c),
-            Err(e) => log::warn!("Campaigns.w3v: {e}; caches from the port's own file"),
+            Err(e) => log::warn!("Campaigns.w3v: {e}; no caches taken"),
         }
     }
     p
@@ -329,35 +346,27 @@ impl GameData {
         Ok(data)
     }
 
-    /// Writes the profile to disk: the original's Campaigns.w3p (this data set's
-    /// section; the other's kept), and the port's own file for the rest.
+    /// Writes the profile to the original's files: Campaigns.w3p (this data set's
+    /// section; the other's kept) in the profile's folder, and the saved game caches as
+    /// Campaigns.w3v beside the saved games (without a profile, Save\WorldEdit's).
     pub fn save_profile(&self) {
-        let Some(path) = profile_path(self.version) else { return };
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        let persist = self.persist.borrow();
+        if let Some(dir) = profile_dir() {
+            let _ = std::fs::create_dir_all(&dir);
             let w3p = dir.join("Campaigns.w3p");
             let mut w = crate::w3p::W3p::parse(&std::fs::read_to_string(&w3p).unwrap_or_default());
-            let name = Profiles::load("").current().map(|p| p.name.clone()).unwrap_or_default();
-            w.put(self.version as u32, &campaign_names(&self.chain, self.version), &name, &self.persist.borrow());
+            let name = Profiles::load().current().map(|p| p.name.clone()).unwrap_or_default();
+            w.put(self.version as u32, &campaign_names(&self.chain, self.version), &name, &persist);
             if let Err(e) = std::fs::write(&w3p, w.to_text()) {
                 log::warn!("saving {}: {e}", w3p.display());
             }
-            // The saved game caches as the original's Campaigns.w3v.
-            let persist = self.persist.borrow();
-            if !persist.caches.is_empty() {
-                let w3v = dir.join("Campaigns.w3v");
-                if let Err(e) = std::fs::write(&w3v, persist.caches_w3v().to_bytes(self.version != Version::ReignOfChaos)) {
-                    log::warn!("saving {}: {e}", w3v.display());
-                }
-            }
         }
-        match serde_json::to_string_pretty(&*self.persist.borrow()) {
-            Ok(s) => {
-                if let Err(e) = std::fs::write(&path, s) {
-                    log::warn!("saving profile {}: {e}", path.display());
-                }
+        if let (false, Some(dir)) = (persist.caches.is_empty(), save_dir()) {
+            let _ = std::fs::create_dir_all(&dir);
+            let w3v = dir.join("Campaigns.w3v");
+            if let Err(e) = std::fs::write(&w3v, persist.caches_w3v().to_bytes(self.version != Version::ReignOfChaos)) {
+                log::warn!("saving {}: {e}", w3v.display());
             }
-            Err(e) => log::warn!("profile: {e}"),
         }
     }
 

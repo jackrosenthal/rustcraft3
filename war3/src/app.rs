@@ -120,6 +120,12 @@ impl App {
         let gpu = w3_render::Gpu::new(window.clone(), inner.width, inner.height, backends, !self.args.no_vsync)?;
         let mut assets = Assets::new(&gpu.device, &gpu.queue, &self.data);
         let mut audio = Some(w3_audio::Audio::new(self.data.chain.clone()));
+        // A map or saved game given with -loadfile is played with the World Editor's test
+        // profile, made when missing, which stays chosen (FUN_6f2e2850; not for a replay).
+        if self.args.loadfile.as_ref().is_some_and(|p| !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("w3g"))) {
+            data::Profiles::choose(data::TEST_PROFILE);
+            *self.data.persist.borrow_mut() = data::load_persist(self.data.version, &self.data.chain);
+        }
         let mut scene = match &self.args.loadfile {
             // A saved game starts its map with the saved state.
             Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
@@ -273,7 +279,7 @@ impl ApplicationHandler for App {
                                 KeyCode::KeyC if alt || ctrl => scene.center_on_portrait(),
                                 // ~ selects idle workers as F8 does.
                                 KeyCode::Backquote => scene.idle_worker_key(),
-                                KeyCode::F6 => scene.quick_save(),
+                                KeyCode::F6 => scene.quick_save(&r.assets.frames.misc_ui),
                                 _ => {}
                             }
                         }

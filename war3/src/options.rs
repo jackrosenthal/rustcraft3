@@ -1,7 +1,9 @@
 //! The player's options: what the original keeps in the registry under Warcraft III's
-//! Gameplay, Sound, and Video keys, with the defaults of game.dll's settings table
-//! (0x6fa7efe8: name, key, type, default).  Kept on disk in the user's data directory.
+//! keys, every setting of game.dll's settings table (0x6fa7efe8: name, key, kind,
+//! default), with its defaults.  Kept on disk in the user's data directory as a
+//! registry file.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -41,16 +43,21 @@ pub struct Options {
     pub lights: u32,
     pub unitshadows: bool,
     pub occlusion: bool,
-    /// The name typed on the Local Area Network screen (setting 0x41, empty at first).
+    /// The name typed on the Local Area Network screen (setting 0x41, String\userlocal,
+    /// empty at first).
+    #[serde(rename = "userlocal")]
     pub lanname: String,
     /// The chosen profile's name (Misc\campaignprofile).
-    #[serde(default)]
     pub campaignprofile: String,
+    /// The table's other settings, which this port keeps as they were (a DWORD's
+    /// number, or a string), by name.
+    #[serde(skip)]
+    pub others: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for Options {
     fn default() -> Options {
-        Options {
+        let mut o = Options {
             mousescroll: 50,
             mousescrolldisable: false,
             keyscroll: 50,
@@ -73,48 +80,126 @@ impl Default for Options {
             environmental: true,
             positional: true,
             gamma: 30,
-            particles: 2,
-            lights: 2,
+            particles: 1,
+            lights: 1,
             unitshadows: true,
             occlusion: true,
             lanname: String::new(),
             campaignprofile: String::new(),
-        }
+            others: BTreeMap::new(),
+        };
+        let typed = o.values();
+        o.others = SETTINGS.iter().filter(|s| !typed.contains_key(s.0)).map(|s| (s.0.to_string(), default_value(s))).collect();
+        o
     }
 }
 
 /// The registry key the original keeps its settings under (HKEY_CURRENT_USER).
 const KEY: &str = "Software\\Blizzard Entertainment\\Warcraft III";
 
-/// Each setting's key (below `KEY`) and value name, as the original's registry has them.
-const PLACES: [(&str, &str); 26] = [
-    ("Gameplay", "mousescroll"),
-    ("Gameplay", "mousescrolldisable"),
-    ("Gameplay", "keyscroll"),
-    ("Gameplay", "tooltips"),
-    ("Gameplay", "healthbars"),
-    ("Gameplay", "formationtoggle"),
-    ("Gameplay", "subgrouporder"),
-    ("Gameplay", "customkeys"),
-    ("Gameplay", "netgameport"),
-    ("Gameplay", "autosaveReplay"),
-    ("Misc", "chatsupport"),
-    ("Misc", "campaignprofile"),
-    ("Sound", "sfx"),
-    ("Sound", "sfxvolume"),
-    ("Sound", "music"),
-    ("Sound", "musicvolume"),
-    ("Sound", "ambient"),
-    ("Sound", "movement"),
-    ("Sound", "unit"),
-    ("Sound", "subtitles"),
-    ("Sound", "environmental"),
-    ("Sound", "positional"),
-    ("Video", "gamma"),
-    ("Video", "particles"),
-    ("Video", "lights"),
-    ("Video", "unitshadows"),
+/// The keys below `KEY` the settings are kept in, by the table's key number
+/// (0x6fa7efcc).
+const KEYS: [&str; 6] = ["Video", "Sound", "Gameplay", "String", "Misc", "Map"];
+
+/// game.dll's settings table (0x6fa7efe8, 79 rows of 16 bytes): each setting's value
+/// name, key number (`KEYS`), whether it is a string (else a DWORD), and default.  The
+/// original reads every one at start (FUN_6f041cc0 with 0x50) and writes every one at
+/// exit and after its options menu's OK (FUN_6f042620 with 0x50).
+const SETTINGS: [(&str, usize, bool, &str); 79] = [
+    ("reswidth", 0, false, "800"),
+    ("resheight", 0, false, "600"),
+    ("colordepth", 0, false, "16"),
+    ("adapter", 0, false, "0"),
+    ("refreshrate", 0, false, "75"),
+    ("gamma", 0, false, "30"),
+    ("modeldetail", 0, false, "0"),
+    ("animquality", 0, false, "1"),
+    ("texquality", 0, false, "1"),
+    ("miplevel", 0, false, "0"),
+    ("texcolordepth", 0, false, "16"),
+    ("particles", 0, false, "1"),
+    ("lights", 0, false, "1"),
+    ("lockfb", 0, false, "1"),
+    ("unitshadows", 0, false, "1"),
+    ("occlusion", 0, false, "1"),
+    ("cinematicoverrides", 0, false, "0"),
+    ("cinematicrefresh", 0, false, "75"),
+    ("cinematicbpp", 0, false, "32"),
+    ("cinematicwidth", 0, false, "800"),
+    ("cinematicheight", 0, false, "600"),
+    ("spellfilter", 0, false, "2"),
+    ("maxfps", 0, false, "200"),
+    ("provider", 1, false, "2"),
+    ("positional", 1, false, "1"),
+    ("environmental", 1, false, "1"),
+    ("music", 1, false, "1"),
+    ("musicvolume", 1, false, "40"),
+    ("sfx", 1, false, "1"),
+    ("sfxvolume", 1, false, "100"),
+    ("ambient", 1, false, "1"),
+    ("movement", 1, false, "1"),
+    ("unit", 1, false, "1"),
+    ("subtitles", 1, false, "0"),
+    ("nomidi", 1, false, "0"),
+    ("softwaremidi", 1, false, "1"),
+    ("nosoundwarn", 1, false, "1"),
+    ("donotusewaveout", 1, false, "0"),
+    ("gamespeed", 2, false, "3"),
+    ("mousescroll", 2, false, "50"),
+    ("mousescrolldisable", 2, false, "0"),
+    ("keyscroll", 2, false, "50"),
+    ("tooltips", 2, false, "1"),
+    ("healthbars", 2, false, "0"),
+    ("formations", 2, false, "1"),
+    ("formationtoggle", 2, false, "1"),
+    ("herobar", 2, false, "1"),
+    ("netgameport", 2, false, "6112"),
+    ("inputsprocket", 2, false, "0"),
+    ("ammtype", 2, false, "0"),
+    ("ammstyles", 2, true, ""),
+    ("ammmapprefs", 2, true, ""),
+    ("ammmaphashes", 2, true, ""),
+    ("ammrace", 2, false, "32"),
+    ("customfilter", 2, false, "0"),
+    ("custommask", 2, false, "0"),
+    ("allyFilter", 2, false, "1"),
+    ("creepFilter", 2, false, "1"),
+    ("terrainFilter", 2, false, "1"),
+    ("subgrouporder", 2, false, "0"),
+    ("multiboardon", 2, false, "1"),
+    ("customkeys", 2, false, "0"),
+    ("schedrace", 2, false, "32"),
+    ("autosaveReplay", 2, false, "0"),
+    ("userbnet", 3, true, ""),
+    ("userlocal", 3, true, ""),
+    ("skirmish_V0", 5, true, ""),
+    ("skirmish_V1", 5, true, ""),
+    ("lan_V0", 5, true, ""),
+    ("lan_V1", 5, true, ""),
+    ("battlenet_V0", 5, true, ""),
+    ("battlenet_V1", 5, true, ""),
+    ("seenintromovie", 4, false, "0"),
+    ("campaignprofile", 4, true, ""),
+    ("clickedtourn", 4, false, "0"),
+    ("clickedclan", 4, false, "0"),
+    ("clickedladder", 4, false, "0"),
+    ("clickedad", 4, false, "0"),
+    ("chatsupport", 4, false, "0"),
 ];
+
+/// A setting's default as the values hold it.
+fn default_value(s: &(&str, usize, bool, &str)) -> serde_json::Value {
+    if s.2 { serde_json::Value::String(s.3.to_string()) } else { serde_json::Value::from(s.3.parse::<u32>().unwrap_or(0)) }
+}
+
+/// A registry file's string, quoted, and back.
+fn quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn unquote(s: &str) -> String {
+    s.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(s).replace("\\\"", "\"").replace("\\\\", "\\")
+}
 
 impl Options {
     /// The settings as the original keeps them: its registry keys and values, written as
@@ -123,16 +208,8 @@ impl Options {
         Some(dirs::data_dir()?.join("rustcraft3").join("Warcraft III.reg"))
     }
 
-    /// Before the registry file, the settings were JSON.
-    fn old_path() -> Option<PathBuf> {
-        Some(dirs::data_dir()?.join("rustcraft3").join("options.json"))
-    }
-
     pub fn load() -> Options {
-        if let Some(text) = Self::path().and_then(|p| std::fs::read_to_string(p).ok()) {
-            return Self::from_reg(&text);
-        }
-        Self::old_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        Self::path().and_then(|p| std::fs::read_to_string(p).ok()).map_or_else(Options::default, |text| Self::from_reg(&text))
     }
 
     pub fn store(&self) {
@@ -145,7 +222,8 @@ impl Options {
         }
     }
 
-    /// The settings by name, as serde has them (numbers, flags, and strings).
+    /// The settings this port uses, by name, as serde has them (numbers, flags, and
+    /// strings).
     fn values(&self) -> serde_json::Map<String, serde_json::Value> {
         match serde_json::to_value(self) {
             Ok(serde_json::Value::Object(m)) => m,
@@ -153,37 +231,38 @@ impl Options {
         }
     }
 
-    /// The registry file: a key per section, flags and numbers as DWORDs, and the LAN
-    /// screen's name as the String key's "userlocal".
+    /// Every setting, by name.
+    fn all_values(&self) -> serde_json::Map<String, serde_json::Value> {
+        let mut v = self.values();
+        v.extend(self.others.iter().map(|(k, v)| (k.clone(), v.clone())));
+        v
+    }
+
+    /// The registry file: every setting of the table under its key (the keys in name
+    /// order, as a registry export lists them, and the values in the table's), flags and
+    /// numbers as DWORDs.
     fn to_reg(&self) -> String {
-        let v = self.values();
+        let v = self.all_values();
         let mut out = String::from("REGEDIT4\r\n");
-        let mut sections: Vec<&str> = PLACES.iter().map(|p| p.0).collect();
-        sections.dedup();
-        sections.sort();
-        sections.dedup();
-        for sec in sections {
+        let mut keys: Vec<(usize, &str)> = KEYS.iter().copied().enumerate().collect();
+        keys.sort_by_key(|k| k.1);
+        for (k, sec) in keys {
             out += &format!("\r\n[HKEY_CURRENT_USER\\{KEY}\\{sec}]\r\n");
-            for (_, name) in PLACES.iter().filter(|p| p.0 == sec) {
-                let n = match v.get(*name) {
-                    Some(serde_json::Value::Bool(b)) => *b as u64,
-                    Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
-                    Some(serde_json::Value::String(s)) => {
-                        out += &format!("\"{name}\"=\"{}\"\r\n", s.replace('\\', "\\\\").replace('"', "\\\""));
-                        continue;
-                    }
-                    _ => continue,
-                };
-                out += &format!("\"{name}\"=dword:{n:08x}\r\n");
+            for name in SETTINGS.iter().filter(|s| s.1 == k).map(|s| s.0) {
+                match v.get(name) {
+                    Some(serde_json::Value::String(s)) => out += &format!("\"{name}\"={}\r\n", quote(s)),
+                    Some(serde_json::Value::Bool(b)) => out += &format!("\"{name}\"=dword:{:08x}\r\n", *b as u32),
+                    Some(serde_json::Value::Number(n)) => out += &format!("\"{name}\"=dword:{:08x}\r\n", n.as_u64().unwrap_or(0) as u32),
+                    _ => {}
+                }
             }
         }
-        out += &format!("\r\n[HKEY_CURRENT_USER\\{KEY}\\String]\r\n\"userlocal\"=\"{}\"\r\n", self.lanname.replace('\\', "\\\\").replace('"', "\\\""));
         out
     }
 
     /// Reads a registry file; settings it lacks keep their defaults.
     fn from_reg(text: &str) -> Options {
-        let mut v = Options::default().values();
+        let mut v = Options::default().all_values();
         let mut section = String::new();
         for line in text.lines().map(str::trim) {
             if let Some(key) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
@@ -192,27 +271,32 @@ impl Options {
             }
             let Some((name, value)) = line.split_once('=') else { continue };
             let name = name.trim_matches('"');
-            if section == "String" && name == "userlocal" {
-                let s = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value).replace("\\\"", "\"").replace("\\\\", "\\");
-                v.insert("lanname".into(), serde_json::Value::String(s));
-                continue;
-            }
-            if !PLACES.iter().any(|p| p.0 == section && p.1 == name) {
-                continue;
-            }
-            if let Some(serde_json::Value::String(_)) = v.get(name) {
-                let s = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value).replace("\\\"", "\"").replace("\\\\", "\\");
-                v.insert(name.into(), serde_json::Value::String(s));
-                continue;
-            }
-            let Some(n) = value.strip_prefix("dword:").and_then(|h| u32::from_str_radix(h, 16).ok()) else { continue };
-            let new = match v.get(name) {
-                Some(serde_json::Value::Bool(_)) => serde_json::Value::Bool(n != 0),
-                _ => serde_json::Value::from(n),
+            let Some(s) = SETTINGS.iter().find(|s| KEYS[s.1].eq_ignore_ascii_case(&section) && s.0.eq_ignore_ascii_case(name)) else { continue };
+            let new = if s.2 {
+                serde_json::Value::String(unquote(value))
+            } else {
+                let Some(n) = value.strip_prefix("dword:").and_then(|h| u32::from_str_radix(h, 16).ok()) else { continue };
+                match v.get(s.0) {
+                    Some(serde_json::Value::Bool(_)) => serde_json::Value::Bool(n != 0),
+                    _ => serde_json::Value::from(n),
+                }
             };
-            v.insert(name.into(), new);
+            v.insert(s.0.to_string(), new);
         }
-        serde_json::from_value(serde_json::Value::Object(v)).unwrap_or_default()
+        let mut o: Options = serde_json::from_value(serde_json::Value::Object(v.clone())).unwrap_or_default();
+        let typed = o.values();
+        o.others = v.into_iter().filter(|(k, _)| !typed.contains_key(k)).collect();
+        o
+    }
+
+    /// A string setting this port keeps without a field for it (the Map key's last
+    /// setups), and its change.
+    pub fn string(&self, name: &str) -> String {
+        self.others.get(name).and_then(|v| v.as_str()).unwrap_or_default().to_string()
+    }
+
+    pub fn set_string(&mut self, name: &str, value: &str) {
+        self.others.insert(name.to_string(), serde_json::Value::String(value.to_string()));
     }
 
     /// The scroll rate multipliers (keyboard, mouse): a setting of 0 to 100 is 0.5 to
@@ -488,6 +572,28 @@ mod tests {
         assert!(reg.contains("[HKEY_CURRENT_USER\\Software\\Blizzard Entertainment\\Warcraft III\\Gameplay]"));
         assert!(reg.contains("\"mousescroll\"=dword:00000046"));
         let back = Options::from_reg(&reg);
-        assert_eq!(serde_json::to_value(&back).unwrap(), serde_json::to_value(&o).unwrap());
+        assert_eq!(back, o);
+    }
+
+    /// The defaults are the table's, every one of its settings is kept, and those this
+    /// port has no use for go back as they came.
+    #[test]
+    fn every_setting_keeps_with_the_tables_defaults() {
+        let d = Options::default().all_values();
+        assert_eq!(d.len(), SETTINGS.len());
+        for s in &SETTINGS {
+            let v = match &d[s.0] {
+                serde_json::Value::Bool(b) => (*b as u32).to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::String(t) => t.clone(),
+                _ => unreachable!(),
+            };
+            assert_eq!(v, s.3, "{}", s.0);
+        }
+        let text = "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Software\\Blizzard Entertainment\\Warcraft III\\Map]\r\n\"skirmish_V1\"=\"Maps\\\\FrozenThrone\\\\(2)EchoIsles.w3x\"\r\n\r\n[HKEY_CURRENT_USER\\Software\\Blizzard Entertainment\\Warcraft III\\Gameplay]\r\n\"gamespeed\"=dword:00000002\r\n";
+        let o = Options::from_reg(text);
+        assert_eq!(o.string("skirmish_V1"), "Maps\\FrozenThrone\\(2)EchoIsles.w3x");
+        assert_eq!(o.others["gamespeed"], serde_json::Value::from(2));
+        assert_eq!(Options::from_reg(&o.to_reg()), o);
     }
 }

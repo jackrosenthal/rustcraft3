@@ -158,6 +158,9 @@ pub struct Skirmish {
     unknown_map: Option<String>,
     /// The game setup's advanced options (crate::advanced).
     pub flags: u32,
+    /// The Map key's setting keeping the map list's last map, on the Custom Game and
+    /// LAN screens (skirmish_V<n> and lan_V<n>, FUN_6f2bf310).
+    map_setting: Option<String>,
 }
 
 /// Each team setup row's color button shows its player color.
@@ -209,6 +212,7 @@ impl Skirmish {
             replay_players: None,
             unknown_map: None,
             flags: crate::advanced::DEFAULT_FLAGS,
+            map_setting: None,
         }
     }
 
@@ -319,6 +323,34 @@ impl Skirmish {
             })
             .collect();
         self.rebuild |= self.slots.len() != old;
+        // The screen's setting keeps the map chosen, by its path from the game's folder
+        // (FUN_6f2f70d0 by way of FUN_6f2b9ab0).
+        if let (Some(setting), Some(path)) = (self.map_setting.clone(), self.game_path(&e.path)) {
+            let mut o = crate::options::Options::load();
+            if o.string(&setting) != path {
+                o.set_string(&setting, &path);
+                o.store();
+            }
+        }
+    }
+
+    /// A file's path from the game's folder, with backslashes ("Maps\\x.w3m").
+    fn game_path(&self, file: &Path) -> Option<String> {
+        let rel = file.strip_prefix(self.maps_root.parent()?).ok()?;
+        Some(rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("\\"))
+    }
+
+    /// Selects the map at a path from the game's folder, opening its folder in the list,
+    /// when it is there (FUN_6f2b9640).
+    fn select_path(&mut self, path: &str) -> bool {
+        let Some(game) = self.maps_root.parent() else { return false };
+        let file = game.join(path.replace('\\', "/"));
+        let Some(dir) = file.parent().filter(|d| file.is_file() && d.starts_with(&self.maps_root)) else { return false };
+        self.dir = dir.to_path_buf();
+        self.scan();
+        let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Map && e.path == file) else { return false };
+        self.select(i);
+        true
     }
 
     /// WorldEditData [LoadingScreens] entry `i`: its background model and which of the
@@ -575,8 +607,9 @@ impl Skirmish {
         tree.set_point("MapListScrollBar", FP::BottomRight, "MapListBox", FP::BottomRight, -FILE_LIST_SIDE, FILE_LIST_END);
     }
 
-    /// Creates the screen's parts in their containers and fills in the first map.
-    pub fn attach(&mut self, tree: &mut FrameTree, db: &FrameDb) {
+    /// Creates the screen's parts in their containers and fills in the map its setting
+    /// (`map_setting`) names, else the first.
+    pub fn attach(&mut self, tree: &mut FrameTree, db: &FrameDb, setting: &str) {
         for (template, container) in [("MapListBox", "MapListContainer"), ("MapInfoPane", "MapInfoPaneContainer"), ("TeamSetup", "TeamSetupContainer")] {
             if let (Some(parent), true) = (tree.get(container), db.templates.contains_key(template)) {
                 if let Some(i) = tree.create(db, template, parent) {
@@ -591,11 +624,17 @@ impl Skirmish {
         // It starts at the list's top (CMapList::vf55 sets 1.0).
         tree.set_value("MapListScrollBar", 1.0);
         Self::layout_info(tree);
-        if self.entries.is_empty() {
-            self.scan();
-            // The first map in the folder starts selected.
-            if let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Map) {
-                self.select(i);
+        if self.entries.is_empty() || self.map_setting.as_deref() != Some(setting) {
+            self.map_setting = Some(setting.to_string());
+            self.dir = self.root.clone();
+            // The map last chosen on this screen starts selected (FUN_6f2b9440), else the
+            // first in the folder.
+            if !self.select_path(&crate::options::Options::load().string(setting)) {
+                self.dir = self.root.clone();
+                self.scan();
+                if let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Map) {
+                    self.select(i);
+                }
             }
         }
         self.fill_info(tree, db);

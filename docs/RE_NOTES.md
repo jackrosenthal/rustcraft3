@@ -6433,23 +6433,53 @@ Formats the port made its own, to be replaced by the original's:
   no object, 8 on a gold mine; training is `Order` with flags 0x42 and the unit type;
   object ids are (slot, birth), equal for the peasants at the start.
 - Options: the original's registry keys and values (HKEY_CURRENT_USER\Software\Blizzard
-  Entertainment\Warcraft III, its Gameplay, Misc, Sound, Video, and String keys, as the
-  reference install's Wine registry has them), kept in a registry file (REGEDIT4,
-  `Warcraft III.reg` in the data folder) since the port has no Windows registry.
+  Entertainment\Warcraft III), every one of game.dll's settings table (0x6fa7efe8, 79
+  rows of name, key, kind, and default; the keys Video, Sound, Gameplay, String, Misc,
+  and Map at 0x6fa7efcc), which the original reads at start (`FUN_6f041cc0` with 0x50)
+  and writes whole at exit and after its options menu's OK (`FUN_6f042620` with 0x50),
+  the reference install's Wine registry holding all 79.  Kept in a registry file
+  (REGEDIT4, `Warcraft III.reg` in the data folder) since the port has no Windows
+  registry; those it has no use for go back as they came.  The Map key's six strings
+  are the last map chosen on the Custom Game, LAN, and Battle.net screens per data
+  version (`FUN_6f2bf310` with 0x42, 0x44, and 0x46 plus the version; `FUN_6f2b9ab0`
+  stores the selection).
 - Profiles: campaign progress, the menu's race, the tutorial, and the difficulty are in
   the original's `Campaigns.w3p` (`war3/src/w3p.rs`: `[Campaign]` for Reign of Chaos and
   `[Campaign1]` for The Frozen Throne, a 64-bit mask per campaign named as CampaignList
   has it, mission n at bit n, 63 available, 62 opening and 61 ending cinematic, 59 and
   60 the menu's; `Magic` and `Magic1` the CRC-32 of each section's masks; read and
-  written byte for byte as the reference install's).  Profiles are `Save\ProfileN`
-  folders named by their PlayerName, the chosen one in the registry's
-  Misc\campaignprofile (a list kept before in `profiles.json` still serves).  Still the
-  port's own: the custom campaign buttons (`profile_vN.json`).  The original's
-  SetCustomCampaignButtonVisible (`FUN_6f2125b0`) acts only within a custom campaign
-  (`FUN_6f219630`), setting key `Button%02d` (`FUN_6f24d3b0`) to the value in section
-  `Version%06d` (`FUN_6f247390`) of a table it writes to a file of the campaign's
-  (`FUN_6f247160`, `FUN_6f2325c0`); a plain map's call changed nothing on disk or in the
-  registry (measured).  Which file is still to be measured with a custom campaign.
+  written byte for byte as the reference install's), the saved game caches in
+  `Campaigns.w3v`.  Profiles are the folders in `Save` holding a Campaigns.w3p
+  (`FUN_6f228e00`; made as the first free `Save\ProfileN`, `FUN_6f22b790`), named by
+  their PlayerName, the chosen one in the registry's Misc\campaignprofile, and the
+  first when it names none (`FUN_6f247560`).  -loadfile on a map or saved game chooses
+  the World Editor's test profile, "WorldEdit" unless its "Test Map - Player Profile"
+  setting says otherwise, making it when missing (`FUN_6f2e2850`).  A custom
+  campaign's own file is `Save\ProfileN\<campaign>.w3p` (`FUN_6f22bec0` per profile and
+  campaign, `FUN_6f2325c0` naming it from the profile's folder and the campaign's file
+  name without its extension): in section `Version%06d` (`FUN_6f247390`, the
+  war3campaign.w3f's campaign version, set by the Custom Campaign screen's OK,
+  `FUN_6f2479d0`) the difficulty chosen there (`Difficulty`, `FUN_6f2490d0`) and each
+  button SetCustomCampaignButtonVisible set (`Button%02d`, `FUN_6f24d3b0`; 0 when never
+  set, `FUN_6f232970`), written at each change (`FUN_6f249250` to `FUN_6f247160`), with
+  `[Mojo] Jojo` its checksum (`FUN_6f228bb0`: every other section's keys and values in
+  order, each string's little-endian words and then its last bytes XORed in and rotated
+  left 3, `FUN_6f24d3d0`, and the string's result XORed into the sum and rotated left
+  3).  The native acts only while a custom campaign's archive is mounted
+  (`FUN_6f219630`); a plain map's call changed nothing on disk or in the registry
+  (measured).  The custom campaign screen shows a mission whose war3campaign.w3f word
+  has bit 0 set or whose button is set (`FUN_6f308600`).
+- Where files go (`FUN_6f2bfc90`): saves from the game menu and quick saves
+  (`QuickSaveFile` of UI\MiscUI.txt [Misc] with ".w3z", `FUN_6f3c5a70`) in
+  `Save\<profile folder>`, or `Save\WorldEdit` with no profile, network games'
+  `Save\Multiplayer`; the scripts' saved games (SaveGame, LoadGame, SaveGameExists,
+  CopySaveGame, RenameSaveDirectory, RemoveSaveDirectory, `FUN_6f1fffd0`) in
+  `CustomSaves\<name>` below that, the name the custom campaign's file's or else the
+  map's, without folders or extension (the reference install's
+  `Save\Profile2\CustomSaves\fw10\fw10.w3z` for Maps\Test\fw10.w3x), or the profile's
+  folder itself for a map from the game's own archives (game type bit 8,
+  `FUN_6f03e1a0`); names with ".." or ":" refused, and no extension added (its
+  `CustomSaves\mafsv\mafsv30` for SaveGame("mafsv30")).
 - Saved game caches: SaveGameCache writes every saved cache into the profile's one
   `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
   PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a

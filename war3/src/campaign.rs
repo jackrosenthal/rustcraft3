@@ -142,7 +142,7 @@ impl Campaigns {
         // A custom campaign's buttons show from the start or once a mission shows them
         // (SetCustomCampaignButtonVisible).
         if let Some(cc) = &self.custom {
-            return cc.visible.get(m).copied().unwrap_or(false) || persist.custom_campaign_buttons.get(&(m as i32)).copied().unwrap_or(false);
+            return cc.visible.get(m).copied().unwrap_or(false) || persist.custom_campaign.as_ref().is_some_and(|c| c.button(m as i32));
         }
         self.available(persist, c) && (m == 0 || persist.mission_open(c, m))
     }

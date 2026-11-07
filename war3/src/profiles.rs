@@ -31,8 +31,8 @@ pub enum Event {
 }
 
 impl ProfilePanel {
-    pub fn new(legacy_name: &str) -> ProfilePanel {
-        ProfilePanel { open: false, text: String::new(), profiles: Profiles::load(legacy_name), list: None }
+    pub fn new() -> ProfilePanel {
+        ProfilePanel { open: false, text: String::new(), profiles: Profiles::load(), list: None }
     }
 
     /// The chosen profile's name.

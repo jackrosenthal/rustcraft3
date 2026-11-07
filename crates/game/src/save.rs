@@ -545,6 +545,7 @@ impl Game {
             (w.time_of_day, w.time_of_day_exact, w.time_of_day_clock) = (v[0], v[0] as f64, w.time as f64);
         }
         self.restore_boards(s, &handles)?;
+        self.restore_presentation(s)?;
         // The map script's machine is the first: its globals as they were (its strings
         // by their text; a handle kept where the port holds an object of the kind the
         // save's handle table names, else none; its constants as the script makes them).

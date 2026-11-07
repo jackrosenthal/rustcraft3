@@ -30,6 +30,7 @@ pub mod herospells;
 pub mod save;
 pub mod w3zscript;
 pub mod w3zstate;
+mod w3zload;
 pub mod targets;
 pub mod passives;
 pub mod techtree;

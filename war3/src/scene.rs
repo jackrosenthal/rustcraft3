@@ -4749,10 +4749,18 @@ impl Scene {
         }
     }
 
+    /// Whether the camera's wheel and keys work (CCameraWar3 vf3): the player has
+    /// control, and no pan is under way (FUN_6f360e20: the camera's pan, which
+    /// PanCameraToTimed and CameraSetupApply's pans start).  Zooming and turning also
+    /// wait while a cinematic camera model plays (SetCinematicCamera: the camera's +0x5c).
+    fn camera_input(&self, zoom_or_turn: bool) -> bool {
+        self.user_control() && self.game.as_ref().is_none_or(|g| !g.world.camera.panning() && !(zoom_or_turn && g.world.camera.cinematic.is_some()))
+    }
+
     /// Page Up, Page Down, and the wheel: a zoom level nearer or farther, over a second
     /// (FUN_6f361330).
     pub fn zoom_step(&mut self, nearer: bool) {
-        if !self.user_control() {
+        if !self.camera_input(true) {
             return;
         }
         let level = if nearer { (self.zoom_level + 1).min(5) } else { self.zoom_level.saturating_sub(1) };
@@ -4765,7 +4773,7 @@ impl Scene {
     /// Insert and Delete: while held the camera turns to the second or third rotation,
     /// and back when let go, over half a second (FUN_6f361370).
     pub fn rotate_key(&mut self, state: usize, down: bool) {
-        if !self.user_control() {
+        if !self.camera_input(true) {
             return;
         }
         let next = match (down, self.rotation_state) {
@@ -4780,7 +4788,7 @@ impl Scene {
     /// Backspace: to the local player's town halls in turn, the largest first; after a
     /// second's pause it starts again from the first (FUN_6f3613b0).
     pub fn town_hall_key(&mut self) {
-        if !self.user_control() {
+        if !self.camera_input(false) {
             return;
         }
         let Some(g) = self.game.as_ref() else { return };
@@ -4830,7 +4838,7 @@ impl Scene {
         }
     }
 
-    /// Zooming with the wheel.
+    /// Zooming with the wheel: one message's `amount` notches (its delta over 120).
     pub fn zoom(&mut self, amount: f32) {
         // Over the game menu, the wheel scrolls its text areas a line at a time.
         if let Some(h) = self.hud.as_mut() {
@@ -4843,9 +4851,12 @@ impl Scene {
                 return;
             }
         }
-        // Each notch is a zoom level (CCameraWar3 vf3: the delta in 120ths).
-        if amount != 0.0 {
-            self.zoom_step(amount > 0.0);
+        // Each wheel message is at most a zoom level (CCameraWar3 vf3: its delta divided by
+        // 120): a notch or more nearer or farther is a level, and less than a notch, as a
+        // touchpad sends, does nothing and isn't kept toward the next.
+        let notches = amount.trunc();
+        if notches != 0.0 {
+            self.zoom_step(notches > 0.0);
         }
     }
 

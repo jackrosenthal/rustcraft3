@@ -422,6 +422,8 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                // In notches: a touchpad's pixels are 40 to a notch (provisional, not
+                // measured against the original's touchpad deltas).
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,

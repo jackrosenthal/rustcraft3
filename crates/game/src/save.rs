@@ -1096,21 +1096,25 @@ impl Game {
                 }
             }
         }
-        self.loaded_objects();
+        let saved = s.objects.as_ref().map(|m| m.tables[0].clone()).unwrap_or_default();
+        self.loaded_objects(&saved);
         Ok(())
     }
 
-    /// The objects the original makes as a saved game is loaded, the first born after
-    /// the save's: a threshold listener (`` `rtl ``) for each unit with burrow
-    /// detection, in the units' order (read: Mafarazzo TD's LAN load saved again at its
-    /// turns 77 and 246, births 19013 and 19014 at the saved free list's first two
-    /// slots, one for each flying peasant: event 0xd01b7, -0.1, on its unit's second
-    /// real, linked after its detector's in-range object; provisional: their part, not
-    /// read, and their records, not written).
-    pub fn loaded_objects(&mut self) {
-        let detectors = self.world.unit_order.iter().filter(|&&h| self.world.unit(h).is_some_and(|u| u.extra.flyer_pil.is_some())).count();
-        for _ in 0..detectors {
-            self.world.tags.take(crate::codes::class::THRESHOLD_LISTENER);
+    /// What the original makes and lets go as a saved game is loaded, the first born
+    /// after the save's.  Each unit's spells' listeners are made anew, as its mana is
+    /// set (`World::mana_changed`, in the units' order), their old ones going as the
+    /// first tick begins, after the save's own event data (`gsed`), which goes then too
+    /// (read: Mafarazzo TD's LAN load, its flying peasants' Repair listeners, threshold
+    /// listeners on their mana at births 19013 and 19014 in the saved free list's first
+    /// two slots, and the save's `gsed` and their old listeners, slots 9156, 1400, and
+    /// 1423, freed 0.0001 after the first step).
+    pub fn loaded_objects(&mut self, saved: &[w3_formats::w3z::Tagged]) {
+        for e in saved.iter().filter(|e| &e.kind.to_be_bytes() == crate::codes::class::SAVE_EVENT_DATA) {
+            self.world.tags.doom(e.tag);
+        }
+        for h in self.world.unit_order.clone() {
+            self.world.mana_changed(h);
         }
     }
 

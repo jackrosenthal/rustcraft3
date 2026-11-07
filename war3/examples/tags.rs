@@ -584,12 +584,13 @@ fn main() -> anyhow::Result<()> {
         std::fs::write(out, ours.join("\n") + "\n")?;
     }
     // TAGS_TRACE names a file for every tag given and freed, by turn: "A code slot",
-    // "F slot", "T", each movement step "S k", and each keepalive "S 1000+turn" and
-    // "S next-slot".
+    // "F slot" ("f slot" for one no free list takes back), "T", each movement step
+    // "S k", and each keepalive "S 1000+turn" and "S next-slot".
     if let Ok(out) = std::env::var("TAGS_TRACE") {
         let lines: Vec<String> = g.world.tags.trace.clone().unwrap_or_default().iter().map(|e| match e {
             w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
             w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
+            w3_game::tags::TagEvent::Gone(s) => format!("f {s:#x}"),
             w3_game::tags::TagEvent::Turn => "T".into(),
             w3_game::tags::TagEvent::Step(k) => format!("S {k}"),
         }).collect();

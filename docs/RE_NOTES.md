@@ -5233,9 +5233,9 @@ Formats the port made its own, to be replaced by the original's:
   at its turns 77 and 246, births 19013 and 19014 at slots 6273 and 8477 in both) are
   threshold listeners (`` `rtl ``), one for each flying peasant (units 1383 and 1406):
   on the unit's second real (`` `rel ``), its word 852407 (0xd01b7), at -0.1, linked
-  after the unit's in-range object (its burrow detection's `` `pil ``).  The port's
-  load takes them so (`Game::loaded_objects`; provisional: their part, not modeled,
-  and their records, not written).  The loaded game goes on from the save's times:
+  after the unit's in-range object (its burrow detection's `` `pil ``).  They are its
+  Repair's listeners made anew as the load sets its mana, the old ones (slots 1400
+  and 1423) going as the first tick begins (below; `Game::loaded_objects`).  The loaded game goes on from the save's times:
   at turn 77 its game time 61400 (53800 and 76 turns), its main clock 61.379482 and
   its agent clock 61.533245 (the saved clocks run on, not started again), the
   manager's counter 3070 (2816 saved; 3633 at turn 246) and its first queue's count
@@ -5341,6 +5341,22 @@ Formats the port made its own, to be replaced by the original's:
   port's load now lets them go (`Game::restore_original`).  Saved slots the port's
   start holds with other objects are then four: two timers, a handler, and a
   modifier, over two leaked locations, a leaderboard, and a handler.
+- The load's first tick, read in the original (its takes and frees from births 19013,
+  `abtest/loadbirths3.log`): 0.0001 after its first step (53.783756) it frees the
+  save's event data (`gsed`, slot 9156) and the flying peasants' old Repair
+  listeners (`` `rtl `` at 1400 and 1423), whose new ones it made as it loaded (births
+  19013 and 19014): as when a script sets a unit's mana, each spell's listener made
+  anew the first time and the old let go (`World::mana_changed`), the load setting
+  each unit's mana.  The port's load now does so (`Game::loaded_objects`: the save's
+  `gsed` and the old listeners go as the first tick begins, before its first step).
+  With that the load's ticks take and free as the original's, slots and all, from
+  the first; the three LAN loads' keepalives agree through turn 192 (the second's
+  through 193; their saves at 77 and 246 among them), then part at a few turns (the
+  first's 193, 218, 219, and 267; the second's 194, 222, and 270; the third's 193,
+  218, 219, and 270), the births the same and the next slot another.  At 193 the
+  original's last free is the detection record of a creep that leaks later in the
+  port (provisional: creeps reaching WalkEnd in another order, their walks a little
+  apart).
 - A creep KillUnit bursts (ExplodeUnitBJ, read at Mafarazzo TD's first creep to leak
   after the load, turn 144, and the second, 145): WalkEnd's trigger runs before
   Losing life's (the regions a step's walker enters taken oldest first, the two made

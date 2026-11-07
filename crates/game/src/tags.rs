@@ -20,6 +20,8 @@ pub type Code = [u8; 4];
 pub enum TagEvent {
     Take(Code, u32),
     Free(u32),
+    /// A slot let go that no free list takes back (one of `Tags::strangers`).
+    Gone(u32),
     Turn,
     /// A movement step's start (its index in the tick), for reading a trace.
     Step(usize),
@@ -333,7 +335,8 @@ impl Tags {
 
     /// Gives a slot back.
     pub fn release(&mut self, slot: u32) {
-        if !self.strangers.remove(&slot) {
+        let pushed = !self.strangers.remove(&slot);
+        if pushed {
             self.free.push(slot);
         }
         self.live.remove(&slot);
@@ -345,7 +348,7 @@ impl Tags {
         self.aura_dues.remove(&slot);
         self.buff_modifiers.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
-            l.push(TagEvent::Free(slot));
+            l.push(if pushed { TagEvent::Free(slot) } else { TagEvent::Gone(slot) });
         }
     }
 

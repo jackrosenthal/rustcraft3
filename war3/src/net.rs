@@ -272,9 +272,9 @@ pub struct Session {
 /// The word a player leaves the game with (LEAVEGAME), as the original's game gives it
 /// (`FUN_6f32c130`'s first argument): LOST leaving a game under way through the menu
 /// (`FUN_6f29f430` and the menu's others), and OBSERVER once the player's game is over
-/// or as an observer (`FUN_6f1de050`; measured after a defeat left by its dialog, as the
-/// original's replays' closing leave record has it; after a victory or a tie
-/// provisional).
+/// or as an observer (`FUN_6f1de050`; measured after a defeat and after a victory, left
+/// by their dialogs, as the original's replays' closing leave record has it; after a tie
+/// and as an observer provisional).
 pub fn leave_word(w: &World) -> u32 {
     use w3_game::types::player_state;
     let me = w.local_player;

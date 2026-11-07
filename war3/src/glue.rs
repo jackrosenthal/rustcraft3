@@ -118,8 +118,6 @@ pub struct ScoreState {
     pub teams: bool,
     pub ally_colors: bool,
     pub next: Option<String>,
-    /// The screen to go back to.
-    prev: Screen,
     bars: Vec<(String, ModelInstance)>,
 }
 
@@ -139,6 +137,12 @@ pub struct Glue {
     /// Drawn over the menus (the screen capture's message).
     pub overlay: Vec<w3_ui::Draw>,
     pub screen: Screen,
+    /// The screen a game goes back to when it ends, and the score screen's OK
+    /// (game.dll's DAT_6fce50ac, FUN_6f2fff00): set as a screen starts a game (the
+    /// custom game screen its own, the campaign menu its own, a saved game or a replay
+    /// the single player menu, a local network game the screen it was joined or loaded
+    /// from, the credits the main menu).
+    pub back: Screen,
     pub tree: FrameTree,
     phase: Phase,
     /// UI\MiscData.txt [Glue] ControlFadeDuration, and what is left of a fade.
@@ -281,6 +285,7 @@ impl Glue {
         let mut g = Glue {
             overlay: Vec::new(),
             screen: Screen::MainMenu,
+            back: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
             phase: Phase::Birth,
             control_fade: data.misc.get_str("Glue", "ControlFadeDuration").and_then(|v| v.trim().parse().ok()).unwrap_or(0.25),
@@ -535,10 +540,9 @@ impl Glue {
     }
 
     /// Shows the score screen for a finished game; OK goes on to `next` (a ChangeLevel
-    /// map) or back to the menus.
+    /// map) or back to the screen the game started from.
     pub fn show_score(&mut self, data: crate::scorescreen::ScoreData, next: Option<String>, assets: &mut Assets) {
-        let prev = if self.screen == Screen::Score { Screen::MainMenu } else { self.screen };
-        self.score = Some(ScoreState { data, tab: 0, sort: crate::scorescreen::DEFAULT_SORT, teams: false, ally_colors: false, next, prev, bars: Vec::new() });
+        self.score = Some(ScoreState { data, tab: 0, sort: crate::scorescreen::DEFAULT_SORT, teams: false, ally_colors: false, next, bars: Vec::new() });
         self.build(Screen::Score, assets);
         self.phase = Phase::Stand;
     }
@@ -982,6 +986,7 @@ impl Glue {
 
     fn launch_mission(&mut self, c: usize, m: usize) {
         if let Some(map) = self.campaigns.list.get(c).and_then(|e| e.as_ref()).and_then(|e| e.missions.get(m)) {
+            self.back = Screen::Campaign;
             self.action = Some(GlueAction::Campaign(map.map.clone()));
         }
     }
@@ -1065,6 +1070,7 @@ impl Glue {
             (Screen::MainMenu, "CreditsButton") => {
                 let db = &assets.frames;
                 if let Some(map) = db.misc_ui.get_str("Misc", &format!("CreditsFile_V{}", db.version)) {
+                    self.back = Screen::MainMenu;
                     self.action = Some(GlueAction::Campaign(map));
                 }
             }
@@ -1103,6 +1109,7 @@ impl Glue {
             (Screen::Skirmish, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::Skirmish, "PlayGameButton") => {
                 if let Some(p) = self.skirmish.selected_map() {
+                    self.back = Screen::Skirmish;
                     self.action = Some(GlueAction::Play(p, self.skirmish.lobby(), self.skirmish.flags));
                 }
             }
@@ -1117,6 +1124,7 @@ impl Glue {
             (Screen::LoadSaved, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::LoadSaved, "OKButton") => {
                 if let Some(path) = self.skirmish.selected_save() {
+                    self.back = Screen::SinglePlayer;
                     self.action = Some(GlueAction::LoadSave(path));
                 }
             }
@@ -1125,6 +1133,7 @@ impl Glue {
             (Screen::ViewReplay, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::ViewReplay, "OKButton") => {
                 if let Some(path) = self.skirmish.selected_replay() {
+                    self.back = Screen::SinglePlayer;
                     self.action = Some(GlueAction::WatchReplay(path));
                 }
             }
@@ -1169,7 +1178,10 @@ impl Glue {
                 let Some(file) = self.skirmish.selected_save() else { return };
                 let game = self.lan.game_name(&assets.frames);
                 match self.lan.host_saved(&file, &game, self.version == crate::data::Version::FrozenThrone, &self.chain) {
-                    Ok(()) => self.show(Screen::LanLobby, assets),
+                    Ok(()) => {
+                        self.back = Screen::LanLoad;
+                        self.show(Screen::LanLobby, assets)
+                    }
                     Err(key) => {
                         let text = assets.frames.string(key);
                         self.show_dialog(&text, false, DialogAction::Notice, assets);
@@ -1178,9 +1190,12 @@ impl Glue {
             }
             (Screen::LanJoin, "JoinButton") => {
                 self.keep_lan_name();
-                if let Err(key) = self.lan.join() {
-                    let text = assets.frames.string(key);
-                    self.show_dialog(&text, false, DialogAction::Notice, assets);
+                match self.lan.join() {
+                    Ok(()) => self.back = Screen::LanJoin,
+                    Err(key) => {
+                        let text = assets.frames.string(key);
+                        self.show_dialog(&text, false, DialogAction::Notice, assets);
+                    }
                 }
             }
             (Screen::LanCreate, "CancelButton") => self.show(Screen::LanJoin, assets),
@@ -1189,7 +1204,10 @@ impl Glue {
                 let game = self.lan.game_name(&assets.frames);
                 let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
                 match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed, self.skirmish.flags, &self.chain) {
-                    Ok(()) => self.show(Screen::LanLobby, assets),
+                    Ok(()) => {
+                        self.back = Screen::LanJoin;
+                        self.show(Screen::LanLobby, assets)
+                    }
                     Err(key) => {
                         let text = assets.frames.string(key);
                         self.show_dialog(&text, false, DialogAction::Notice, assets);
@@ -1252,14 +1270,17 @@ impl Glue {
         } else if name == "ScoreScreenTeamColorButton" {
             s.ally_colors = !s.ally_colors;
         } else if name == "ScoreScreenOkButton" {
-            let (next, prev) = (s.next.take(), s.prev);
+            // CScoreScreen's OK (FUN_6f2e4940): the next level, or back to the screen the
+            // game started from (FUN_6f2fff00).
+            let next = s.next.take();
             self.score = None;
             self.sprite_sequences.clear();
             match next {
                 Some(map) => self.action = Some(GlueAction::Campaign(map)),
                 None => {
-                    self.build(prev, assets);
-                    self.play_layers(&format!("{} Birth", prev.token()));
+                    let back = self.back;
+                    self.build(back, assets);
+                    self.play_layers(&format!("{} Birth", back.token()));
                     self.phase = Phase::Birth;
                 }
             }

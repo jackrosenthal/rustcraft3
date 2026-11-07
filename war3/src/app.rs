@@ -63,7 +63,8 @@ impl Running {
         r.glue_saved = r.glue.take();
         if let Some(g) = r.glue_saved.as_mut() {
             g.press_a_key = false;
-            g.show(crate::glue::Screen::Skirmish, &mut r.assets);
+            let back = g.back;
+            g.show(back, &mut r.assets);
         }
     }
 }
@@ -699,6 +700,12 @@ impl ApplicationHandler for App {
                             let replay = r.pending_replay.take();
                             match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, replay) {
                                 Ok(mut s) => {
+                                    // The map's tileset forgot the textures made at run
+                                    // time (TextureCache::set_tileset), the map preview
+                                    // among them: the glue makes it again when it next
+                                    // draws (the loading screen, or the screen the game
+                                    // goes back to).
+                                    glue.skirmish.preview_dirty = true;
                                     // A loaded network game: each computer plays its own
                                     // player.
                                     if let (Some(me), Some(g)) = (r.pending_local.take(), s.game.as_mut()) {

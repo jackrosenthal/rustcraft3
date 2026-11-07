@@ -2335,6 +2335,13 @@ impl World {
                     let tail = vec![agent, Field::Short(periodic as u16), Field::Short(left as u16), Field::Real(rest), Field::Ref(handler), handler_list(expiries)];
                     out.push((own.0, agent_first(own, codes::class::TIMER, &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Real(t.timeout), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
                 }
+                // A hashtable (`ghth`): its number, from 1 in the order they were made
+                // (`World::saved_hashtables`).
+                Some(Obj::Hashtable(_)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let n = self.hashtable_ids().iter().position(|&h| h == id).map_or(0, |k| k as u32 + 1);
+                    out.push((own.0, agent_first(own, codes::class::HASHTABLE, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Word(n)] })));
+                }
                 Some(Obj::Location(x, y)) => {
                     let Some(own) = slot_of(id) else { continue };
                     out.push((own.0, agent_first(own, codes::class::LOCATION, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));

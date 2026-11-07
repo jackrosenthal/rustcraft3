@@ -220,9 +220,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.rand_data = crate::rng::RandData::new(v);
             none()
         },
+        // (Its agent, `ghth`, the handle's in the handle table and saved games.)
         InitHashtable => |w, _, _| {
-            w.tags.take(codes::class::HASHTABLE);
-            handle(w.handles.insert(Obj::Hashtable(Box::default())))
+            let slot = w.tags.take(codes::class::HASHTABLE);
+            let h = w.handles.insert(Obj::Hashtable(Box::default()));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         SaveInteger => |w, _, a| {
             if let Some(t) = hashtable(w, a.h(0)) { t.ints.insert((a.i(1), a.i(2)), a.i(3)); }

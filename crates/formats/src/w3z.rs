@@ -1037,6 +1037,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::class::HANDLER, "w", "w"),
     // CMapLocation (`FUN_6f27e7d0`): two reals; CRect (`FUN_6f246870`): four.
     (codes::class::LOCATION, "w", "ff"),
+    // A hashtable (InitHashtable's): its number among the game's hashtables, from 1, by
+    // which the hashtables part names it (read: a test map's two, 1 and 2).
+    (codes::class::HASHTABLE, "w", "w"),
     (codes::class::RECT, "w", "ffff"),
     // CTriggerAction (`FUN_6f299650`) and a filter (`FUN_6f211140`): a reference.
     (codes::class::TRIGGER_ACTION, "w", "r"),

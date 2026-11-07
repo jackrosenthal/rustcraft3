@@ -698,7 +698,7 @@ impl Game {
             ("game 3", w.saved_game_3(&[])),
             ("terrain", w.saved_terrain(&[]).unwrap_or_default()),
             ("script data", vec![Field::Bytes(script)]),
-            ("hashtables", vec![Field::List(Vec::new()), Field::Word(0)]),
+            ("hashtables", w.saved_hashtables()),
             ("references", w.saved_sites()),
             ("sounds", w.saved_sounds()),
             ("ui", w.saved_ui()),

@@ -203,24 +203,29 @@ impl Host {
         events
     }
 
-    /// Answers searches for this game, and offers it now and then (to programs that
-    /// cannot hear searches, sharing this computer's game port).
+    /// Answers searches for this game (GAMEINFO, only so: `FUN_6f974ed0`), and now and
+    /// then says how many are in it (REFRESHGAME, `FUN_6f9742f0`), which a browser that
+    /// does not know the game answers with a search for it (programs that cannot hear
+    /// searches, sharing this computer's game port, so still find it; the interval is
+    /// provisional).
     fn discover(&mut self) {
         let Some(d) = self.discovery.as_ref() else { return };
         if self.phase != Phase::Lobby {
             return;
         }
         for (from, p) in d.poll() {
-            if let Packet::SearchGame { product, version } = p
+            if let Packet::SearchGame { product, version, game } = p
                 && product == self.info.product
                 && version == self.info.version
+                && (game == 0 || game == self.info.host_counter)
             {
                 d.send_to(&self.game_info(), from);
             }
         }
         if self.last_announce.elapsed() >= ANNOUNCE_EVERY {
             self.last_announce = Instant::now();
-            d.broadcast(&self.game_info());
+            let Packet::GameInfo(g) = self.game_info() else { return };
+            d.broadcast(&Packet::RefreshGame { host_counter: g.host_counter, players: g.players, player_slots: g.player_slots });
         }
     }
 

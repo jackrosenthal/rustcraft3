@@ -262,7 +262,7 @@ impl Browser {
         let now = std::time::Instant::now();
         if self.last_search.is_none_or(|t| now - t >= std::time::Duration::from_secs(3)) {
             self.last_search = Some(now);
-            self.discovery.broadcast(&Packet::SearchGame { product: self.product, version: self.version });
+            self.discovery.broadcast(&Packet::SearchGame { product: self.product, version: self.version, game: 0 });
         }
         let before = self.games.len();
         let mut changed = false;
@@ -280,9 +280,19 @@ impl Browser {
                         }
                     }
                 }
-                Packet::CreateGame { .. } | Packet::RefreshGame { .. } => {
-                    self.discovery.send_to(&Packet::SearchGame { product: self.product, version: self.version }, from);
+                // A game created, or one unknown refreshed, is asked after by its host
+                // counter (`FUN_6f974e40`, `FUN_6f975020`); a known one's refresh gives
+                // its count of players (`FUN_6f97b170`).
+                Packet::CreateGame { product, version, host_counter } if product == self.product && version == self.version => {
+                    self.discovery.send_to(&Packet::SearchGame { product, version, game: host_counter }, from);
                 }
+                Packet::RefreshGame { host_counter, players, player_slots } => match self.games.iter_mut().find(|e| e.0.ip() == from.ip() && e.1.host_counter == host_counter) {
+                    Some(e) => {
+                        changed |= (e.1.players, e.1.player_slots) != (players, player_slots);
+                        (e.1.players, e.1.player_slots, e.2) = (players, player_slots, now);
+                    }
+                    None => self.discovery.send_to(&Packet::SearchGame { product: self.product, version: self.version, game: host_counter }, from),
+                },
                 Packet::DecreateGame { host_counter } => self.games.retain(|e| !(e.0.ip() == from.ip() && e.1.host_counter == host_counter)),
                 _ => {}
             }

@@ -151,8 +151,11 @@ pub enum Packet {
     PongToHost(u32),
 
     // Over UDP.
-    /// 0x2F: who hosts a game of this product and version?
-    SearchGame { product: [u8; 4], version: u32 },
+    /// 0x2F: who hosts a game of this product and version?  `game` names one game by
+    /// its host counter (0 for all), as a browser asks a host it heard create or refresh
+    /// a game it does not know (`FUN_6f974e40`, `FUN_6f975020`; the host answers for that
+    /// game only, `FUN_6f974ed0`).
+    SearchGame { product: [u8; 4], version: u32, game: u32 },
     /// 0x30: a game on offer.
     GameInfo(GameInfo),
     /// 0x31, 0x32, 0x33: a game is created, its count of players changes, it is gone.
@@ -335,8 +338,8 @@ impl Packet {
             P::MapPartNotOk { from, to } => {
                 w.u8(*from).u8(*to).u32(1);
             }
-            P::SearchGame { product, version } => {
-                w.bytes(product).u32(*version).u32(0);
+            P::SearchGame { product, version, game } => {
+                w.bytes(product).u32(*version).u32(*game);
             }
             P::GameInfo(g) => {
                 w.bytes(&g.product).u32(g.version).u32(g.host_counter).u32(g.entry_key).cstr(&g.name).u8(0);
@@ -481,11 +484,7 @@ impl Packet {
                 P::MapPartNotOk { from, to }
             }
             0x46 => P::PongToHost(r.u32()?),
-            0x2F => {
-                let p = P::SearchGame { product: r.array()?, version: r.u32()? };
-                r.u32()?;
-                p
-            }
+            0x2F => P::SearchGame { product: r.array()?, version: r.u32()?, game: r.u32()? },
             0x30 => {
                 let (product, version, host_counter, entry_key) = (r.array()?, r.u32()?, r.u32()?, r.u32()?);
                 let name = r.cstr()?;

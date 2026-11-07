@@ -55,7 +55,7 @@ impl LogView {
         let (font, size) = tree.text_font(db, "LogArea").unwrap_or((db.decorate("MasterFont"), 0.011));
         let inset = tree.frames[i].def.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, |a| a.num());
         let w = (r.w() - 2.0 * inset).max(0.0);
-        tree.frames[i].text.as_deref().unwrap_or("").split('\n').map(|l| if l.trim().is_empty() { 1 } else { db.wrap(&font, size, l, w).len() }).sum()
+        w3_ui::text_lines(tree.frames[i].text.as_deref().unwrap_or("")).into_iter().map(|l| if l.trim().is_empty() { 1 } else { db.wrap(&font, size, l, w).len() }).sum()
     }
 
     /// A click: OK closes the log (returns true).

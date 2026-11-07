@@ -268,11 +268,10 @@ impl UiRenderer {
                     let Some(fi) = self.font(textures, font) else { continue };
                     let px = (size * px_per_unit).round().max(1.0) as u32;
                     let to_px_x = |x: f32| x * sw / ui_width;
-                    // Break at newlines and |n, then wrap words to the frame's width.
+                    // Break at the text's line breaks, then wrap words to the frame's width.
                     let max_w = to_px_x(rect.x1) - to_px_x(rect.x0);
-                    let text = text.replace("|n", "\n").replace("|N", "\n");
                     let mut lines: Vec<String> = Vec::new();
-                    for para in text.split('\n') {
+                    for para in w3_ui::text_lines(text) {
                         // A line's leading spaces stay; a break drops the space it falls at.
                         let mut cur = String::new();
                         for (k, word) in para.split(' ').enumerate() {
@@ -319,27 +318,26 @@ impl UiRenderer {
                             Justify::Middle => (rx0 + rx1 - widths[li]) / 2.0,
                         };
                         let baseline = y + ascent;
-                        let mut chars = line.chars().peekable();
-                        while let Some(c) = chars.next() {
+                        let mut i = 0;
+                        while let Some((t, n)) = w3_ui::text_token(&line[i..]) {
+                            i += n;
                             // |cAARRGGBB ... |r color codes.
-                            if c == '|' {
-                                match chars.peek() {
-                                    Some('c') | Some('C') => {
-                                        chars.next();
-                                        let hex: String = chars.by_ref().take(8).collect();
-                                        if let (Ok(v), false) = (u32::from_str_radix(&hex, 16), is_shadow) {
-                                            col = [((v >> 16) & 0xff) as f32 / 255.0, ((v >> 8) & 0xff) as f32 / 255.0, (v & 0xff) as f32 / 255.0, (v >> 24) as f32 / 255.0];
-                                        }
-                                        continue;
+                            let c = match t {
+                                w3_ui::TextToken::Color(v) => {
+                                    if !is_shadow {
+                                        col = [((v >> 16) & 0xff) as f32 / 255.0, ((v >> 8) & 0xff) as f32 / 255.0, (v & 0xff) as f32 / 255.0, (v >> 24) as f32 / 255.0];
                                     }
-                                    Some('r') | Some('R') => {
-                                        chars.next();
-                                        col = base_color;
-                                        continue;
-                                    }
-                                    _ => {}
+                                    continue;
                                 }
-                            }
+                                w3_ui::TextToken::Reset => {
+                                    col = base_color;
+                                    continue;
+                                }
+                                t => match t.char() {
+                                    Some(c) => c,
+                                    None => continue,
+                                },
+                            };
                             let Some(g) = self.glyph(queue, fi, px, c) else { continue };
                             let (gx0, gy1) = (x + g.xmin, baseline - g.ymin);
                             let (gx1, gy0) = (gx0 + g.w, gy1 - g.h);
@@ -380,31 +378,6 @@ impl UiRenderer {
 impl UiRenderer {
     /// Width in pixels of a line without its color codes.
     fn measure(&mut self, queue: &wgpu::Queue, font: usize, px: u32, line: &str) -> f32 {
-        strip_colors(line).chars().filter_map(|c| self.glyph(queue, font, px, c).map(|g| g.advance)).sum()
+        w3_ui::strip_color_codes(line).chars().filter_map(|c| self.glyph(queue, font, px, c).map(|g| g.advance)).sum()
     }
-}
-
-fn strip_colors(s: &str) -> String {
-    let mut out = String::new();
-    let mut it = s.chars().peekable();
-    while let Some(c) = it.next() {
-        if c == '|' {
-            match it.peek() {
-                Some('c') | Some('C') => {
-                    it.next();
-                    for _ in 0..8 {
-                        it.next();
-                    }
-                    continue;
-                }
-                Some('r') | Some('R') => {
-                    it.next();
-                    continue;
-                }
-                _ => {}
-            }
-        }
-        out.push(c);
-    }
-    out
 }

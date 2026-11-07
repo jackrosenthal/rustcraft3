@@ -66,24 +66,24 @@ impl Assets {
     }
 }
 
-/// A name without its color codes (FUN_6f2bff20).
+/// A name without its codes (FUN_6f2bff20): FUN_6f123190 (flags 0x600) drops its color
+/// codes, line breaks, and "||" pairs, again until it finds none.
 fn strip_color_codes(s: &str) -> String {
-    let mut out = String::new();
-    let mut rest = s;
-    while let Some(i) = rest.find('|') {
-        out.push_str(&rest[..i]);
-        let tail = &rest[i + 1..];
-        if tail.starts_with(['c', 'C']) && tail.len() >= 9 {
-            rest = &tail[9..];
-        } else if tail.starts_with(['r', 'R']) {
-            rest = &tail[1..];
-        } else {
-            out.push('|');
-            rest = tail;
+    let mut s = s.to_string();
+    loop {
+        let (mut out, mut dropped, mut i) = (String::new(), false, 0);
+        while let Some((t, n)) = w3_ui::text_token(&s[i..]) {
+            match t {
+                w3_ui::TextToken::Char(_) => out.push_str(&s[i..i + n]),
+                _ => dropped = true,
+            }
+            i += n;
         }
+        if !dropped {
+            return out;
+        }
+        s = out;
     }
-    out.push_str(rest);
-    out
 }
 
 /// The color a player's unit shows in the world: its own, or under the ally color

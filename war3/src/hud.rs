@@ -1981,7 +1981,7 @@ impl Hud {
             let ax = ax0 + (root.x0 + 0.8 - ax0) * ox;
             let ay = ay0 + (root.y0 + 0.452 - ay0) * oy;
             let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
-            let text = self.unit_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
+            let text = self.unit_messages.iter().map(|m| w3_ui::end_colors(&m.text)).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font, size, rect: slots(rect, size), text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
         // The chat message frame (CGameUI's +0x3ec, FUN_6f367710): from the screen's top
@@ -1992,7 +1992,7 @@ impl Hud {
         if !self.chat_messages.is_empty() {
             let size = height("WorldFrameChatMessage");
             let rect = slots(w3_ui::Rect { x0: root.x0 + 0.00625, x1: root.x1 - 0.02, y0: root.y0 + 0.2, y1: root.y1 }, size);
-            let text = self.chat_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
+            let text = self.chat_messages.iter().map(|m| w3_ui::end_colors(&m.text)).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
     }

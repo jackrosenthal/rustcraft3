@@ -107,11 +107,10 @@ impl FrameDb {
         strip_color_codes(line).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0 * scale
     }
 
-    /// Breaks text at newlines and |n, then words to `max_w` (as the renderer does).
+    /// Breaks text at its line breaks, then words to `max_w` (as the renderer does).
     pub fn wrap(&self, font: &str, size: f32, text: &str, max_w: f32) -> Vec<String> {
-        let text = text.replace("|n", "\n").replace("|N", "\n");
         let mut lines = Vec::new();
-        for para in text.split('\n') {
+        for para in text_lines(text) {
             // A line's leading spaces stay (REQUIRESTOOLTIP's "\n - %s" lines show
             // indented in the original); a break drops the space it falls at.
             let mut cur = String::new();
@@ -680,7 +679,7 @@ impl FrameTree {
                     let path = self.skin_font(name.as_str());
                     wrap_lines(self.fonts.get(&path.to_ascii_lowercase()).map(|f| &**f), size, text, width)
                 }
-                _ => text.replace("|n", "\n").replace("|N", "\n").split('\n').count(),
+                _ => text_lines(text).len(),
             };
             lines.max(1) as f32 * size
         });
@@ -1322,7 +1321,7 @@ impl FrameTree {
         };
         let text = f.text.clone().unwrap_or_default();
         let w = (r.w() - 2.0 * inset).max(0.0);
-        let lines: Vec<String> = text.split('\n').flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
+        let lines: Vec<String> = text_lines(&text).into_iter().flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
         ((font, size), line_h, gap, inset, lines)
     }
 
@@ -1668,16 +1667,15 @@ impl FrameTree {
     }
 }
 
-/// How many lines text takes when broken at newlines and |n and then wrapped to `max_w`
+/// How many lines text takes when broken at its line breaks and then wrapped to `max_w`
 /// (as the renderer and FrameDb::wrap break it).
 fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -> usize {
     let width = |s: &str| match font {
         Some(f) => strip_color_codes(s).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0,
         None => s.chars().count() as f32 * size * 0.5,
     };
-    let text = text.replace("|n", "\n").replace("|N", "\n");
     let mut n = 0;
-    for para in text.split('\n') {
+    for para in text_lines(text) {
         let mut cur = String::new();
         n += 1;
         for word in para.split(' ') {
@@ -1702,28 +1700,108 @@ pub fn advance(font: &fontdue::Font, c: char, px: f32) -> f32 {
     if font.has_glyph(c) { font.metrics(c, px).advance_width } else { 0.0 }
 }
 
-/// Text without |cAARRGGBB and |r color codes.
-pub fn strip_color_codes(s: &str) -> String {
-    let mut out = String::new();
-    let mut it = s.chars().peekable();
-    while let Some(c) = it.next() {
-        if c == '|' {
-            match it.peek() {
-                Some('c') | Some('C') => {
-                    it.next();
-                    for _ in 0..8 {
-                        it.next();
-                    }
-                    continue;
-                }
-                Some('r') | Some('R') => {
-                    it.next();
-                    continue;
-                }
-                _ => {}
-            }
+/// A piece of interface text, as the original's text parser (FUN_6f12c170) reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextToken {
+    /// A character to draw; a '|' that starts no code stands for itself.
+    Char(char),
+    /// "||": one '|' (its code 3).
+    Pipe,
+    /// |cAARRGGBB, as 0xAARRGGBB.
+    Color(u32),
+    /// |r: back to the text's own color.
+    Reset,
+    /// A line break: \n, \r (with a \n after it, one break), or |n.
+    Break,
+}
+
+impl TextToken {
+    /// The character it draws, if any.
+    pub fn char(self) -> Option<char> {
+        match self {
+            TextToken::Char(c) => Some(c),
+            TextToken::Pipe => Some('|'),
+            _ => None,
         }
-        out.push(c);
+    }
+}
+
+/// The first token of `s` and its length in bytes (FUN_6f12c170).  A |c takes the eight
+/// hex digits after it, else it is no code: its '|' stands for itself, and the 'c' and
+/// the rest draw.
+pub fn text_token(s: &str) -> Option<(TextToken, usize)> {
+    let c = s.chars().next()?;
+    Some(match c {
+        '\n' => (TextToken::Break, 1),
+        '\r' => (TextToken::Break, if s[1..].starts_with('\n') { 2 } else { 1 }),
+        '|' => match s[1..].chars().next() {
+            Some('c' | 'C') => match s.get(2..10).filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit())) {
+                Some(h) => (TextToken::Color(u32::from_str_radix(h, 16).unwrap_or(0)), 10),
+                None => (TextToken::Char('|'), 1),
+            },
+            Some('r' | 'R') => (TextToken::Reset, 2),
+            Some('n' | 'N') => (TextToken::Break, 2),
+            Some('|') => (TextToken::Pipe, 2),
+            _ => (TextToken::Char('|'), 1),
+        },
+        c => (TextToken::Char(c), c.len_utf8()),
+    })
+}
+
+/// Text cut at its line breaks, each line keeping its codes.
+pub fn text_lines(s: &str) -> Vec<&str> {
+    let (mut out, mut start, mut i) = (Vec::new(), 0, 0);
+    while let Some((t, n)) = text_token(&s[i..]) {
+        if t == TextToken::Break {
+            out.push(&s[start..i]);
+            start = i + n;
+        }
+        i += n;
+    }
+    out.push(&s[start..]);
+    out
+}
+
+/// Text with its colors ended (|r), to go before more text in one draw; a '|' it ends
+/// with stays a '|' ("||") rather than taking the |r's.
+pub fn end_colors(s: &str) -> String {
+    let (mut last, mut i) = (None, 0);
+    while let Some((t, n)) = text_token(&s[i..]) {
+        last = Some((t, i, n));
+        i += n;
+    }
+    match last {
+        Some((TextToken::Char('|'), at, 1)) => format!("{}|||r", &s[..at]),
+        _ => format!("{s}|r"),
+    }
+}
+
+/// The characters text draws: without its color codes, "||" as one '|', and its line
+/// breaks as '\n'.
+pub fn strip_color_codes(s: &str) -> String {
+    let (mut out, mut i) = (String::new(), 0);
+    while let Some((t, n)) = text_token(&s[i..]) {
+        match t {
+            TextToken::Break => out.push('\n'),
+            t => out.extend(t.char()),
+        }
+        i += n;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_codes_read_as_the_original_reads_them() {
+        assert_eq!(text_lines("a\r\nb\rc\nd|ne|Nf"), ["a", "b", "c", "d", "e", "f"]);
+        assert_eq!(text_lines("a||nb"), ["a||nb"]);
+        assert_eq!(strip_color_codes("a||b|cffff0000c|Rd|cxyz|"), "a|bcd|cxyz|");
+        assert_eq!(text_token("|cff00ff00x"), Some((TextToken::Color(0xff00ff00), 10)));
+        assert_eq!(end_colors("a|"), "a|||r");
+        assert_eq!(end_colors("a||"), "a|||r");
+        assert_eq!(end_colors("|cffff0000a"), "|cffff0000a|r");
+    }
 }

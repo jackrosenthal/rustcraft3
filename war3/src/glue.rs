@@ -1863,16 +1863,17 @@ impl Glue {
     /// Game.dll's version resource has it).  Its text frame, made without a font, takes
     /// FRIZQT__.TTF 0.015 high (its digits measure 0.0105 high in captures), is as wide
     /// as its text, and has its lower right corner on the glue's, 0.013 in (SetPoint
-    /// BOTTOMRIGHT at 0x6f2dc144).  Its baseline is a sixth of the size above the
-    /// screen's bottom edge (5 pixels of 30 at 1195 high, 3 of 18 at 720), not the
-    /// font's descent, a quarter: so a "p" loses the end of its tail below the edge.
+    /// BOTTOMRIGHT at 0x6f2dc144).  The original's baseline is a sixth of the size above
+    /// the screen's bottom edge (5 pixels of 30 at 1195 high), where its digits fit; this
+    /// text's "p" would lose the end of its tail there, so the text sits a little higher,
+    /// its descent and its shadow above the edge.
     fn version_text(&self, assets: &Assets) -> Draw {
         let w = self.tree.width;
         let size = 0.015;
         Draw::Text {
             font: assets.frames.decorate("MasterFont"),
             size,
-            rect: w3_ui::Rect { x0: 0.0, x1: w - 0.013, y0: -size / 12.0, y1: size },
+            rect: w3_ui::Rect { x0: 0.0, x1: w - 0.013, y0: 0.001, y1: 0.001 + size },
             text: concat!("rustcraft3 ", env!("CARGO_PKG_VERSION"), ", compatible with 1.27.1.7085").into(),
             color: [1.0; 4],
             justify_h: w3_ui::Justify::End,

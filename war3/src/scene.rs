@@ -374,8 +374,10 @@ pub struct Scene {
     /// Whether the game ended by its script (EndGame: the victory or defeat dialog's
     /// button) rather than through the game menu, for the replay's last leave.
     left_by_script: bool,
-    /// Whether the game menu's pause is noted for the replay (`Game::note`).
+    /// Whether the game menu's pause and a script dialog's are noted for the replay
+    /// (`Game::note`).
     menu_noted: bool,
+    dialog_noted: bool,
     /// The network game this is, if any.
     pub net: Option<crate::net::Session>,
     /// The players the host waits on, and whether the host is silent.
@@ -939,7 +941,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), step_owed: 0.0, left_by_script: false, menu_noted: false, net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), step_owed: 0.0, left_by_script: false, menu_noted: false, dialog_noted: false, net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -4296,16 +4298,25 @@ impl Scene {
         // goes on under the victory dialog, shown once the player is removed.
         // A game played alone's game menu pauses it, as the original's sends Pause as the
         // menu opens and Resume as it closes (noted for its replay: `Game::note`), but
-        // for one the game is quit through (read: its replays' last Pause unanswered).
+        // for one the game is quit through (read: its replays' last Pause unanswered); so
+        // does a script dialog that stops it (CScriptDialogMode's vf9 sends Pause, its
+        // vf10 Unpause; read: the original frozen under a test map's dialog and going on
+        // after its button; provisional: a dialog after the player's victory, which the
+        // original paused under, where the port goes on).
+        let dialog_pauses = self.dialog_pauses();
         if self.net.is_none() && self.playback.is_none() && !self.ended {
             let open = self.hud.as_ref().is_some_and(|h| h.menu.is_some());
-            if let (true, Some(g)) = (open != self.menu_noted, self.game.as_mut()) {
-                self.menu_noted = open;
+            let shown = self.hud.as_ref().is_some_and(|h| h.dialog.is_some()) && dialog_pauses;
+            if let Some(g) = self.game.as_mut() {
                 let player = g.world.local_player;
-                g.note(w3_game::replay::Command::Pause { player, on: open });
+                for (on, noted) in [(open, &mut self.menu_noted), (shown, &mut self.dialog_noted)] {
+                    if on != *noted {
+                        *noted = on;
+                        g.note(w3_game::replay::Command::Pause { player, on });
+                    }
+                }
             }
         }
-        let dialog_pauses = self.dialog_pauses();
         // (A game quit takes no more steps.)
         let paused = self.net.is_none() && (self.ended || self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some() || (h.dialog.is_some() && dialog_pauses)));
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);

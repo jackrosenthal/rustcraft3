@@ -1860,7 +1860,10 @@ these are the findings behind them.
     shows (Mafarazzo TD's at its turn 12); quit through the menu, its last Pause goes
     unanswered.  The port notes its menu's Pause and Resume for its replay
     (`Game::note`), its menu stopping the game by itself, so both fall in the turn after
-    the menu (the last Pause in a turn of no time); not yet a script dialog's.  A cheat
+    the menu (the last Pause in a turn of no time); a script dialog's too, while it
+    stops the game (CScriptDialogMode's vf9 sends Pause outside network games, its vf10
+    Unpause; the original frozen under a test map's dialog and going on after its OK;
+    which turns hold them still to be read).  A cheat
     typed alone goes as its action, no chat line (allyourbasearebelongtous 0x32,
     somebodysetupusthebomb 0x22, daylightsavings 12 as 0x2e and 12.0; game.dll's
     CNetCommandCheat* classes, 0x20 to 0x32 by their command words 0xa00NN, `cheats`), and

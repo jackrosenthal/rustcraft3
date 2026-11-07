@@ -282,8 +282,11 @@ pub fn leave_word(w: &World) -> u32 {
     if observer || w.player_results.contains_key(&me) { leave::OBSERVER } else { leave::LOST }
 }
 
-/// A turn is 50 ms of game time.
-pub const TURN: f32 = 0.05;
+/// The host makes a turn each 100 ms (the LAN provider's, `FUN_6f974710`; 250 over
+/// Battle.net), each as long as the time since the last, at least 1 ms and at most four
+/// turns' (`FUN_6f99e310`: the tick count since the last turn).
+pub const TURN: f32 = 0.1;
+const TURN_MAX: u16 = 400;
 /// The players a desync leaves out go after 2 s (`FUN_6f998880`).
 const DESYNC_DROP: Duration = Duration::from_millis(2000);
 
@@ -432,8 +435,9 @@ impl Session {
         chat
     }
 
-    /// The host's turns: one each TURN of game time, unless it waits on players not yet
-    /// loaded or fallen behind (the host's lag screen, `Host::lagging`).
+    /// The host's turns: one each TURN of game time, as long as the time since the last,
+    /// unless it waits on players not yet loaded or fallen behind (the host's lag
+    /// screen, `Host::lagging`).
     fn host_turns(&mut self, dt: f32) {
         let Link::Host(h) = &mut self.role.link else { return };
         self.waiting = !h.all_loaded() || !h.lagging().is_empty();
@@ -441,8 +445,10 @@ impl Session {
             return;
         }
         self.clock += dt;
-        while self.clock >= TURN {
-            self.clock -= TURN;
+        if self.clock >= TURN {
+            let ms = ((self.clock * 1000.0).round() as u16).clamp(1, TURN_MAX);
+            // (Time past the longest turn is not made up.)
+            self.clock = if ms == TURN_MAX { 0.0 } else { (self.clock - ms as f32 / 1000.0).max(0.0) };
             // Each person's actions as one block.
             let mut blocks: Vec<(u8, Vec<u8>)> = Vec::new();
             for (pid, data) in std::mem::take(&mut self.pending) {
@@ -451,17 +457,17 @@ impl Session {
                     None => blocks.push((pid, data)),
                 }
             }
-            let mut f = frame(&self.role.players, (TURN * 1000.0) as u16, &blocks);
+            let mut f = frame(&self.role.players, ms, &blocks);
             f.leaves = std::mem::take(&mut self.leaves);
             f.chat = std::mem::take(&mut self.chat);
-            h.send_turn((TURN * 1000.0) as u16, blocks);
+            h.send_turn(ms, blocks);
             self.queue.push_back(f);
             self.next += 1;
         }
     }
 
-    /// The frames whose time has come: one per TURN of game time, faster while frames
-    /// pile up.
+    /// The frames whose time has come, each as its length of game time passes, faster
+    /// while frames pile up.
     pub fn due(&mut self, dt: f32) -> Vec<Frame> {
         self.owed = (self.owed + dt).min(TURN * 4.0);
         let mut out = Vec::new();

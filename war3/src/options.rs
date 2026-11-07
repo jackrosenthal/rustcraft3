@@ -120,12 +120,12 @@ impl Options {
     /// The settings as the original keeps them: its registry keys and values, written as
     /// a registry file (REGEDIT4) under the user's data folder.
     fn path() -> Option<PathBuf> {
-        Some(dirs::data_dir()?.join("war3-remaster").join("Warcraft III.reg"))
+        Some(dirs::data_dir()?.join("rustcraft3").join("Warcraft III.reg"))
     }
 
     /// Before the registry file, the settings were JSON.
     fn old_path() -> Option<PathBuf> {
-        Some(dirs::data_dir()?.join("war3-remaster").join("options.json"))
+        Some(dirs::data_dir()?.join("rustcraft3").join("options.json"))
     }
 
     pub fn load() -> Options {

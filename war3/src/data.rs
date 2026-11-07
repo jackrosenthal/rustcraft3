@@ -89,7 +89,7 @@ pub struct ProfileEntry {
 pub const PROFILE_NAME_MAX: usize = 15;
 
 fn data_root() -> Option<PathBuf> {
-    Some(dirs::data_dir()?.join("war3-remaster"))
+    Some(dirs::data_dir()?.join("rustcraft3"))
 }
 
 impl Profiles {

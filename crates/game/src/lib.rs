@@ -1333,18 +1333,27 @@ impl Game {
                 O::Done
             }
             C::Build { worker, id, x, y } => {
-                let r = self.world.order_build(worker, id, x, y);
+                // A place the structure cannot take refuses the order at once, nothing
+                // paid (traced over LAN: Mafarazzo TD's peasant sent to build an Arrow
+                // Tower beside the road, its order and block made and freed, no walk;
+                // the port had taken the gold and refused it as the peasant arrived).
+                let r = if self.world.can_place(id, x, y) { self.world.order_build(worker, id, x, y) } else { Err("Cantplace") };
                 if r.is_ok() {
                     self.world.player_build_objects(worker);
                 } else if self.world.unit(worker).is_some() {
                     // One refused makes its order and a block, both freed in the next
                     // tick, the block first (traced over LAN: Mafarazzo TD's peasant
                     // sent to build the HSBC without its Castle and St George Bank;
-                    // provisional: for every refusal).
+                    // provisional: for every refusal), by the main clock as the order
+                    // was carried out, after the timers due as that tick begins, as an
+                    // accepted one's (traced: the peasant sent to build beside the road
+                    // at turn 21, the leaderboard's trigger at 2.0 making its objects
+                    // first).
                     let order = self.world.tags.take(codes::class::ORDER_POINT);
                     let block = self.world.tags.take(codes::class::TASK_A);
-                    self.world.tags.doom(block);
-                    self.world.tags.doom(order);
+                    let at = self.world.actions_clock();
+                    self.world.tags.doom_at(at, block);
+                    self.world.tags.doom_at(at, order);
                 }
                 res(r)
             }

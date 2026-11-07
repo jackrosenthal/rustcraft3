@@ -5747,7 +5747,17 @@ Formats the port made its own, to be replaced by the original's:
   given there (`World::player_build_objects` now frees them by the main clock as the
   order was carried out).  A build order refused (the HSBC without its Castle and St
   George Bank, the selections of that game having missed) makes `ord.` and a block,
-  both freed in the next tick, the block first (provisional: for every refusal).
+  both freed in the next tick, the block first (provisional: for every refusal), by the
+  main clock as the order was carried out, after the timers due as that tick begins, as
+  an accepted one's.  One to a place the structure cannot take is refused so at once,
+  nothing paid and no walk: traced over LAN (the mafp game, `abtest/mafp.hostactions`),
+  the peasant sent to build an Arrow Tower at (-416, -2600), its footprint over the
+  vertical road's unbuildable band (x -384 to 352), made `ord.` and a block in turn 20,
+  freed in turn 21 after the leaderboard trigger's objects at 2.0; the port had paid,
+  walked the peasant there, and refused it as it arrived (gold back at turn 39).  So
+  mafp's keepalives agree for all 201 turns.  (Measured at a place `World::can_place`
+  refuses where the original's check, `FUN_6f66f050`, is not read; provisional: that
+  the two refuse the same places beyond the bands the Mafarazzo games tried.)
   A flying builder begins its structure as one touching it whenever it is within its
   repair's reach (`FUN_6f41d1f0`'s distance), the rise made anew at once, no target
   task or search: the same game's flying peasant, 2.97 cells from its Cutter Tower's

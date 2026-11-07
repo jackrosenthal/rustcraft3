@@ -8,6 +8,7 @@ pub mod fdf;
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use fdf::{Arg, Def, Prop};
 use w3_formats::profile::Profile;
@@ -93,6 +94,9 @@ impl FrameDb {
     pub fn set_screen(&self, ui_width: f32, size: (u32, u32)) {
         if size.0 > 0 && size.1 > 0 {
             self.text_scale.set(ui_width * size.1 as f32 / (UI_HEIGHT * size.0 as f32));
+            // Text is set in whole pixels (pen_advance), so its width depends on the
+            // screen's height.
+            SCREEN_HEIGHT.store(size.1, Ordering::Relaxed);
         }
     }
 
@@ -104,7 +108,7 @@ impl FrameDb {
             _ => 1.0,
         };
         let Some(f) = self.fonts.get(&font.to_ascii_lowercase()) else { return line.chars().count() as f32 * size * 0.5 * scale };
-        strip_color_codes(line).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0 * scale
+        line_width(f, size, line) * scale
     }
 
     /// Breaks text at its line breaks, then words to `max_w` (as the renderer does).
@@ -615,7 +619,7 @@ impl FrameTree {
             let size = p.args.get(1).map_or(0.012, Arg::num);
             let path = self.skin_font(p.args.first().map(Arg::as_str).unwrap_or("MasterFont"));
             let Some(font) = self.fonts.get(&path.to_ascii_lowercase()) else { continue };
-            let w = strip_color_codes(text).chars().map(|c| advance(font, c, 64.0)).sum::<f32>() * size / 64.0;
+            let w = line_width(font, size, text);
             // As wide as the text, and a line tall.
             self.frames[i].width = Some(w + 1e-4);
             self.frames[i].fitted = true;
@@ -1749,7 +1753,7 @@ impl FrameTree {
 /// (as the renderer and FrameDb::wrap break it).
 fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -> usize {
     let width = |s: &str| match font {
-        Some(f) => strip_color_codes(s).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0,
+        Some(f) => line_width(f, size, s),
         None => s.chars().count() as f32 * size * 0.5,
     };
     let mut n = 0;
@@ -1769,13 +1773,58 @@ fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -
     n
 }
 
-/// How far a character advances text at `px`: not at all if the font lacks it.  The
-/// original neither draws nor spaces such a character: its glyph lookup (FUN_6f130ae0)
-/// finds none when FT_Get_Char_Index gives 0 (FUN_6f136290), and its layout (FUN_6f12e260)
-/// and measures (FUN_6f12efb0, FUN_6f12f310) pass over it; so FRIZQT__.TTF, without CJK,
-/// shows Mafarazzo TD's Chinese Town Hall tooltip as only the "2" in it.
-pub fn advance(font: &fontdue::Font, c: char, px: f32) -> f32 {
-    if font.has_glyph(c) { font.metrics(c, px).advance_width } else { 0.0 }
+/// The height in pixels of the screen text is measured for (FrameDb::set_screen), 0
+/// until one is set.
+static SCREEN_HEIGHT: AtomicU32 = AtomicU32::new(0);
+
+/// Pixels per interface unit on the screen text is measured for (768 high until one is
+/// set).
+pub fn text_px_per_unit() -> f32 {
+    match SCREEN_HEIGHT.load(Ordering::Relaxed) {
+        0 => 768.0 / UI_HEIGHT,
+        h => h as f32 / UI_HEIGHT,
+    }
+}
+
+/// The size in pixels text `size` high is drawn at (as the renderer rounds it).
+pub fn text_px(size: f32) -> f32 {
+    (size * text_px_per_unit()).round().max(1.0)
+}
+
+/// How far the pen moves past `c`, toward `next`, at `px`, as the original sets text
+/// (FUN_6f12b0f0, from its layout FUN_6f12e260 and its measures FUN_6f12efb0 and
+/// FUN_6f12f310, under a western locale): the glyph's advance or its bitmap's width,
+/// whichever is less, plus the pair's kerning from the font (only when negative), rounded
+/// up to a whole pixel; "11", "1l", and "l1" take a pixel more.  A glyph without a bitmap
+/// (a space) is a quarter of the size wide (FUN_6f1362e0).  Each glyph's bitmap is drawn
+/// at the pen, its bearing dropped, so FRIZQT__.TTF's digits, set as wide as each other
+/// with broad bearings, sit close ("1.27.1.7085" on the main menu), and letters a little
+/// closer than their advances.  A character the font lacks neither shows nor moves the
+/// pen: the glyph lookup (FUN_6f130ae0) finds none when FT_Get_Char_Index gives 0
+/// (FUN_6f136290), and the layout and measures pass over it; so FRIZQT__.TTF, without
+/// CJK, shows Mafarazzo TD's Chinese Town Hall tooltip as only the "2" in it.
+pub fn pen_advance(font: &fontdue::Font, px: f32, c: char, next: Option<char>) -> f32 {
+    if !font.has_glyph(c) {
+        return 0.0;
+    }
+    let m = font.metrics(c, px);
+    let bitmap = if m.width > 0 && m.height > 0 { m.width as f32 } else { ((px as u32 + 3) / 4) as f32 };
+    let kern = next.and_then(|n| font.horizontal_kern(c, n, px)).map_or(0.0, |k| k.min(0.0));
+    let pair = matches!((c, next), ('1', Some('1')) | ('1', Some('l')) | ('l', Some('1')));
+    (m.advance_width.min(bitmap) + kern).ceil() + if pair { 1.0 } else { 0.0 }
+}
+
+/// A line's width in pixels at `px`, without its color codes: its characters' pen
+/// advances.
+pub fn line_width_px(font: &fontdue::Font, px: f32, line: &str) -> f32 {
+    let chars: Vec<char> = strip_color_codes(line).chars().filter(|&c| font.has_glyph(c)).collect();
+    chars.iter().enumerate().map(|(i, &c)| pen_advance(font, px, c, chars.get(i + 1).copied())).sum()
+}
+
+/// A line's width in interface units, in text `size` high, on the screen text is
+/// measured for (unstretched: see FrameDb::text_width).
+pub fn line_width(font: &fontdue::Font, size: f32, line: &str) -> f32 {
+    line_width_px(font, text_px(size), line) / text_px_per_unit()
 }
 
 /// A piece of interface text, as the original's text parser (FUN_6f12c170) reads it.

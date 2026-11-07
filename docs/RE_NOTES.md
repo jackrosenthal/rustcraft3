@@ -307,6 +307,21 @@ original images.
   LAN capture: chat baselines 0.2153 and 0.2283, the unit messages' lowest 0.2457, the
   error line's 0.191).  So the chat lines sit in their own block at the lower left,
   above the hero portrait and under the unit messages.
+- Text layout (`FUN_6f12b0f0`, from the layout `FUN_6f12e260` and the measures
+  `FUN_6f12efb0` and `FUN_6f12f310`): the pen moves past each glyph by
+  `ceil(min(advance, bitmap width) + min(kerning, 0))` pixels, the kerning
+  FT_Get_Kerning's unscaled value times the size's scale, plus a pixel for "11", "1l",
+  and "l1" (table at `0x6fa8dfe4`, `FUN_6f12bd60`); each bitmap is drawn at the pen, its
+  bearing dropped.  A glyph without a bitmap (a space) is `(size + 3) / 4` pixels wide
+  (`FUN_6f1362e0`).  Under a Chinese, Japanese, Korean, or Thai locale (`FUN_6f193b70`
+  sets `0x6fd4adf4`) the advance is not clamped and the bearing is kept.  So digits,
+  FRIZQT's as wide as each other with broad bearings, sit close ("1.27.1.7085" is 122
+  pixels at 1195 high, not 170 by advances), and letters a little closer than by their
+  advances (the glue buttons 4 to 5% narrower; the port's labels now match the
+  captures to a pixel, and the Repair tooltip wraps "at the cost / of resources." as
+  the original's does).  Glyphs load with FT_Load_Glyph flags 0xa8 (autohinted) or
+  0xaa (unhinted) (`FUN_6f136290`); the port's are unhinted, and its small text can
+  come out a pixel or two wider a line (the Repair tooltip's 321 pixels to 316).
 - UI\MiscUI.txt [FontHeights] values all carry a "// comment"; the game reads the number
   before it (`FUN_6f047680`).  (The port had read WorldFrameChatMessage, 0.013, as its
   default, 0.015.)
@@ -411,12 +426,16 @@ original images.
   in a 1272 × 686 window on a 1280 × 720 display it keeps that vertical extent and spans
   exactly 16:9 across, so the scene is not stretched with the glue but sees more to the
   sides (16:9 is likely the size it renders at, scaled into the window; where x is
-  widened was not traced).
+  widened was not traced).  The unit portrait is a CSpriteFrame too (CPortraitButton's
+  vtables `0x6fabfbc0` and `0x6fabfce8` keep CSpriteFrame's `FUN_6f0f6490`,
+  `FUN_6f0f7700`, `FUN_6f0f7080`, and `FUN_6f0f6fc0`), so its model camera goes the
+  same way; `FUN_6f126e30` has no other caller.
 - The main menu's version (`0x6f2dc0c4`): "%d.%d.%d.%d" of the constants 1, 27, 1, 7085
   in a `CTextFrame` made by code (`FUN_6f0fd2c0`), right justified (`FUN_6f0fdd20(2)`),
   its BOTTOMRIGHT on the menu's at (−0.013, 0) (`0x6f2dc144`).  Captured, its digits'
-  baseline is 0.0025 above the screen's bottom and they are 0.0105 tall (FRIZQT about
-  0.014 high, set tighter than the font's advances); its right edge 0.013 in.
+  baseline is 0.0025 above the screen's bottom (a sixth of the size) and they are 0.0105
+  tall: FRIZQT 0.015 high, it seems (the CTextFrame constructor `FUN_6f0fcd60` stores
+  0.015 at +0x210; no font is set), its right edge 0.013 in.
 - A glue button plays `GlueScreenClick` (`FUN_6f358c30`) and fades the screen's controls
   for `UI\MiscData.txt [Glue] ControlFadeDuration` (0.25); the timer it starts
   (`FUN_6f33fd40`, duration from `FUN_6f047680`) then changes screens, and only then do

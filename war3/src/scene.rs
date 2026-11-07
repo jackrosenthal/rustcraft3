@@ -4544,8 +4544,10 @@ impl Scene {
     }
 
     pub fn sync_hud(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
-        // Text is measured as it will be drawn on a screen of this shape.
-        db.set_screen(self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width), ((aspect * 1000.0).round().max(1.0) as u32, 1000));
+        // Text is measured as it will be drawn on a screen of this shape, as high as the
+        // window last drawn (text is set in whole pixels).
+        let height = if self.screen.1 > 0 { self.screen.1 } else { 1000 };
+        db.set_screen(self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width), ((aspect * height as f32).round().max(1.0) as u32, height));
         // A menu key or a load request waits for the menu it opened.
         if self.hud.as_ref().is_some_and(|h| h.menu.is_some()) {
             if std::mem::take(&mut self.load_dialog_requested) {
@@ -5429,10 +5431,13 @@ impl Scene {
         let target = Vec3::from_array(cam.target) + Vec3::from_array(w3_render::anim::sample(cam.tracks.vec3(b"KTTR"), &time, g, [0.0; 3]));
         let view = Mat4::look_at_rh(eye, target, Vec3::Z);
         let aspect = (x1 - x0) / (y1 - y0);
-        // The unit portrait's model camera field of view spans the viewport's diagonal,
-        // like the game camera's; the cinematic one (a SPRITE frame) takes it as the
-        // vertical extent (both matched against the original's).
-        let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt() };
+        // The unit portrait is a CSpriteFrame (CPortraitButton) seen through its model's
+        // camera (FUN_6f0f64e0, FUN_6f1adf40, FUN_6f126e30), which shares the field of
+        // view out along the diagonal of the frame in interface units, the angle and not
+        // its tangent, as the menu background does; the cinematic one (a SPRITE frame)
+        // takes it as the vertical extent (matched against the original's).
+        let frame = (rect.x1 - rect.x0) / (rect.y1 - rect.y0);
+        let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0 / (1.0 + frame * frame).sqrt()).tan() };
         let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
         // Lit from the camera's way and its left (compared against the original: faces

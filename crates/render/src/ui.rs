@@ -26,9 +26,7 @@ struct Glyph {
     uv: [f32; 4],
     w: f32,
     h: f32,
-    xmin: f32,
     ymin: f32,
-    advance: f32,
 }
 
 struct Atlas {
@@ -159,7 +157,7 @@ impl UiRenderer {
 
     fn glyph(&mut self, queue: &wgpu::Queue, font: usize, px: u32, c: char) -> Option<&Glyph> {
         // A character the font lacks has no glyph, not the font's box: the original
-        // neither draws nor spaces it (w3_ui::advance).
+        // neither draws nor spaces it (w3_ui::pen_advance).
         if !self.fonts[font].1.has_glyph(c) {
             return None;
         }
@@ -193,9 +191,7 @@ impl UiRenderer {
                 uv: [a.x as f32 / s, a.y as f32 / s, (a.x + w) as f32 / s, (a.y + h) as f32 / s],
                 w: w as f32,
                 h: h as f32,
-                xmin: m.xmin as f32,
                 ymin: m.ymin as f32,
-                advance: m.advance_width,
             });
             a.x += w + 1;
             a.row_h = a.row_h.max(h);
@@ -278,7 +274,7 @@ impl UiRenderer {
                         let mut cur = String::new();
                         for (k, word) in para.split(' ').enumerate() {
                             let cand = if k == 0 { word.to_string() } else { format!("{cur} {word}") };
-                            if !cur.trim().is_empty() && max_w > 1.0 && self.measure(queue, fi, px, &cand) > max_w {
+                            if !cur.trim().is_empty() && max_w > 1.0 && self.measure(fi, px, &cand) > max_w {
                                 lines.push(std::mem::take(&mut cur));
                                 cur = word.to_string();
                             } else {
@@ -292,7 +288,7 @@ impl UiRenderer {
                     // (measured against the original's titles and button numbers).
                     let line_h = px as f32;
                     let (ascent, descent) = self.fonts[fi].1.horizontal_line_metrics(px as f32).map_or((px as f32, 0.0), |m| (m.ascent, -m.descent));
-                    let widths: Vec<f32> = lines.iter().map(|l| self.measure(queue, fi, px, l)).collect();
+                    let widths: Vec<f32> = lines.iter().map(|l| self.measure(fi, px, l)).collect();
                     let to_px_y = |y: f32| sh - y * px_per_unit;
                     let (rx0, rx1) = (to_px_x(rect.x0), to_px_x(rect.x1));
                     let (ry_top, ry_bottom) = (to_px_y(rect.y1), to_px_y(rect.y0));
@@ -314,11 +310,14 @@ impl UiRenderer {
                     // colors the " - <type>" lines after it).
                     let mut col = base_color;
                     for (li, line) in lines.iter().enumerate() {
+                        // A line starts on a whole pixel, its pen moving by whole pixels
+                        // (w3_ui::pen_advance), as the original's does.
                         let mut x = ox + match justify_h {
                             Justify::Start => rx0,
                             Justify::End => rx1 - widths[li],
                             Justify::Middle => (rx0 + rx1 - widths[li]) / 2.0,
-                        };
+                        }
+                        .floor();
                         let baseline = y + ascent;
                         let mut i = 0;
                         while let Some((t, n)) = w3_ui::text_token(&line[i..]) {
@@ -340,11 +339,13 @@ impl UiRenderer {
                                     None => continue,
                                 },
                             };
+                            let next = w3_ui::strip_color_codes(&line[i..]).chars().find(|&c| self.fonts[fi].1.has_glyph(c));
+                            let adv = w3_ui::pen_advance(&self.fonts[fi].1, px as f32, c, next);
                             let Some(g) = self.glyph(queue, fi, px, c) else { continue };
-                            let (gx0, gy1) = (x + g.xmin, baseline - g.ymin);
+                            // The glyph's bitmap at the pen, its bearing dropped.
+                            let (gx0, gy1) = (x, baseline - g.ymin);
                             let (gx1, gy0) = (gx0 + g.w, gy1 - g.h);
                             let uv = g.uv;
-                            let adv = g.advance;
                             if g.w > 0.0 {
                                 let r = [gx0 / sw * 2.0 - 1.0, 1.0 - gy1 / sh * 2.0, gx1 / sw * 2.0 - 1.0, 1.0 - gy0 / sh * 2.0];
                                 push_quad(&mut verts, &mut batches, BindKey::Atlas, false, r, [[uv[0], uv[1]], [uv[2], uv[1]], [uv[0], uv[3]], [uv[2], uv[3]]], col, 1);
@@ -379,7 +380,8 @@ impl UiRenderer {
 
 impl UiRenderer {
     /// Width in pixels of a line without its color codes.
-    fn measure(&mut self, queue: &wgpu::Queue, font: usize, px: u32, line: &str) -> f32 {
-        w3_ui::strip_color_codes(line).chars().filter_map(|c| self.glyph(queue, font, px, c).map(|g| g.advance)).sum()
+    fn measure(&self, font: usize, px: u32, line: &str) -> f32 {
+        w3_ui::line_width_px(&self.fonts[font].1, px as f32, line)
     }
 }
+

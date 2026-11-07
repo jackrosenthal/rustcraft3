@@ -382,9 +382,11 @@ impl Commands {
             button.autocast = Some((on, off, state));
             // Its tooltip ends, a line apart, with how to turn auto-casting over: Untip
             // ("Right-click to activate auto-casting.") while off, Unubertip ("... to
-            // deactivate ...") while on, as the original's Repair shows.
+            // deactivate ...") while on, as the original's Repair shows.  Mana Shield,
+            // the one toggle with an Orderon, has its off side there ("Deactivate Mana
+            // Shield") instead.
             let hint = level_entry(&ab.list(if state { "Unubertip" } else { "Untip" }), level);
-            if !hint.is_empty() {
+            if !hint.is_empty() && code != codes::ability::SEA_WITCH_MANA_SHIELD {
                 button.ubertip = format!("{}|n|n{hint}", button.ubertip);
             }
         }

@@ -490,7 +490,9 @@ impl Glue {
         // A list's scroll bar takes its range from the rows on a page, known only now.
         if Self::lists(screen) {
             self.skirmish.set_bar(&mut self.tree);
-            // The list does not have the keyboard until it is pressed (provisional).
+            // The list does not have the keyboard until it is pressed: the screen's
+            // TabFocusDefault is a button (Skirmish.fdf's PlayGameButton, and the Load
+            // Saved Game, View Replay, and Custom Campaign screens' likewise).
             self.skirmish.list_focus = false;
         }
         if screen == Screen::SinglePlayer {

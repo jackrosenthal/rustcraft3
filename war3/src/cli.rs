@@ -31,7 +31,8 @@ pub struct Args {
     #[arg(long, conflicts_with = "fullscreen")]
     pub window: bool,
 
-    /// Run fullscreen at the display's native resolution (the default).
+    /// Run fullscreen (the default) on the display in use (on Windows, the primary one), at
+    /// its native resolution.
     #[arg(long)]
     pub fullscreen: bool,
 
@@ -47,11 +48,11 @@ pub struct Args {
     #[arg(long)]
     pub swtnl: bool,
 
-    /// Window width; defaults to the display's native width.
+    /// Window width; defaults to the native width of the window's display.
     #[arg(long, value_name = "PIXELS")]
     pub width: Option<u32>,
 
-    /// Window height; defaults to the display's native height.
+    /// Window height; defaults to the native height of the window's display.
     #[arg(long, value_name = "PIXELS")]
     pub height: Option<u32>,
 

@@ -9,6 +9,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::monitor::MonitorHandle;
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::cli::Args;
@@ -46,6 +47,8 @@ struct Running {
     cursor_hidden: bool,
     /// Screen captures (Print Screen).
     capture: crate::screenshot::Capture,
+    /// The window's sides still to take from its display (`fit_window`).
+    fit: Option<(Option<u32>, Option<u32>)>,
 }
 
 impl Running {
@@ -88,22 +91,23 @@ pub fn run(args: Args) -> anyhow::Result<()> {
 
 impl App {
     fn start(&mut self, el: &ActiveEventLoop) -> anyhow::Result<()> {
-        let monitor = el.primary_monitor().or_else(|| el.available_monitors().next());
-        let native = monitor.as_ref().map(|m| m.size()).unwrap_or(PhysicalSize::new(1920, 1080));
-        let size = PhysicalSize::new(
-            self.args.width.unwrap_or(native.width),
-            self.args.height.unwrap_or(native.height),
-        );
         let mut attrs = Window::default_attributes().with_title(match self.data.version {
             data::Version::FrozenThrone => "Warcraft III: The Frozen Throne",
             data::Version::ReignOfChaos => "Warcraft III",
         });
+        // A window given both sides opens at them; one given fewer takes the rest from its
+        // display once it has one (`fit_window`).
+        let mut fit = None;
         if self.args.window {
-            attrs = attrs.with_inner_size(size);
+            match (self.args.width, self.args.height) {
+                (Some(w), Some(h)) => attrs = attrs.with_inner_size(PhysicalSize::new(w, h)),
+                sides => fit = Some(sides),
+            }
         } else {
-            attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(monitor)));
+            attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(fullscreen_monitor(el))));
         }
         let window = Arc::new(el.create_window(attrs)?);
+        fit_window(&window, &mut fit);
         let inner = window.inner_size();
         let backends = if self.args.opengl {
             wgpu::Backends::GL
@@ -156,9 +160,34 @@ impl App {
             keys: HashSet::new(),
             cursor: PhysicalPosition::new(0.0, 0.0),
             cursor_hidden: false, capture: Default::default(),
+            fit,
         });
         Ok(())
     }
+}
+
+/// The display to go fullscreen on.  The original takes Windows' primary display.  Elsewhere
+/// none is named, so the game opens on the display the user works on: on Wayland, which has
+/// no primary display, the compositor puts it on the focused output (sway does); on X11
+/// winit takes the display the window is on, first guessed from the pointer.  Naming the
+/// first listed display, as before, put the game on a laptop's own screen whichever display
+/// the user worked on.
+fn fullscreen_monitor(el: &ActiveEventLoop) -> Option<MonitorHandle> {
+    if cfg!(windows) {
+        el.primary_monitor()
+    } else {
+        None
+    }
+}
+
+/// Gives a window the sides it was not given from its display's native size, once the
+/// window is on a display: at once on X11 and Windows, and on Wayland once its first frame
+/// has shown it on an output.  Returns the new size when it is taken at once.
+fn fit_window(window: &Window, fit: &mut Option<(Option<u32>, Option<u32>)>) -> Option<PhysicalSize<u32>> {
+    let (w, h) = (*fit)?;
+    let native = window.current_monitor()?.size();
+    *fit = None;
+    window.request_inner_size(PhysicalSize::new(w.unwrap_or(native.width), h.unwrap_or(native.height)))
 }
 
 impl ApplicationHandler for App {
@@ -742,7 +771,10 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
-        if let Some(r) = &self.running {
+        if let Some(r) = self.running.as_mut() {
+            if let Some(s) = fit_window(&r.window, &mut r.fit) {
+                r.gpu.resize(s.width, s.height);
+            }
             r.window.request_redraw();
         }
     }

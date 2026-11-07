@@ -42,13 +42,11 @@ fn game(data: &war3::data::GameData, local: u8) -> anyhow::Result<w3_game::Game>
     Ok(g)
 }
 
-/// A network game loaded from a saved one, as player `local`.
+/// A network game loaded from a saved one, as player `local`: its map started with the
+/// lobby, then the save put in its place (`Game::restore_original`).
 fn restored(data: &war3::data::GameData, bytes: &[u8], local: u8) -> anyhow::Result<w3_game::Game> {
-    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
-    g.restore(w3_game::save::SaveGame::parse(bytes)?)?;
-    g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
-    g.outbox = Some(Vec::new());
-    g.world.network = true;
+    let mut g = game(data, local)?;
+    g.restore_original(&w3_game::save::parse(bytes)?)?;
     g.world.local_player = local;
     Ok(g)
 }
@@ -136,7 +134,7 @@ fn main() -> anyhow::Result<()> {
     // Their objects' words (each copy's identifier) must agree.  NETTEST_NETLOAD then has
     // each side load its own copy at two thirds and go on, as a LAN load does.
     let net_save = std::env::var("NETTEST_NETSAVE").ok();
-    if net_save.is_some() {
+    if net_save.is_some() || std::env::var("NETTEST_SAVE").is_ok() {
         for (g, local) in [(&mut gh, 0u8), (&mut gc, 1u8)] {
             g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: a[2].clone(), lobby: Some(lobby(local)), version: data.version as i32, flags: war3::advanced::DEFAULT_FLAGS, seed: 0, map_stat: Some(map_stat.clone()), game_name: Some("test".into()), net: Some(record.clone()), ..Default::default() }));
         }
@@ -157,7 +155,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         if Some(step) == save_at {
-            let bytes = gh.save(&a[2])?;
+            let bytes = gh.save_files()?;
             // NETTEST_SAVE_FILE: the saved game is also written there.
             if let Ok(f) = std::env::var("NETTEST_SAVE_FILE") {
                 std::fs::write(f, &bytes)?;
@@ -172,8 +170,7 @@ fn main() -> anyhow::Result<()> {
         if std::env::var("NETTEST_NETLOAD").is_ok() && step == 2 * steps / 3 {
             anyhow::ensure!(copies.len() == 2, "the copies were not both made");
             for (p, path, _) in &copies {
-                let bytes = w3_game::save::port_state(path).ok_or_else(|| anyhow::anyhow!("no port state beside {}", path.display()))?;
-                let g = restored(&data, &bytes, *p)?;
+                let g = restored(&data, &std::fs::read(path)?, *p)?;
                 if *p == 0 {
                     gh = g;
                 } else {
@@ -219,12 +216,11 @@ fn main() -> anyhow::Result<()> {
                     println!("player {p}: frame {}: a save {} at game time {:.3}", first + k as u32 + 1, if saving { "is over" } else { "begins" }, g.world.time);
                 }
                 for save in std::mem::take(&mut g.saves) {
-                    let (Some(dir), Ok((w3z, port))) = (net_save.as_ref(), save.files) else { anyhow::bail!("player {p}: no copy made of {}", save.name) };
+                    let (Some(dir), Ok(w3z)) = (net_save.as_ref(), save.file) else { anyhow::bail!("player {p}: no copy made of {}", save.name) };
                     let dir = std::path::Path::new(dir).join(if p == 0 { "host" } else { "peer" });
                     std::fs::create_dir_all(&dir)?;
                     let path = dir.join(&save.name);
                     std::fs::write(&path, &w3z)?;
-                    std::fs::write(w3_game::save::sidecar_path(&path), port)?;
                     let word = w3_formats::w3z::SaveGame::read(&w3z)?.objects_word;
                     println!("player {p}: saved {} (objects word {word:08x})", path.display());
                     copies.push((p, path, word));

@@ -26,7 +26,7 @@ struct Running {
     glue_saved: Option<crate::glue::Glue>,
     /// A map to load once the loading screen has been drawn.
     /// The map to load next, with the setup screen's choices or a saved game's state.
-    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::Load>)>,
+    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_formats::w3z::SaveGame>)>,
     /// A replay to watch on the pending map.
     pending_replay: Option<w3_game::replay::Replay>,
     /// The glue cinematic's scene sound.
@@ -123,7 +123,7 @@ impl App {
         let mut scene = match &self.args.loadfile {
             // A saved game starts its map with the saved state.
             Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
-                let save = w3_game::save::Load::read(path)?;
+                let save = w3_game::save::read(path)?;
                 let map = self.data.map_of_save(&save);
                 Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save), None)?)
             }
@@ -638,10 +638,10 @@ impl ApplicationHandler for App {
                             r.pending = Some((path, slots, None));
                         }
                         Some(crate::glue::GlueAction::LoadSave(file)) => {
-                            match w3_game::save::Load::read(&file) {
+                            match w3_game::save::read(&file) {
                                 Ok(save) => {
                                     self.data.campaign_game.set(false);
-                                    let map = save.map().to_string();
+                                    let map = save.map.clone();
                                     let path = self.data.map_of_save(&save);
                                     glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
                                     glue.show_loading(&mut r.assets);
@@ -663,16 +663,14 @@ impl ApplicationHandler for App {
                             r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                             self.data.setup_seed.set(r.pending_net.as_ref().map_or(0, |n| n.0.seed));
                         }
-                        // (Either format: the port's own state, which holds the setup; or a
-                        // copy in the original's, its map started with the lobby's setup,
+                        // (This computer's copy, its map started with the lobby's setup,
                         // seeded from the slot table as a new network game, then loaded.)
-                        Some(crate::glue::GlueAction::PlayNetSave(path, bytes, lobby, role, speed, me)) => match w3_game::save::Load::parse(&bytes) {
+                        Some(crate::glue::GlueAction::PlayNetSave(path, bytes, lobby, role, speed, me)) => match w3_game::save::parse(&bytes) {
                             Ok(load) => {
                                 self.data.campaign_game.set(false);
                                 glue.skirmish.summary = crate::skirmish::summarize_path(&path);
                                 glue.show_loading(&mut r.assets);
-                                let slots = matches!(load, w3_game::save::Load::Original(_)).then_some(lobby);
-                                r.pending = Some((path, slots, Some(load)));
+                                r.pending = Some((path, Some(lobby), Some(load)));
                                 r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                                 self.data.setup_seed.set(r.pending_net.as_ref().map_or(0, |n| n.0.seed));
                                 r.pending_local = Some(me);

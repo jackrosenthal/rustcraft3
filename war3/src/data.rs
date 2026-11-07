@@ -292,14 +292,14 @@ fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>>
 }
 
 impl GameData {
-    /// The map a saved game is on: a file as the port named it, or the original's path
-    /// from the game's folder.
-    pub fn map_of_save(&self, save: &w3_game::save::Load) -> std::path::PathBuf {
-        let path = std::path::PathBuf::from(save.map());
+    /// The map a saved game is on: its path from the game's folder, or a file outside
+    /// it as the port named it.
+    pub fn map_of_save(&self, save: &w3_formats::w3z::SaveGame) -> std::path::PathBuf {
+        let path = std::path::PathBuf::from(&save.map);
         if path.is_file() {
             return path;
         }
-        Some(self.dir.join(save.map().replace('\\', "/"))).filter(|p| p.is_file()).unwrap_or(path)
+        Some(self.dir.join(save.map.replace('\\', "/"))).filter(|p| p.is_file()).unwrap_or(path)
     }
 
     pub fn open(dir: &Path, classic: bool) -> anyhow::Result<GameData> {

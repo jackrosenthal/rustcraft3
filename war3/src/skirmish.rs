@@ -285,11 +285,12 @@ impl Skirmish {
             return;
         }
         if e.kind == EntryKind::Save {
-            // The saved game's map: a file, or one in the game's archives.
-            // (One the original saved, without the port's state, by its own header.)
-            let map = w3_game::save::port_state(&e.path).and_then(|b| w3_game::save::SaveGame::peek_map(&b)).or_else(|| w3_game::save::Load::read(&e.path).ok().map(|l| l.map().to_string()));
+            // The saved game's map (its header's): a file, or one in the game's archives.
+            let map = w3_game::save::read(&e.path).ok().map(|s| s.map);
             self.summary = map.and_then(|m| {
+                // (Its path from the game's folder, or a file outside it.)
                 let p = PathBuf::from(&m);
+                let p = if p.is_file() { p } else { self.maps_root.parent().map_or(p.clone(), |g| g.join(m.replace('\\', "/"))) };
                 // Saved games show the unknown map image, not the map's preview.
                 if p.is_file() { summarize(&p, false) } else { self.chain.as_ref().and_then(|c| summarize_from(c, &m)) }
             });

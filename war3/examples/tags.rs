@@ -148,8 +148,7 @@ fn main() -> anyhow::Result<()> {
     let flags = std::env::var("TAGS_FLAGS").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()).unwrap_or(war3::advanced::DEFAULT_FLAGS);
     // TAGS_SAVEDIR=<dir>: the network game's saves its actions call for (0x06) are made
     // as the port's client makes them, at the save's moment in its turn
-    // (`Game::after_keepalive`), into <dir> under the action's name, the port's own state
-    // beside each; the game described as its host offered it: TAGS_NETGAME names the
+    // (`Game::after_keepalive`), into <dir> under the action's name; the game described as its host offered it: TAGS_NETGAME names the
     // host example's log, whose "netgame" line has it, else as the host example offers
     // the map (`NetGame::offered`).  Its people's names go to their slots.
     let save_dir = std::env::var("TAGS_SAVEDIR").ok();
@@ -167,71 +166,56 @@ fn main() -> anyhow::Result<()> {
     }
     g.start_lobby(&lobby, flags)?;
     // TAGS_LOAD=<save>: the game is loaded from a network game's save as each computer of
-    // a LAN load loads its own copy (`war3::app`'s PlayNetSave): from the port's own
-    // state beside it (`save::port_state`), the game made afresh and its triggers told
-    // (EVENT_GAME_LOADED); else from the original's format over the map started with
+    // a LAN load loads its own copy (`war3::app`'s PlayNetSave): over the map started with
     // the lobby (`Game::restore_original`).  Its turns count from 1 again.
     if let Ok(file) = std::env::var("TAGS_LOAD") {
-        match w3_game::save::port_state(Path::new(&file)) {
-            Some(bytes) => {
-                let local = g.world.local_player;
-                g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
-                g.restore(w3_game::save::SaveGame::parse(&bytes)?)?;
-                g.world.set_map_path(&a[2]);
-                g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
-                g.world.local_player = local;
-                println!("loaded the port's own state of {file}");
+        let s = w3_game::save::read(Path::new(&file))?;
+        g.restore_original(&s)?;
+        println!("loaded {file}");
+        // TAGS_LOADSAVE=<file>: the restored game saved at once in the original's
+        // format (its header the loaded save's), to compare its records with the
+        // save it was restored from.
+        if let Ok(out) = std::env::var("TAGS_LOADSAVE") {
+            let head = w3_game::w3zscript::SaveHead { map: s.map.clone(), stat: s.info_stat.clone(), xoro: s.map_xoro, sha1: s.map_sha1, network: None };
+            let header = w3_formats::container::Header { product: *b"PX3W", version: 27, build: 6059, flags: 0, length_ms: 0 };
+            std::fs::write(&out, g.write_save_fresh(&head).to_file(&header))?;
+        }
+        // TAGS_LOADLIVE: the restored game's live tags against the save's table: by
+        // kind, those alike (slot, kind, and birth), at the slot with another
+        // birth or kind, and only the port's or only the save's.
+        if let (Ok(_), Some(m)) = (std::env::var("TAGS_LOADLIVE"), s.objects.as_ref()) {
+            let saved: std::collections::BTreeMap<u32, (u32, u32)> = m.tables[0].iter().map(|t| (t.tag, (t.kind, t.birth))).collect();
+            let mut by: std::collections::BTreeMap<String, [u32; 5]> = Default::default();
+            let name = |k: u32| String::from_utf8_lossy(&k.to_be_bytes()).into_owned();
+            for (&slot, (code, birth)) in &g.world.tags.live {
+                let k = u32::from_be_bytes(*code);
+                let e = by.entry(name(k)).or_default();
+                match saved.get(&slot) {
+                    Some(&(sk, sb)) if sk == k && sb == *birth => e[0] += 1,
+                    Some(&(sk, _)) if sk == k => e[1] += 1,
+                    Some(_) => e[2] += 1,
+                    None => {
+                        e[3] += 1;
+                        if std::env::var("TAGS_LOADLIVE").is_ok_and(|v| v == name(k)) {
+                            println!("  the port's only: {} slot {slot} birth {birth}", name(k));
+                        }
+                    }
+                }
             }
-            None => {
-                let s = w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?;
-                g.restore_original(&s)?;
-                println!("loaded {file} in the original's format");
-                // TAGS_LOADSAVE=<file>: the restored game saved at once in the original's
-                // format (its header the loaded save's), to compare its records with the
-                // save it was restored from.
-                if let Ok(out) = std::env::var("TAGS_LOADSAVE") {
-                    let head = w3_game::w3zscript::SaveHead { map: s.map.clone(), stat: s.info_stat.clone(), xoro: s.map_xoro, sha1: s.map_sha1, network: None };
-                    let header = w3_formats::container::Header { product: *b"PX3W", version: 27, build: 6059, flags: 0, length_ms: 0 };
-                    std::fs::write(&out, g.write_save_fresh(&head).to_file(&header))?;
+            for (slot, &(k, _)) in &saved {
+                if !g.world.tags.live.contains_key(slot) {
+                    by.entry(name(k)).or_default()[4] += 1;
                 }
-                // TAGS_LOADLIVE: the restored game's live tags against the save's table: by
-                // kind, those alike (slot, kind, and birth), at the slot with another
-                // birth or kind, and only the port's or only the save's.
-                if let (Ok(_), Some(m)) = (std::env::var("TAGS_LOADLIVE"), s.objects.as_ref()) {
-                    let saved: std::collections::BTreeMap<u32, (u32, u32)> = m.tables[0].iter().map(|t| (t.tag, (t.kind, t.birth))).collect();
-                    let mut by: std::collections::BTreeMap<String, [u32; 5]> = Default::default();
-                    let name = |k: u32| String::from_utf8_lossy(&k.to_be_bytes()).into_owned();
-                    for (&slot, (code, birth)) in &g.world.tags.live {
-                        let k = u32::from_be_bytes(*code);
-                        let e = by.entry(name(k)).or_default();
-                        match saved.get(&slot) {
-                            Some(&(sk, sb)) if sk == k && sb == *birth => e[0] += 1,
-                            Some(&(sk, _)) if sk == k => e[1] += 1,
-                            Some(_) => e[2] += 1,
-                            None => {
-                                e[3] += 1;
-                                if std::env::var("TAGS_LOADLIVE").is_ok_and(|v| v == name(k)) {
-                                    println!("  the port's only: {} slot {slot} birth {birth}", name(k));
-                                }
-                            }
-                        }
-                    }
-                    for (slot, &(k, _)) in &saved {
-                        if !g.world.tags.live.contains_key(slot) {
-                            by.entry(name(k)).or_default()[4] += 1;
-                        }
-                    }
-                    let total = by.values().fold([0u32; 5], |mut t, e| {
-                        for i in 0..5 {
-                            t[i] += e[i];
-                        }
-                        t
-                    });
-                    println!("live against the save (alike, other birth, other kind, the port's only, the save's only): {total:?}");
-                    for (k, e) in by.iter().filter(|(_, e)| e[1] + e[2] + e[3] + e[4] > 0) {
-                        println!("  {k} {e:?}");
-                    }
+            }
+            let total = by.values().fold([0u32; 5], |mut t, e| {
+                for i in 0..5 {
+                    t[i] += e[i];
                 }
+                t
+            });
+            println!("live against the save (alike, other birth, other kind, the port's only, the save's only): {total:?}");
+            for (k, e) in by.iter().filter(|(_, e)| e[1] + e[2] + e[3] + e[4] > 0) {
+                println!("  {k} {e:?}");
             }
         }
     }
@@ -355,12 +339,11 @@ fn main() -> anyhow::Result<()> {
         }
         for save in std::mem::take(&mut g.saves) {
             let Some(dir) = &save_dir else { continue };
-            match save.files {
-                Ok((w3z, port)) => {
+            match save.file {
+                Ok(w3z) => {
                     let path = Path::new(dir).join(&save.name);
                     std::fs::create_dir_all(dir)?;
                     std::fs::write(&path, &w3z)?;
-                    std::fs::write(w3_game::save::sidecar_path(&path), port)?;
                     let word = w3_formats::w3z::SaveGame::read(&w3z).map_or(0, |s| s.objects_word);
                     println!("turn {n}: saved {} (objects word {word:08x})", path.display());
                 }

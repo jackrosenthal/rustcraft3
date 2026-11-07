@@ -121,11 +121,10 @@ pub struct Game {
 }
 
 /// A network game's save as this computer made it (`Game::after_keepalive`): its name
-/// as the action gave it, and the save in the original's format with the port's own
-/// state beside it (`Game::save_files`), or why they were not made.
+/// as the action gave it, and the save (`Game::save_files`), or why it was not made.
 pub struct NetSaveMade {
     pub name: String,
-    pub files: Result<(Vec<u8>, Vec<u8>), String>,
+    pub file: Result<Vec<u8>, String>,
 }
 
 /// How a player slot is filled when the game starts.
@@ -966,9 +965,9 @@ impl Game {
         self.game_event(event_ids::EVENT_GAME_SAVE);
         let mut result = 0;
         if self.recorder.is_some() {
-            let files = self.recorder.as_ref().map(|r| r.replay.map.clone()).map_or_else(|| Err(anyhow::anyhow!("no record")), |map| self.save(&map)).and_then(|port| self.save_files(port)).map_err(|e| format!("{e:#}"));
-            result = files.is_ok() as u32;
-            self.saves.push(NetSaveMade { name, files });
+            let file = self.save_files().map_err(|e| format!("{e:#}"));
+            result = file.is_ok() as u32;
+            self.saves.push(NetSaveMade { name, file });
         }
         self.world.save_event = None;
         self.world.tags.release(data.0);

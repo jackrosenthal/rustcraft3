@@ -2565,8 +2565,9 @@ these are the findings behind them.
 
 Formats the port made its own, to be replaced by the original's:
 
-- Saved games: the port's world state (`crates/game/src/save.rs`), not the original's
-  .w3z.  The original's (`FUN_6f1e8630`, its SaveGame native `FUN_6f211360`; read with a
+- Saved games: the original's .w3z alone, which the port writes (`Game::save_files`)
+  and loads (`Game::restore_original`), with nothing of its own beside it; what its
+  writer and its load do not yet cover is below.  The original's (`FUN_6f1e8630`, its SaveGame native `FUN_6f211360`; read with a
   1.27b save made by a test map's script at 5 seconds, `Save\Profile2\CustomSaves`,
   and 1.22 ones): the replay container, its record a data store (bytes, words,
   dwords, NUL-ended strings) holding the map's path, the network game's name (empty
@@ -3125,7 +3126,7 @@ Formats the port made its own, to be replaced by the original's:
   players' gold and lumber, the time of day (CGameState's `` `rel `` 2), the map
   script's integer, real, and boolean variables, and the handles its units had.  Not
   yet: the time, construction and training, orders, items, trees, the other
-  variables, timers, and threads; and the port still writes its own saves.
+  variables, timers, and threads.
 - JASS bytecode, as a save keeps each code block (`ScriptData`, `w3zhead` with
   W3Z_CODE): 8-byte instructions, three register bytes, an opcode byte, and a 32-bit
   argument, with a string table from 1 ("main" first, then the type names); the map
@@ -5087,23 +5088,20 @@ Formats the port made its own, to be replaced by the original's:
   ability shares vision too (`CAbilityNeutral` vf190 `FUN_6f3f8010`), as a
   player's unit comes in range (the every-unit map's shops' at 5 seconds); the
   port does not, and the original makes them again after loading.
-- The game's Save writes the original's format (`Scene::save_files`: the fresh
-  writer, the header 1.27's, `PX3W` 27 6059), and the port's own state beside it
-  in `<save>.w3z.port`, stamped with the save's length and CRC-32.  Loading takes
-  the port's state when its stamp is the save's (`save::Load::read`), else reads the
-  save as the original's (its partial restore).  Nothing rides in the save itself:
-  the original refuses one with bytes after its record (back to the menu) or after
-  its container ("The save file is unavailable or corrupted").  Measured: a save
-  at 60 seconds of the hero map loads in the original and plays; the port resumes
-  it at 70 seconds after 10 more.
+- The game's Save writes the original's format alone (`Scene::save_files`: the fresh
+  writer, the header 1.27's, `PX3W` 27 6059), and loading reads it as the
+  original's (`save::read`, `Game::restore_original`), the port's own saves too.
+  Nothing rides in the save besides: the original refuses one with bytes after its
+  record (back to the menu) or after its container ("The save file is unavailable or
+  corrupted").  Measured: a save at 60 seconds of the hero map loads in the original
+  and plays.
 - A network game's save (the original's of a LAN game on Booty Bay, read): its
   second name empty, its description the game's GAMEINFO (its name, no password,
   the stat with the lobby's options, `0x648 << 8 | 2`, and the host's name, and the
   words people and 9, as a game played alone's "Local Game", 12, and 1), the slot
   table W3GS carries, and the local slot and player.  The port's network saves are
-  written so (`Replay::network_head`), the port's own state beside them as a game
-  played alone's; loading a network game takes everyone's port state, the same on
-  every computer (`save::port_state`), as before.  A game the port joined has the
+  written so (`Replay::network_head`); loading a network game, each computer loads
+  its own copy, as the original's do.  A game the port joined has the
   stat its host offered (below); not yet loaded by the original (its LAN load wants
   the other players to join it: the host example's W3HOSTLOAD now offers one as the
   port's LAN hosting does, the original to join it).
@@ -5190,7 +5188,7 @@ Formats the port made its own, to be replaced by the original's:
   turn).  The port does so (`Game::after_keepalive`, from `play_turn` and
   `play_frame`): each computer makes its copy then (`Game::saves`, `Game::save_files`,
   in a game being recorded), its client keeps it in Save\Multiplayer under the
-  action's name, the port's own state beside it, and says its save is done (0x07 with
+  action's name, and says its save is done (0x07 with
   1, `Command::SaveDone`).  Its interface's Save now sends the name with the extension.
 - A network game's save under way (the net session, `FUN_6f32c6a0`): +0x2dd the
   saver, +0x2e0 8000, +0x2e4 set, and the session's state 5 (`FUN_6f32feb0`).  The

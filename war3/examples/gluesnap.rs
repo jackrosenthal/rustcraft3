@@ -254,12 +254,11 @@ fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFor
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn net_game_saved(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, save: &[u8], lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, speed: u8, me: u8, w: u32, h: u32) -> anyhow::Result<()> {
-    // (Either format, as the app loads it: a save in the original's starts its map with
-    // the lobby's setup, seeded from the slot table, then loads.)
-    let load = w3_game::save::Load::parse(save)?;
-    let slots = matches!(load, w3_game::save::Load::Original(_)).then_some(lobby);
+    // (As the app loads it: its map started with the lobby's setup, seeded from the slot
+    // table, then loaded.)
+    let load = w3_game::save::parse(save)?;
     data.setup_seed.set(role.as_ref().map_or(0, |r| r.seed));
-    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, slots, Some(load), None)?;
+    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), Some(load), None)?;
     if let Some(g) = scene.game.as_mut() {
         g.world.local_player = me;
         println!("loaded at {:.1}s", g.world.time);

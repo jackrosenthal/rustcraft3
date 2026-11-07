@@ -522,11 +522,10 @@ impl Game {
 
     /// The game as a saved game in the original's format (`.w3z`, its recorded-game
     /// container with the header the original's 1.27 writes; a Reign of Chaos game's
-    /// product as its replays'), and the port's own state (`port`) as its sidecar
-    /// (`save::sidecar`).  Its header from the game's record: the map's path and
+    /// product as its replays').  Its header from the game's record: the map's path and
     /// checksums, and a network game's description (`Replay::network_head`), else a
     /// game played alone's (the local player's name, the speed fast).
-    pub fn save_files(&self, port: Vec<u8>) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+    pub fn save_files(&self) -> anyhow::Result<Vec<u8>> {
         use anyhow::Context;
         let record = self.recorder.as_ref().map(|r| &r.replay);
         let ms = record.and_then(|r| r.map_stat.clone()).context("the map's checksums are not known")?;
@@ -541,9 +540,7 @@ impl Game {
         };
         let head = SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network };
         let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
-        let w3z = self.write_save_fresh(&head).to_file(&header);
-        let side = crate::save::sidecar(&w3z, &port);
-        Ok((w3z, side))
+        Ok(self.write_save_fresh(&head).to_file(&header))
     }
 
     /// A save from the port's state alone, without a template: the header (`head`'s map

@@ -289,28 +289,7 @@ impl Lan {
         Ok(())
     }
 
-    /// A saved network game's setup: its people's slots kept for them by name, its
-    /// computers as they were.
-    fn saved_setup(save: &w3_game::save::SaveGame) -> Setup {
-        let slots = save
-            .players()
-            .iter()
-            .map(|p| NetSlot {
-                player: p.id,
-                holder: if p.computer { Holder::Computer(1) } else { Holder::Open },
-                name: if p.computer { String::new() } else { p.name.clone() },
-                race: p.race.clamp(0, 4) as usize,
-                team: if p.observer { OBSERVERS } else { p.team },
-                color: p.color,
-                handicap: 0,
-                locked: false,
-            })
-            .collect();
-        Setup { slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true, ..Default::default() }
-    }
-
-    /// A saved network game's setup from a save in the original's format: its slot
-    /// table's slots, its people's kept for them by the names their players' records
+    /// A saved network game's setup: its slot table's slots, its people's kept for them by the names their players' records
     /// hold, its computers as they were; and its people's count.
     fn original_setup(save: &w3_formats::w3z::SaveGame) -> Option<(Setup, u32)> {
         let table = w3_net::SlotTable::read(&mut w3_net::wire::Reader::new(&save.slots)).ok()?;
@@ -343,40 +322,30 @@ impl Lan {
         Some((Setup { slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true, ..Default::default() }, users))
     }
 
-    /// A save's identifier, as GAMEINFO carries it in place of the map's checksum: a
-    /// save in the original's format its objects' word (`FUN_6f324930`'s sum, the same
-    /// in every computer's copy; the original's join compares it with its own copy's,
-    /// CSaveGame +0x430), whether or not the port's own state is beside it, so that the
-    /// original's computers and the port's load it together; a save in the port's format
-    /// alone its CRC.
+    /// A save's identifier, as GAMEINFO carries it in place of the map's checksum: its
+    /// objects' word (`FUN_6f324930`'s sum, the same in every computer's copy; the
+    /// original's join compares it with its own copy's, CSaveGame +0x430), so that the
+    /// original's computers and the port's load it together.
     fn save_id(file: &Path) -> Option<u32> {
-        let bytes = std::fs::read(file).ok()?;
-        Some(match w3_game::save::Load::parse(&bytes) {
-            Ok(w3_game::save::Load::Original(s)) => s.objects_word,
-            _ => crc32fast::hash(&bytes),
-        })
+        Some(w3_game::save::read(file).ok()?.objects_word)
     }
 
-    /// This computer's copy of a saved network game: the port's own state beside it, or
-    /// the file in the original's format.
+    /// This computer's copy of a saved network game.
     fn saved_copy(file: &Path) -> Option<Vec<u8>> {
-        w3_game::save::port_state(file).or_else(|| std::fs::read(file).ok().filter(|b| b.starts_with(w3_formats::container::MAGIC)))
+        std::fs::read(file).ok().filter(|b| b.starts_with(w3_formats::container::MAGIC))
     }
 
-    /// A saved copy's setup and its people's count, either format.
+    /// A saved copy's setup and its people's count.
     fn copy_setup(bytes: &[u8]) -> Option<(Setup, u32, String)> {
-        match w3_game::save::Load::parse(bytes).ok()? {
-            w3_game::save::Load::Port(save) => Some((Lan::saved_setup(&save), save.players().iter().filter(|p| p.human).count() as u32, save.map.clone())),
-            w3_game::save::Load::Original(save) => Lan::original_setup(&save).map(|(s, n)| (s, n, save.map.clone())),
-        }
+        let save = w3_game::save::parse(bytes).ok()?;
+        Lan::original_setup(&save).map(|(s, n)| (s, n, save.map.clone()))
     }
 
     /// Hosts a saved network game (CLocalMultiplayerLoad): its map and speed, its
     /// people's slots kept for them by name, its computers as they were.  Everyone
     /// loads their own copy of the save (each computer saved it).
     pub fn host_saved(&mut self, file: &Path, game: &str, expansion: bool, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
-        // (The port's own state of it, everyone's the same, as the original's own format
-        // is not; else the original's, everyone's own copy loaded alike.)
+        // (Everyone's own copy loaded alike.)
         let bytes = Lan::saved_copy(file).ok_or("SAVE_ERROR_BAD_SAVE")?;
         let (mut setup, users, map) = Lan::copy_setup(&bytes).ok_or("SAVE_ERROR_BAD_SAVE")?;
         let mine = setup.slots.iter_mut().find(|s| s.holder == Holder::Open && s.name.eq_ignore_ascii_case(&self.name)).ok_or("NETERROR_JOINGAMEFAILED")?;
@@ -1124,10 +1093,9 @@ mod tests {
     }
 
     /// W3_PORT_LANSAVE: the port's copy of a network game's save (the tags example's
-    /// TAGS_SAVEDIR on Booty Bay, as Host and Jack, or nettest's NETTEST_NETSAVE): offered
-    /// from the port's own state beside it, its people's slots kept by name, and its
-    /// identifier the objects' word of the original's format, which its header carries
-    /// as the original's does.
+    /// TAGS_SAVEDIR on Booty Bay, as Host and Jack, or nettest's NETTEST_NETSAVE): its
+    /// people's slots kept by name, and its identifier the objects' word, which its
+    /// header carries as the original's does.
     #[test]
     fn a_port_network_save_keeps_its_people_slots() {
         let Some(file) = std::env::var_os("W3_PORT_LANSAVE") else { return };
@@ -1136,7 +1104,6 @@ mod tests {
         assert_eq!(w3z.objects_sum().ok(), Some(w3z.objects_word));
         assert_eq!(Lan::save_id(file), Some(w3z.objects_word));
         let bytes = Lan::saved_copy(file).expect("the copy reads");
-        assert!(matches!(w3_game::save::Load::parse(&bytes), Ok(w3_game::save::Load::Port(_))));
         let (setup, users, _) = Lan::copy_setup(&bytes).expect("its setup");
         assert_eq!(users, 2);
         let names = w3z.player_names().unwrap();

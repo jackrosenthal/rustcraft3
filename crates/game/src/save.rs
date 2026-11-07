@@ -1,129 +1,19 @@
-//! Saved games: the world's state and the scripts' variables and threads.  Loading
-//! starts the same map again (its object data, script, and strings) and puts the saved
-//! state in place of the fresh one.
-
-use serde::{Deserialize, Serialize};
-use w3_jass::{State, Thread};
+//! Saved games, in the original's format (.w3z, its recorded-game container: the
+//! port writes them with `Game::save_files`).  Loading starts the same map again with
+//! the save's setup and puts the saved state in place of the fresh one
+//! (`Game::restore_original`).
 
 use crate::Game;
 use crate::types::Obj;
-use crate::world::World;
 
-/// Bumped whenever the saved state's layout changes.
-const FORMAT: u32 = 14;
-
-/// A script machine's state.
-type Variables = State;
-
-#[derive(Serialize)]
-struct SaveRef<'a> {
-    format: u32,
-    map: &'a str,
-    world: &'a World,
-    variables: Variables,
-    ai: Vec<(u8, Variables, Vec<(f32, Thread)>)>,
+/// A saved game file, read whole.
+pub fn read(path: &std::path::Path) -> anyhow::Result<w3_formats::w3z::SaveGame> {
+    parse(&std::fs::read(path)?)
 }
 
-#[derive(Deserialize)]
-pub struct SaveGame {
-    format: u32,
-    /// The map the game is on, as the program named it when starting it.
-    pub map: String,
-    world: World,
-    variables: Variables,
-    ai: Vec<(u8, Variables, Vec<(f32, Thread)>)>,
-}
-
-impl Game {
-    /// The game's state as a saved game of map `map`.
-    pub fn save(&self, map: &str) -> anyhow::Result<Vec<u8>> {
-        let ai = self.world.ai_vms.iter().map(|(&p, a)| (p, a.vm.variables(), a.sleepers.clone())).collect();
-        let s = SaveRef { format: FORMAT, map, world: &self.world, variables: self.vm.variables(), ai };
-        Ok(postcard::to_stdvec(&s)?)
-    }
-
-    /// Restores a saved game into a game freshly loaded from the same map (before its
-    /// script has run).
-    pub fn restore(&mut self, save: SaveGame) -> anyhow::Result<()> {
-        if save.format != FORMAT {
-            anyhow::bail!("saved game format {} is not {FORMAT}", save.format);
-        }
-        let mut world = save.world;
-        let fresh = &mut self.world;
-        // What comes from the map rather than the game.
-        std::mem::swap(&mut world.chain, &mut fresh.chain);
-        std::mem::swap(&mut world.objects, &mut fresh.objects);
-        std::mem::swap(&mut world.natives, &mut fresh.natives);
-        std::mem::swap(&mut world.native_names, &mut fresh.native_names);
-        std::mem::swap(&mut world.trigger_strings, &mut fresh.trigger_strings);
-        std::mem::swap(&mut world.strings, &mut fresh.strings);
-        std::mem::swap(&mut world.misc, &mut fresh.misc);
-        std::mem::swap(&mut world.terrain_heights, &mut fresh.terrain_heights);
-        self.world = world;
-        self.vm.set_variables(save.variables);
-        // AI scripts compile again and take back their variables and threads.
-        for (player, vars, sleepers) in save.ai {
-            let Some(script) = self.world.ai.get(&player).map(|a| a.script.clone()) else { continue };
-            let Some((mut vm, natives, names)) = self.world.compile_ai(&script) else { continue };
-            vm.set_variables(vars);
-            vm.places = self.vm.places.clone();
-            if let Some(a) = self.world.ai.get_mut(&player) {
-                a.natives = natives;
-                a.native_names = names;
-            }
-            self.world.ai_vms.insert(player, crate::ai::AiVm { vm, sleepers });
-        }
-        Ok(())
-    }
-}
-
-/// A player of a saved game, for loading a network game.
-#[derive(Clone, Debug)]
-pub struct SavedPlayer {
-    pub id: u8,
-    pub name: String,
-    pub human: bool,
-    pub computer: bool,
-    pub observer: bool,
-    pub race: i32,
-    pub team: i32,
-    pub color: i32,
-}
-
-impl SaveGame {
-    /// The game's people, computers, and observers.
-    pub fn players(&self) -> Vec<SavedPlayer> {
-        use crate::types::{map_control, player_state, slot_state};
-        self.world
-            .players
-            .iter()
-            .filter(|p| p.id < 12)
-            .filter_map(|p| {
-                let observer = p.get_state(player_state::OBSERVER) != 0 && p.controller == map_control::USER;
-                let playing = p.slot_state == slot_state::PLAYING;
-                let human = p.controller == map_control::USER && (playing || observer);
-                let computer = p.controller == map_control::COMPUTER && playing;
-                (human || computer).then(|| SavedPlayer { id: p.id, name: p.name.clone(), human, computer, observer, race: p.race, team: p.team, color: p.color })
-            })
-            .collect()
-    }
-
-    pub fn parse(bytes: &[u8]) -> anyhow::Result<SaveGame> {
-        Ok(postcard::from_bytes(bytes)?)
-    }
-
-    /// The saved game's map, read without the rest of the state.
-    pub fn peek_map(bytes: &[u8]) -> Option<String> {
-        let ((format, map), _) = postcard::take_from_bytes::<(u32, String)>(bytes).ok()?;
-        (format == FORMAT).then_some(map)
-    }
-}
-
-/// A saved game to load: the port's, or the original's (.w3z in its recorded-game
-/// container, `w3_formats::w3z`).
-pub enum Load {
-    Port(SaveGame),
-    Original(Box<w3_formats::w3z::SaveGame>),
+/// A saved game's bytes, read whole.
+pub fn parse(bytes: &[u8]) -> anyhow::Result<w3_formats::w3z::SaveGame> {
+    Ok(w3_formats::w3z::SaveGame::read(bytes)?)
 }
 
 /// The setup a save of the original's was played with, for the map to start so before
@@ -155,75 +45,6 @@ pub fn original_lobby(s: &w3_formats::w3z::SaveGame) -> Vec<crate::LobbySlot> {
             }
         })
         .collect()
-}
-
-/// Where the port keeps its own state beside a saved game in the original's format:
-/// `<save>.port`.
-pub fn sidecar_path(path: &std::path::Path) -> std::path::PathBuf {
-    let mut s = path.as_os_str().to_owned();
-    s.push(".port");
-    std::path::PathBuf::from(s)
-}
-
-/// The original's file's length and CRC-32, with which its sidecar begins: a save
-/// written over since (by the original, or another) is not taken for its sidecar's.
-fn stamp(w3z: &[u8]) -> [u8; 8] {
-    let mut crc = flate2::Crc::new();
-    crc.update(w3z);
-    let mut out = [0; 8];
-    out[..4].copy_from_slice(&(w3z.len() as u32).to_le_bytes());
-    out[4..].copy_from_slice(&crc.sum().to_le_bytes());
-    out
-}
-
-/// The sidecar of a saved game in the original's format (`w3z`): its stamp, then the
-/// port's own state (`Game::save`).
-pub fn sidecar(w3z: &[u8], port: &[u8]) -> Vec<u8> {
-    [&stamp(w3z)[..], port].concat()
-}
-
-/// The port's own state of a saved game file: its sidecar's, when it is this file's,
-/// or the file itself in the port's format (as saves were before the original's
-/// format).
-pub fn port_state(path: &std::path::Path) -> Option<Vec<u8>> {
-    let bytes = std::fs::read(path).ok()?;
-    if !bytes.starts_with(w3_formats::container::MAGIC) {
-        return Some(bytes);
-    }
-    let side = std::fs::read(sidecar_path(path)).ok()?;
-    (side.len() > 8 && side[..8] == stamp(&bytes)).then(|| side[8..].to_vec())
-}
-
-impl Load {
-    /// A saved game file: the port's own state when its sidecar is this file's, else
-    /// the file as it reads.
-    pub fn read(path: &std::path::Path) -> anyhow::Result<Load> {
-        let bytes = std::fs::read(path)?;
-        if bytes.starts_with(w3_formats::container::MAGIC) {
-            if let Some(port) = port_state(path) {
-                match SaveGame::parse(&port) {
-                    Ok(s) => return Ok(Load::Port(s)),
-                    Err(e) => log::warn!("{}: the port's state beside it does not read ({e:#}); loading the save alone", path.display()),
-                }
-            }
-        }
-        Load::parse(&bytes)
-    }
-
-    pub fn parse(bytes: &[u8]) -> anyhow::Result<Load> {
-        if bytes.starts_with(w3_formats::container::MAGIC) {
-            return Ok(Load::Original(Box::new(w3_formats::w3z::SaveGame::read(bytes)?)));
-        }
-        Ok(Load::Port(SaveGame::parse(bytes)?))
-    }
-
-    /// The map the game is on (an original's from the game's folder).
-    pub fn map(&self) -> &str {
-        match self {
-            Load::Port(s) => &s.map,
-            Load::Original(s) => &s.map,
-        }
-    }
 }
 
 /// A handle's object's kind as the original's handle table names it, for those the

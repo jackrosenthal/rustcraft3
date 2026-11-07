@@ -607,15 +607,9 @@ impl Scene {
         map_path: &std::path::Path,
         aspect: f32,
         lobby: Option<&[w3_game::LobbySlot]>,
-        restore: Option<w3_game::save::Load>,
+        original: Option<w3_formats::w3z::SaveGame>,
         replay: Option<w3_game::replay::Replay>,
     ) -> anyhow::Result<Scene> {
-        // The port's saves restore before the map's script runs; the original's after.
-        let (restore, original) = match restore {
-            Some(w3_game::save::Load::Port(s)) => (Some(s), None),
-            Some(w3_game::save::Load::Original(s)) => (None, Some(s)),
-            None => (None, None),
-        };
         // A replay plays its own setup and profile.
         let replay_lobby = replay.as_ref().and_then(|r| r.lobby.clone());
         let lobby = if replay.is_some() { replay_lobby.as_deref() } else { lobby };
@@ -790,15 +784,6 @@ impl Scene {
             }
         };
         let mut game = match w3_game::Game::load_for(data.chain.clone(), data.version as i32, custom_keys.as_ref(), start) {
-            Ok(mut g) if restore.is_some() => {
-                g.restore(restore.unwrap())?;
-                g.world.set_map_path(&map_path.to_string_lossy());
-                // The loaded game's triggers hear it (EVENT_GAME_LOADED).
-                g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
-                g.world.saves_dir = crate::data::save_dir(data.version);
-                g.world.preload.dir = crate::data::custom_map_data_dir();
-                Some(g)
-            }
             Ok(mut g) => {
                 g.world.set_map_path(&map_path.to_string_lossy());
                 g.world.saves_dir = crate::data::save_dir(data.version);
@@ -3205,8 +3190,6 @@ impl Scene {
                         if let Err(e) = std::fs::remove_file(&path) {
                             log::error!("deleting {}: {e}", path.display());
                         }
-                        // (The port's state beside it goes with it.)
-                        let _ = std::fs::remove_file(w3_game::save::sidecar_path(&path));
                         p.refresh();
                     }
                 }
@@ -3258,15 +3241,14 @@ impl Scene {
         self.write_save(&path);
     }
 
-    /// Writes the game to a saved game file and returns to the game: the save in the
-    /// original's format, and the port's own state beside it (`save::sidecar_path`).
+    /// Writes the game to a saved game file (the original's format) and returns to the
+    /// game.
     fn write_save(&mut self, path: &std::path::Path) {
-        let res = self.save_files().and_then(|(w3z, port)| {
+        let res = self.save_files().and_then(|w3z| {
             if let Some(d) = path.parent() {
                 std::fs::create_dir_all(d)?;
             }
-            std::fs::write(path, w3z)?;
-            std::fs::write(w3_game::save::sidecar_path(path), port).map_err(Into::into)
+            std::fs::write(path, w3z).map_err(Into::into)
         });
         if let Err(e) = res {
             log::error!("saving {}: {e:#}", path.display());
@@ -4256,11 +4238,11 @@ impl Scene {
             }
             // A network game's saves, each computer's copy made at the save's moment in
             // its turn (`Game::after_keepalive`): kept in Save\\Multiplayer under the name
-            // the action gave, as the original's, the port's own state beside it.
+            // the action gave, as the original's.
             for save in std::mem::take(&mut g.saves) {
                 let path = crate::data::multiplayer_save_dir().map(|d| d.join(&save.name));
-                let res = match (path.as_ref(), save.files) {
-                    (Some(path), Ok((w3z, port))) => path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::write(path, w3z)).and_then(|_| std::fs::write(w3_game::save::sidecar_path(path), port)).map_err(|e| e.to_string()),
+                let res = match (path.as_ref(), save.file) {
+                    (Some(path), Ok(w3z)) => path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::write(path, w3z)).map_err(|e| e.to_string()),
                     (None, _) => Err("no saved games' folder".into()),
                     (_, Err(e)) => Err(e),
                 };
@@ -4642,26 +4624,14 @@ impl Scene {
         card_of(&self.commands, db, &g.world, h, page)
     }
 
-    /// The game as a saved game, in the port's own format.
-    pub fn save_game(&mut self) -> anyhow::Result<Vec<u8>> {
-        let g = self.game.as_mut().context("no game")?;
-        // The triggers hear the save first (EVENT_GAME_SAVE).
-        g.game_event(w3_game::event_ids::EVENT_GAME_SAVE);
-        g.save(&self.map_path)
-    }
-
     /// The game as a saved game in the original's format (`.w3z`, its recorded-game
     /// container with the header the original's 1.27 writes; provisional, a Reign of
-    /// Chaos game's product, as its replays'), and the port's own state as its
-    /// sidecar.
-    pub fn save_files(&mut self) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        let port = self.save_game()?;
-        self.save_files_of(port)
-    }
-
-    /// As `save_files`, the port's own state given (`Game::save_files`).
-    fn save_files_of(&self, port: Vec<u8>) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        self.game.as_ref().context("no game")?.save_files(port)
+    /// Chaos game's product, as its replays'), the triggers hearing the save first
+    /// (EVENT_GAME_SAVE; `Game::save_files`).
+    pub fn save_files(&mut self) -> anyhow::Result<Vec<u8>> {
+        let g = self.game.as_mut().context("no game")?;
+        g.game_event(w3_game::event_ids::EVENT_GAME_SAVE);
+        g.save_files()
     }
 
     /// The ground height the camera looks at: the terrain 500 units around the target

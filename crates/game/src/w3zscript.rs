@@ -638,6 +638,19 @@ impl Game {
                         let dead = w.tags.dead_handles.iter().filter(|(_, d)| d.0 .0 == o.entry.tag).map(|(h, _)| *h).collect::<Vec<_>>();
                         eprintln!("  fresh: no first record: slot {} {} birth {} dead handles {dead:?}", o.entry.tag, String::from_utf8_lossy(&o.entry.kind.to_be_bytes()), o.entry.birth);
                     }
+                    // (And each unit whose order's objects are among them: its action, its
+                    // order, and its order's objects' kinds as their slots hold them now, a
+                    // free one `-`: an AI order's list may name slots let go and taken since.)
+                    let dropped: std::collections::HashSet<u32> = objects[0].iter().filter(|o| o.first.is_empty()).map(|o| o.entry.tag).collect();
+                    let kind = |s: &u32| w.tags.live.get(s).map_or_else(|| "-".to_string(), |e| String::from_utf8_lossy(&e.0).into_owned());
+                    for &h in &w.unit_order {
+                        let Some(u) = w.unit(h) else { continue };
+                        for (what, tags) in [("order", &u.extra.order_tags), ("ai order", &u.extra.ai_order)] {
+                            if tags.iter().any(|s| dropped.contains(s)) {
+                                eprintln!("  fresh: unit {h} {} owner {} {what} {:?} action {:?} order {} at ({:.0}, {:.0}) target {}: {:?}", String::from_utf8_lossy(&u.type_id), u.owner, u.order.id, u.action, crate::natives::basic::order_name(u.order.id).unwrap_or("?"), u.order.target_x, u.order.target_y, u.order.target, tags.iter().map(kind).collect::<Vec<_>>());
+                            }
+                        }
+                    }
                 }
             }
         }

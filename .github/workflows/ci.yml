@@ -1,0 +1,111 @@
+# Builds rustcraft3 on Linux, Windows, and macOS, runs its tests, and keeps each
+# platform's build as a workflow artifact.  A pushed tag (v*) also makes a GitHub
+# release of those builds, with GitHub's generated release notes.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # With full debug information the tests' build, its 60 examples among it, takes about
+  # 14 GB, about all the disk a Linux runner has; with line tables (which keep panics'
+  # files and lines) it takes about 4 GB.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            bin: war3
+          - os: windows-latest
+            platform: windows-x86_64
+            bin: war3.exe
+          - os: macos-latest
+            platform: macos-aarch64
+            bin: war3
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      # Sound (cpal, by way of rodio) builds against ALSA.  Wayland, X11, and Vulkan are
+      # loaded when the game runs, so they need no headers.
+      - name: Install ALSA headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --workspace --locked
+
+      # The tests that read the game's own files (a replay in "Warcraft III/Replay" beside
+      # the repository, or a save named by W3_LANSAVE or W3_PORT_LANSAVE) pass without
+      # checking anything when those are missing, as they are here.
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Package
+        id: package
+        env:
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A tag's build is named for the tag, any other for its commit.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ref=$GITHUB_REF_NAME; else ref=${COMMIT:0:7}; fi
+          name=rustcraft3-$ref-${{ matrix.platform }}
+          mkdir "$name"
+          cp "target/release/${{ matrix.bin }}" "$name/"
+          for f in README.md LICENSE*; do
+            if [ -f "$f" ]; then cp "$f" "$name/"; fi
+          done
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a "$name.zip" "$name"
+            echo "file=$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar czf "$name.tar.gz" "$name"
+            echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The archive is the artifact as it is (not zipped again), named for its file.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.package.outputs.file }}
+          archive: false
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes

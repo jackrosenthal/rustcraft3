@@ -1761,15 +1761,17 @@ impl Glue {
         }
     }
 
-    /// The build number at the lower right, as CMainMenu formats it ("%d.%d.%d.%d":
-    /// 1.27.1.7085), 0.013 in from the right edge.
+    /// The version at the lower right, 0.013 in from the right edge: the port's name and
+    /// the original's build it is compatible with, where CMainMenu writes that build
+    /// ("%d.%d.%d.%d" of the constants 1, 27, 1, and 7085, as Game.dll's version resource
+    /// has it).
     fn version_text(&self, assets: &Assets) -> Draw {
         let w = self.tree.width;
         Draw::Text {
             font: assets.frames.decorate("MasterFont"),
             size: 0.011,
             rect: w3_ui::Rect { x0: w - 0.3, x1: w - 0.013, y0: 0.0, y1: 0.02 },
-            text: "1.27.1.7085".into(),
+            text: "rustcraft3, compatible with 1.27.1.7085".into(),
             color: [1.0; 4],
             justify_h: w3_ui::Justify::End,
             justify_v: w3_ui::Justify::Start,

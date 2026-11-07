@@ -635,7 +635,9 @@ impl ApplicationHandler for App {
                             // Draw the loading screen first; the map loads next frame.
                             self.data.campaign_game.set(false);
                             self.data.setup_flags.set(flags);
-                            self.data.setup_seed.set(0);
+                            // A game played alone is seeded as the original's setup seeds
+                            // one: by its milliseconds since the computer started.
+                            self.data.setup_seed.set(crate::data::tick_count());
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));
                         }

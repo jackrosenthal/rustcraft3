@@ -604,7 +604,13 @@ these are the findings behind them.
   ('war3', 0x77617233, under MAP_LOCK_RANDOM_SEED 0x8000) and the 45 from it
   (`FUN_6f693710`: a generator seeded with it gives each its seed in turn).
   SetRandomSeed (`FUN_6f214140`) seeds the main one, draws once, and seeds the 45 from the
-  draw.  In Booty Bay with seed 0x35000000, by the first turn the main one had drawn 27
+  draw.  The setup's seed is the machine's milliseconds since boot (GetTickCount) as the
+  game is set up: in 15 of the original's replays (Custom Games played alone, World
+  Editor test games, and LAN games it hosted, from two boots of the machine) each seed
+  was the uptime from 17 to 425 seconds before its file was written, its game's length
+  and loading (provisional: the moment and the function; the port's game played alone
+  takes `data::tick_count` as its setup begins, where it had 0).  In Booty Bay with seed
+  0x35000000, by the first turn the main one had drawn 27
   times and streams 2, 21, and 37 46, 10, and 34 times; 37 is drawn on by
   `FUN_6f524e00` (a unit with Ahid, Ashm, Amim, Apiv, or Adet, a delay), 21 by
   `FUN_6f41ae70`, and 2 by `FUN_6f4993b0`, `FUN_6f6d48b0`, `FUN_6f4ccb80`,

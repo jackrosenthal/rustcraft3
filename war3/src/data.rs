@@ -63,7 +63,7 @@ pub struct GameData {
     /// The game setup's advanced options for the next game (crate::advanced).
     pub setup_flags: std::cell::Cell<u32>,
     /// The seed the next game starts its generators from (a network game's slot table's;
-    /// 0 for one played alone).
+    /// for one played alone, `tick_count` as its setup began).
     pub setup_seed: std::cell::Cell<u32>,
 }
 
@@ -449,4 +449,18 @@ fn open_optional_exists(dir: &Path, name: &str) -> bool {
         rd.filter_map(|e| e.ok())
             .any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name))
     })
+}
+
+/// The milliseconds since the computer started, as GetTickCount gives them, which the
+/// original's game setup takes for its seed (read: the seeds of 15 of the original's
+/// replays, games played alone, World Editor test games, and LAN games it hosted, each
+/// the machine's milliseconds since boot from 17 to 425 seconds before its file was
+/// written; provisional: the moment and the function).  Where the uptime is not known,
+/// the time of day's.
+pub fn tick_count() -> u32 {
+    let uptime = std::fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok());
+    match uptime {
+        Some(s) => (s * 1000.0) as u64 as u32,
+        None => std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u32),
+    }
 }

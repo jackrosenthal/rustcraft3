@@ -1563,6 +1563,10 @@ impl Hud {
     }
 
     pub fn update(&mut self, db: &FrameDb, world: &World) {
+        // The game menu's text areas (Help, Tips) give their scroll bars range.
+        if let Some(m) = self.menu.as_mut() {
+            m.sync_text_area_bars(db);
+        }
         // CUpperButtonBar (vf9, FUN_6f3af910): Menu always; Allies only in network
         // games; the F12 button is the message log outside them; Quests once a map has
         // made a quest.

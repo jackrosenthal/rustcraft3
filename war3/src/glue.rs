@@ -803,15 +803,23 @@ impl Glue {
     fn follow_bars(&mut self) {
         self.skirmish.follow_bar(&mut self.tree);
         self.profile.follow_bar(&mut self.tree);
+        if self.screen == Screen::LanLobby {
+            self.lan.follow_chat(&self.tree);
+        }
     }
 
-    /// The mouse wheel, in notches (up positive): it scrolls the list under the pointer.
+    /// The mouse wheel, in notches (up positive): it scrolls the list, or the lobby's chat,
+    /// under the pointer.
     pub fn wheel(&mut self, lines: f32) {
         let (x, y) = self.pointer;
         if Self::lists(self.screen) {
             self.skirmish.wheel(&mut self.tree, x, y, lines);
         } else if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
             self.profile.wheel(&mut self.tree, x, y, lines);
+        }
+        if self.screen == Screen::LanLobby {
+            let (x, y) = self.pointer;
+            self.lan.wheel(&mut self.tree, x, y, lines);
         }
     }
 
@@ -1386,7 +1394,7 @@ impl Glue {
                 if self.lan.rebuild {
                     self.build(Screen::LanLobby, assets);
                 }
-                self.lan.sync_chat(&mut self.tree);
+                self.lan.sync_chat(&mut self.tree, &assets.frames);
             }
         }
         if self.phase == Phase::Stand && done {

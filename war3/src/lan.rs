@@ -54,6 +54,10 @@ pub struct Lan {
     joined: Option<GameInfo>,
     table: Option<SlotTable>,
     pub chat: Vec<String>,
+    /// The chat's first line shown while scrolled back from its newest lines.
+    chat_first: Option<usize>,
+    /// Wheel movement short of a notch.
+    wheel_lines: f32,
     pub line: String,
     /// The lobby's frames need rebuilding (the setup changed).
     pub rebuild: bool,
@@ -87,6 +91,8 @@ impl Lan {
             joined: None,
             table: None,
             chat: Vec::new(),
+            chat_first: None,
+            wheel_lines: 0.0,
             line: String::new(),
             rebuild: false,
             summary_due: None,
@@ -288,6 +294,7 @@ impl Lan {
         self.host = Some(Box::new(h));
         self.me = HOST_PID;
         self.chat.clear();
+        self.chat_first = None;
         self.rebuild = true;
         Ok(())
     }
@@ -388,6 +395,7 @@ impl Lan {
         self.joined = Some(game);
         self.client = Some(Box::new(c));
         self.chat.clear();
+        self.chat_first = None;
         Ok(())
     }
 
@@ -886,14 +894,36 @@ impl Lan {
         tree.place_text_area_scroll_bars();
         tree.set_visible("StartGameBackdrop", host);
         crate::advanced::display(tree, db, self.setup.flags);
-        self.sync_chat(tree);
+        self.sync_chat(tree, db);
     }
 
-    pub fn sync_chat(&self, tree: &mut FrameTree) {
+    /// The chat: its newest lines, and its scroll bar at its end, unless scrolled back,
+    /// when a new line leaves the lines shown where they are (CTextArea's FUN_6f109ee0;
+    /// provisional for CGameChatroom: not captured).
+    pub fn sync_chat(&self, tree: &mut FrameTree, db: &FrameDb) {
         tree.set_text("ChatTextArea", &self.chat.join("\n"));
-        // The newest lines show (eight rows of 0.0115).
-        if let Some(i) = tree.get("ChatTextArea") {
-            tree.frames[i].selected = self.chat.len().saturating_sub(8);
+        let past = tree.text_area_past(db, "ChatTextArea");
+        tree.set_selected("ChatTextArea", self.chat_first.map_or(past, |k| k.min(past)));
+        tree.sync_text_area_bars(db);
+    }
+
+    /// The pointer scrolled the chat: the lines it shows stay, or follow the newest once
+    /// back at its end (its scroll bar's range runs to the lines past its first page).
+    pub fn follow_chat(&mut self, tree: &FrameTree) {
+        let Some(i) = tree.get("ChatTextArea") else { return };
+        let past = tree.get("ChatScrollBar").and_then(|b| tree.frames[b].range).map_or(0, |r| r.1 as usize);
+        let first = tree.frames[i].selected;
+        self.chat_first = (first < past).then_some(first);
+    }
+
+    /// The mouse wheel over the chat scrolls it a line a notch (CTextArea's FUN_6f109d60).
+    pub fn wheel(&mut self, tree: &mut FrameTree, x: f32, y: f32, lines: f32) {
+        // A touchpad's small movements add up to notches.
+        self.wheel_lines += lines;
+        let notches = self.wheel_lines.trunc();
+        self.wheel_lines -= notches;
+        if notches != 0.0 && tree.wheel_text_area(x, y, notches as i32) {
+            self.follow_chat(tree);
         }
     }
 

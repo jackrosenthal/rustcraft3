@@ -30,35 +30,15 @@ impl LogView {
         tree.fit_text_widths();
         tree.layout();
         tree.set_text("LogArea", &lines.join("\n"));
-        // Scrolled to the newest lines.
-        let rows = Self::rows(&tree, db);
-        let total = Self::wrapped(&tree, db);
-        tree.set_selected("LogArea", total.saturating_sub(rows));
+        // Scrolled to the newest lines, its scroll bar at its end.
+        let past = tree.text_area_past(db, "LogArea");
+        tree.set_selected("LogArea", past);
+        tree.sync_text_area_bars(db);
         Some(LogView { tree })
     }
 
-    /// The lines the log area shows at once.
-    fn rows(tree: &FrameTree, db: &FrameDb) -> usize {
-        let _ = db;
-        let Some(i) = tree.get("LogArea") else { return 1 };
-        let Some(r) = tree.frames[i].rect else { return 1 };
-        let d = &tree.frames[i].def;
-        let num = |k: &str, v: f32| d.prop(k).and_then(|p| p.args.first()).map_or(v, |a| a.num());
-        let (inset, line_h, gap) = (num("TextAreaInset", 0.0), num("TextAreaLineHeight", 0.015), num("TextAreaLineGap", 0.0));
-        (((r.h() - 2.0 * inset) / (line_h + gap)).floor() as usize).max(1)
-    }
-
-    /// The log's lines once wrapped to the area.
-    fn wrapped(tree: &FrameTree, db: &FrameDb) -> usize {
-        let Some(i) = tree.get("LogArea") else { return 0 };
-        let Some(r) = tree.frames[i].rect else { return 0 };
-        let (font, size) = tree.text_font(db, "LogArea").unwrap_or((db.decorate("MasterFont"), 0.011));
-        let inset = tree.frames[i].def.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, |a| a.num());
-        let w = (r.w() - 2.0 * inset).max(0.0);
-        w3_ui::text_lines(tree.frames[i].text.as_deref().unwrap_or("")).into_iter().map(|l| if l.trim().is_empty() { 1 } else { db.wrap(&font, size, l, w).len() }).sum()
-    }
-
-    /// A click: OK closes the log (returns true).
+    /// A click: OK closes the log (returns true); its scroll bar's arrows and track
+    /// scroll it.
     pub fn click(&mut self, x: f32, y: f32) -> bool {
         self.tree.pointer_down(x, y);
         self.tree.pointer_up(x, y).is_some_and(|i| self.tree.frames[i].name == "LogOkButton")
@@ -66,6 +46,11 @@ impl LogView {
 
     pub fn pointer_move(&mut self, x: f32, y: f32) {
         self.tree.pointer_move(x, y);
+    }
+
+    /// The mouse wheel over the log scrolls it a line a notch; whether it did.
+    pub fn wheel(&mut self, x: f32, y: f32, notches: i32) -> bool {
+        self.tree.wheel_text_area(x, y, notches)
     }
 
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {

@@ -4840,14 +4840,16 @@ impl Scene {
 
     /// Zooming with the wheel: one message's `amount` notches (its delta over 120).
     pub fn zoom(&mut self, amount: f32) {
-        // Over the game menu, the wheel scrolls its text areas a line at a time.
+        // Over the game menu, the message log, or the chat dialog, the wheel scrolls the
+        // text area under the pointer a line at a time.
         if let Some(h) = self.hud.as_mut() {
+            let (px, py) = h.pointer;
+            let notches = if amount > 0.0 { 1 } else if amount < 0.0 { -1 } else { 0 };
             if let Some(m) = h.menu.as_mut() {
-                let (px, py) = h.pointer;
-                if let Some(i) = (0..m.frames.len()).find(|&i| m.frames[i].def.kind == "TEXTAREA" && m.is_visible(i) && m.frames[i].rect.is_some_and(|r| r.contains(px, py))) {
-                    let f = &mut m.frames[i];
-                    f.selected = if amount > 0.0 { f.selected.saturating_sub(1) } else { f.selected + 1 };
-                }
+                m.wheel_text_area(px, py, notches);
+                return;
+            }
+            if h.log_view.as_mut().is_some_and(|l| l.wheel(px, py, notches)) || h.chat_dialog.as_mut().is_some_and(|d| d.wheel(px, py, notches)) {
                 return;
             }
         }

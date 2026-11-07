@@ -36,13 +36,14 @@ impl ChatDialog {
         };
         tree.set_items("ChatPlayerMenu", names, pick);
         tree.set_text("ChatHistoryDisplay", &history.join("\n"));
-        if let Some(i) = tree.get("ChatHistoryDisplay") {
-            tree.frames[i].selected = history.len().saturating_sub(12);
-        }
         tree.place_text_area_scroll_bars();
         tree.bind_points();
         tree.fit_text_widths();
         tree.layout();
+        // Scrolled to the newest lines, its scroll bar at its end.
+        let past = tree.text_area_past(db, "ChatHistoryDisplay");
+        tree.set_selected("ChatHistoryDisplay", past);
+        tree.sync_text_area_bars(db);
         let mut d = ChatDialog { tree, players, radio };
         d.sync();
         Some(d)
@@ -77,6 +78,11 @@ impl ChatDialog {
             2 => 2,
             _ => 0,
         })
+    }
+
+    /// The mouse wheel over the history scrolls it a line a notch; whether it did.
+    pub fn wheel(&mut self, x: f32, y: f32, notches: i32) -> bool {
+        self.tree.wheel_text_area(x, y, notches)
     }
 
     pub fn draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {

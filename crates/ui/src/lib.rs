@@ -745,6 +745,67 @@ impl FrameTree {
         let step = if step > 0.0 { step } else { (max - min) / 10.0 };
         self.frames[bar].value = (self.frames[bar].value + steps * step).clamp(min.min(max), max.max(min));
         self.place_scroll_bar_parts();
+        self.follow_text_area_bar(bar);
+    }
+
+    /// The text area whose TextAreaScrollBar a scroll bar is.
+    fn text_area_of_bar(&self, bar: usize) -> Option<usize> {
+        self.frames[bar].parent.filter(|&p| self.frames[p].def.kind == "TEXTAREA" && self.frames[p].def.str("TextAreaScrollBar") == Some(self.frames[bar].def.name.as_str()))
+    }
+
+    /// A text area's first line follows its scroll bar's value: the value runs from the
+    /// lines past the first page at its top to 0 at its end (CTextArea's FUN_6f1099b0).
+    fn follow_text_area_bar(&mut self, bar: usize) {
+        let (Some(area), Some((_, past, _))) = (self.text_area_of_bar(bar), self.frames[bar].range) else { return };
+        self.frames[area].selected = (past - self.frames[bar].value).round().max(0.0) as usize;
+    }
+
+    /// Gives each text area's scroll bar its range and value from the area's lines and
+    /// first line (CTextArea's FUN_6f109ee0): from 0 to the lines past the first page, a
+    /// line a step, the value that past less the first line; a bar whose area's lines
+    /// fit has none, and takes no pointer.
+    pub fn sync_text_area_bars(&mut self, db: &FrameDb) {
+        for area in 0..self.frames.len() {
+            if self.frames[area].def.kind != "TEXTAREA" {
+                continue;
+            }
+            let Some(bar) = self.frames[area].def.str("TextAreaScrollBar").and_then(|n| self.frames[area].children.iter().copied().find(|&c| self.frames[c].def.name == n)) else { continue };
+            let Some(past) = self.text_area_past_at(db, area) else { continue };
+            let first = self.frames[area].selected.min(past);
+            self.frames[area].selected = first;
+            self.frames[bar].range = (past > 0).then_some((0.0, past as f32, 1.0));
+            self.frames[bar].value = (past - first) as f32;
+        }
+        self.place_scroll_bar_parts();
+    }
+
+    /// The lines past a text area's first page (the first line that shows its last), as
+    /// its text wraps.
+    pub fn text_area_past(&self, db: &FrameDb, name: &str) -> usize {
+        self.get(name).and_then(|i| self.text_area_past_at(db, i)).unwrap_or(0)
+    }
+
+    fn text_area_past_at(&self, db: &FrameDb, i: usize) -> Option<usize> {
+        let r = self.frames[i].rect?;
+        let (_, line_h, gap, inset, lines) = self.text_area_lines(db, i, r);
+        let rows = (((r.h() - 2.0 * inset) / (line_h + gap)).floor() as usize).max(1);
+        Some(lines.len().saturating_sub(rows))
+    }
+
+    /// The mouse wheel over a text area with more lines than it shows moves it a line a
+    /// notch (CTextArea's FUN_6f109d60), up for a positive count; whether one took it.
+    pub fn wheel_text_area(&mut self, x: f32, y: f32, notches: i32) -> bool {
+        let Some(bar) = (1..self.frames.len()).rev().find_map(|i| {
+            let f = &self.frames[i];
+            if f.def.kind != "TEXTAREA" || !f.rect.is_some_and(|r| r.contains(x, y)) || !self.is_visible(i) {
+                return None;
+            }
+            f.children.iter().copied().find(|&c| self.text_area_of_bar(c) == Some(i) && self.frames[c].range.is_some())
+        }) else {
+            return false;
+        };
+        self.scroll_by(bar, notches as f32);
+        true
     }
 
     /// Moves a vertical scroll bar's thumb to `y`, in its steps: its top is its highest
@@ -763,6 +824,7 @@ impl FrameTree {
         }
         self.frames[bar].value = v.clamp(min.min(max), max.max(min));
         self.place_scroll_bar_parts();
+        self.follow_text_area_bar(bar);
     }
 
     pub fn is_popup(&self, i: usize) -> bool {
@@ -1040,11 +1102,14 @@ impl FrameTree {
             if self.frames[c].def.prop("SetPoint").is_some() {
                 continue;
             }
+            // Its top right at the area's, in by TextAreaInset each way, and as tall as the
+            // area less the inset at its top and bottom (CTextArea's FUN_6f1099f0).
+            let inset = self.frames[i].def.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
             let f = &mut self.frames[c];
             f.all_points = false;
             f.points = vec![
-                Point { point: FramePoint::TopRight, relative: Some(i), relative_point: FramePoint::TopRight, x: -0.004, y: -0.004 },
-                Point { point: FramePoint::BottomRight, relative: Some(i), relative_point: FramePoint::BottomRight, x: -0.004, y: 0.004 },
+                Point { point: FramePoint::TopRight, relative: Some(i), relative_point: FramePoint::TopRight, x: -inset, y: -inset },
+                Point { point: FramePoint::BottomRight, relative: Some(i), relative_point: FramePoint::BottomRight, x: -inset, y: inset },
             ];
         }
     }
@@ -1320,7 +1385,11 @@ impl FrameTree {
             None => (db.decorate("MasterFont"), 0.012),
         };
         let text = f.text.clone().unwrap_or_default();
-        let w = (r.w() - 2.0 * inset).max(0.0);
+        // Lines wrap short of the scroll bar, shown or not, and 0.0165 more (FUN_6f10a280);
+        // an area without a TextAreaScrollBar has CTextArea's own, 0.03 wide.
+        let bar = d.str("TextAreaScrollBar").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n));
+        let bar_w = bar.map_or(0.03, |b| b.width.or_else(|| b.def.num("Width")).unwrap_or(0.0));
+        let w = (r.w() - 2.0 * inset - bar_w - 0.0165).max(0.0);
         let lines: Vec<String> = text_lines(&text).into_iter().flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
         ((font, size), line_h, gap, inset, lines)
     }
@@ -1812,5 +1881,114 @@ mod tests {
         assert_eq!(end_colors("a|"), "a|||r");
         assert_eq!(end_colors("a||"), "a|||r");
         assert_eq!(end_colors("|cffff0000a"), "|cffff0000a|r");
+    }
+
+    /// A text area as the chat dialog's history is, its scroll bar's parts without
+    /// backdrops.
+    const AREA: &str = r#"
+Frame "TEXTAREA" "TestArea" {
+    Width 0.4,
+    Height 0.1,
+    FrameFont "MasterFont", 0.011, "",
+    TextAreaLineHeight 0.01,
+    TextAreaLineGap 0.0015,
+    TextAreaInset 0.002,
+    TextAreaScrollBar "TestBar",
+    Frame "SCROLLBAR" "TestBar" {
+        Width 0.0165,
+        SliderLayoutVertical,
+        ScrollBarIncButtonFrame "TestUp",
+        Frame "BUTTON" "TestUp" {
+            Width 0.015,
+            Height 0.015,
+        }
+        ScrollBarDecButtonFrame "TestDown",
+        Frame "BUTTON" "TestDown" {
+            Width 0.015,
+            Height 0.015,
+        }
+        SliderThumbButtonFrame "TestThumb",
+        Frame "BUTTON" "TestThumb" {
+            Width 0.01,
+            Height 0.01,
+        }
+    }
+}
+"#;
+
+    fn area(text: &str) -> (FrameDb, FrameTree) {
+        let mut db = FrameDb::default();
+        for d in fdf::parse(AREA).defs {
+            db.templates.insert(d.name.clone(), d);
+        }
+        let mut tree = FrameTree::new(4.0 / 3.0);
+        tree.create(&db, "TestArea", 0).unwrap();
+        tree.set_point("TestArea", FramePoint::TopLeft, "", FramePoint::TopLeft, 0.1, -0.1);
+        tree.place_text_area_scroll_bars();
+        tree.bind_points();
+        tree.layout();
+        tree.set_text("TestArea", text);
+        (db, tree)
+    }
+
+    fn center(tree: &FrameTree, name: &str) -> (f32, f32) {
+        let r = tree.frames[tree.get(name).unwrap()].rect.unwrap();
+        ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
+    }
+
+    #[test]
+    fn a_text_area_scrolls_by_its_bar_and_the_wheel() {
+        // 20 lines in 8 rows: 12 past the first page.
+        let text: Vec<String> = (0..20).map(|k| format!("line {k}")).collect();
+        let (db, mut tree) = area(&text.join("\n"));
+        let (a, bar) = (tree.get("TestArea").unwrap(), tree.get("TestBar").unwrap());
+        assert_eq!(tree.text_area_past(&db, "TestArea"), 12);
+        // The bar: in by the inset at the area's top right, as tall as the area less it.
+        let (ar, br) = (tree.frames[a].rect.unwrap(), tree.frames[bar].rect.unwrap());
+        assert!((br.x1 - (ar.x1 - 0.002)).abs() < 1e-6 && (br.y1 - (ar.y1 - 0.002)).abs() < 1e-6 && (br.y0 - (ar.y0 + 0.002)).abs() < 1e-6);
+        // At the newest lines its thumb is at its bottom, over the down arrow.
+        tree.set_selected("TestArea", 12);
+        tree.sync_text_area_bars(&db);
+        assert_eq!(tree.frames[bar].range, Some((0.0, 12.0, 1.0)));
+        let thumb = tree.frames[tree.get("TestThumb").unwrap()].rect.unwrap();
+        assert!((thumb.y0 - (br.y0 + 0.015)).abs() < 1e-6);
+        // The up arrow shows a line before.
+        let (x, y) = center(&tree, "TestUp");
+        tree.pointer_down(x, y);
+        tree.pointer_up(x, y);
+        assert_eq!(tree.frames[a].selected, 11);
+        // The wheel over the area: a line down, then three up.
+        let (x, y) = center(&tree, "TestArea");
+        assert!(tree.wheel_text_area(x, y, -1));
+        assert_eq!(tree.frames[a].selected, 12);
+        assert!(tree.wheel_text_area(x, y, 3));
+        assert_eq!(tree.frames[a].selected, 9);
+        // The thumb dragged to the top shows the first lines.
+        let (x, y) = center(&tree, "TestThumb");
+        tree.pointer_down(x, y);
+        tree.pointer_move(x, br.y1);
+        tree.pointer_up(x, br.y1);
+        assert_eq!(tree.frames[a].selected, 0);
+    }
+
+    #[test]
+    fn a_text_area_whose_lines_fit_has_no_bar_to_scroll() {
+        let (db, mut tree) = area("one\ntwo");
+        tree.sync_text_area_bars(&db);
+        assert_eq!(tree.frames[tree.get("TestBar").unwrap()].range, None);
+        let (x, y) = center(&tree, "TestArea");
+        assert!(!tree.wheel_text_area(x, y, 1));
+    }
+
+    #[test]
+    fn a_text_area_wraps_short_of_its_scroll_bar() {
+        // Without fonts a character is half the size wide: 0.0055.  The area's 0.4 less
+        // the insets, the bar, and 0.0165 leaves 0.363: 64 characters fit, 69 do not.
+        let fits = ["aaaa"; 13].join(" ");
+        let wraps = ["aaaa"; 14].join(" ");
+        let (db, tree) = area(&format!("{fits}\n{wraps}"));
+        let a = tree.get("TestArea").unwrap();
+        let (_, _, _, _, lines) = tree.text_area_lines(&db, a, tree.frames[a].rect.unwrap());
+        assert_eq!(lines.len(), 3);
     }
 }

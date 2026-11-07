@@ -104,7 +104,7 @@ impl FrameDb {
             _ => 1.0,
         };
         let Some(f) = self.fonts.get(&font.to_ascii_lowercase()) else { return line.chars().count() as f32 * size * 0.5 * scale };
-        strip_color_codes(line).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0 * scale
+        strip_color_codes(line).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0 * scale
     }
 
     /// Breaks text at newlines and |n, then words to `max_w` (as the renderer does).
@@ -610,7 +610,7 @@ impl FrameTree {
             let size = p.args.get(1).map_or(0.012, Arg::num);
             let path = self.skin_font(p.args.first().map(Arg::as_str).unwrap_or("MasterFont"));
             let Some(font) = self.fonts.get(&path.to_ascii_lowercase()) else { continue };
-            let w = strip_color_codes(text).chars().map(|c| font.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0;
+            let w = strip_color_codes(text).chars().map(|c| advance(font, c, 64.0)).sum::<f32>() * size / 64.0;
             // As wide as the text, and a line tall.
             self.frames[i].width = Some(w + 1e-4);
             self.frames[i].fitted = true;
@@ -1644,7 +1644,7 @@ impl FrameTree {
 /// (as the renderer and FrameDb::wrap break it).
 fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -> usize {
     let width = |s: &str| match font {
-        Some(f) => strip_color_codes(s).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0,
+        Some(f) => strip_color_codes(s).chars().map(|c| advance(f, c, 64.0)).sum::<f32>() * size / 64.0,
         None => s.chars().count() as f32 * size * 0.5,
     };
     let text = text.replace("|n", "\n").replace("|N", "\n");
@@ -1663,6 +1663,15 @@ fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -
         }
     }
     n
+}
+
+/// How far a character advances text at `px`: not at all if the font lacks it.  The
+/// original neither draws nor spaces such a character: its glyph lookup (FUN_6f130ae0)
+/// finds none when FT_Get_Char_Index gives 0 (FUN_6f136290), and its layout (FUN_6f12e260)
+/// and measures (FUN_6f12efb0, FUN_6f12f310) pass over it; so FRIZQT__.TTF, without CJK,
+/// shows Mafarazzo TD's Chinese Town Hall tooltip as only the "2" in it.
+pub fn advance(font: &fontdue::Font, c: char, px: f32) -> f32 {
+    if font.has_glyph(c) { font.metrics(c, px).advance_width } else { 0.0 }
 }
 
 /// Text without |cAARRGGBB and |r color codes.

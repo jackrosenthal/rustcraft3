@@ -158,6 +158,11 @@ impl UiRenderer {
     }
 
     fn glyph(&mut self, queue: &wgpu::Queue, font: usize, px: u32, c: char) -> Option<&Glyph> {
+        // A character the font lacks has no glyph, not the font's box: the original
+        // neither draws nor spaces it (w3_ui::advance).
+        if !self.fonts[font].1.has_glyph(c) {
+            return None;
+        }
         let key = (font, px, c);
         if !self.atlas.glyphs.contains_key(&key) {
             let (m, bitmap) = self.fonts[font].1.rasterize(c, px as f32);

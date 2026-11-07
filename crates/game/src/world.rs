@@ -554,6 +554,12 @@ pub struct World {
     /// that a cell's regions are taken oldest first (`World::step_regions`).
     #[serde(default)]
     pub regions_reloaded: bool,
+    /// While an artillery's splash strikes: a unit it kills bursts (`World::attack_impact`).
+    #[serde(skip)]
+    pub artillery_strike: bool,
+    /// While a burst unit's death's course is made: its course of four (`World::death_begun`).
+    #[serde(skip)]
+    pub bursting: bool,
     pub reserved_hero_buttons: i32,
     pub alt_minimap_icon: Option<String>,
     /// The ally color mode (option 0x38, Alt-A): 0 player colors, 1 ally colors on the
@@ -1136,6 +1142,8 @@ impl World {
             restart_disabled: false,
             load_game_name: String::new(),
             regions_reloaded: false,
+            artillery_strike: false,
+            bursting: false,
             reserved_hero_buttons: 0,
             alt_minimap_icon: None,
             // The allyFilter option's default (game.dll's option table), the minimap's

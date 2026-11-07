@@ -343,7 +343,7 @@ impl World {
     /// due its distance across the ground over its speed on (`FUN_6f1737d0`,
     /// `FUN_6f171870`).
     pub(crate) fn bullet_aimed(&self, m: &mut crate::sim::Missile, at: f64) {
-        let Some(b) = m.bullet.as_mut() else { return };
+        let Some(b) = m.bullet.as_ref() else { return };
         let Some(t) = self.unit(m.target) else { return };
         // (Sent at the damage point, an event on the agent queue due `at`, by the main
         // clock then: that of the last main tick short of it.)
@@ -358,6 +358,11 @@ impl World {
             }
             None => ((t.x as f64, t.y as f64), (0.0, 0.0)),
         };
+        // (A line artillery's shell flies to where its target stands as it is sent, and
+        // lands there: traced, the upgrade game's h00X's in turn 512; provisional, its
+        // due by its 2D way at its speed, as a missile's.)
+        let line = m.weapon.as_ref().is_some_and(|w| w.weapon_type == "aline");
+        let v = if line { (0.0, 0.0) } else { v };
         let start = (m.start.0 as f64, m.start.1 as f64);
         let r = (place.0 - start.0, place.1 - start.1);
         let s = m.speed as f64;
@@ -372,6 +377,10 @@ impl World {
         };
         let d = (aim.0 - start.0).hypot(aim.1 - start.1);
         let time = (d / s).clamp(0.0001, 60.0);
+        if line {
+            m.impact = Some((aim.0 as f32, aim.1 as f32));
+        }
+        let Some(b) = m.bullet.as_mut() else { return };
         b.due = Some(c0 + time);
         b.aimed = true;
         b.seen = Some((aim.0 as f32, aim.1 as f32));

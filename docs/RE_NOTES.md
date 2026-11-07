@@ -2194,7 +2194,29 @@ these are the findings behind them.
   one beside it dead at once).  (Provisional: what the two positions are and when
   they go, its landing not yet traced; the port frees them with its removal.)  The
   upgrade games now agree to turn 510 (from 507), the trace to the end of its window
-  (509).
+  (509).  Its shell flies to where its target stands as it is sent and lands there,
+  its flight due by its way at its speed from the main clock then, as a missile's but
+  with no lead (traced, `abtest/mafv5.*`: the first, sent at 50.607, landing in turn
+  512 in the main tick of 51.120121, its due 51.116651; flown at the creep closing on
+  it, the port's had landed in 511, and aimed at where they would meet, as early).
+  What an artillery's splash kills bursts: its death's course is a burst's four,
+  0xd015a, 0xd0157, 0xd0154, and 0xd0156 (`FUN_6f678280`), the kill's objects nine
+  (traced: the five creeps the shell killed, each `tskA`, seven tasks, `tskA`,
+  `pudd`, the death trigger's `+tex`).  (Provisional: the burst's frees after, the
+  port's a death's.)
+- An aimed missile lands in the behavior dispatch of the first main tick at or past
+  its flight's due, so before a later main tick's step (`World::aimed_landings_before`,
+  after that step's damage points, which land those due before them): traced, that
+  shell's five deaths between the turn's second step's region trigger and its third
+  step's.  A structure's damage point due after the agent queue's reach in its tick
+  comes in the next, among its steps (traced: the second h00X's first, due 50.99565,
+  in turn 511, where the units' logic had sent it at 510's end), as does its look
+  (its due its time, though run a tick on).  Its try as its cooldown runs out is an
+  agent queue event too, among the steps (`World::first_try`; traced, the third flyer
+  game, `abtest/mafb3.*`: its Arrow Tower's attack on a creep past its reach given up
+  at turn 344's start, its nine tasks' slots the step's order's; the port's had
+  waited for the units' logic at the turn's end).  The third flyer game now agrees for
+  all 358 turns of its keepalives (from 344), its trace to 352.
 - An attack's swing begins as its cooldown runs out (`FUN_6f49a4f0`): read, the Arrow
   tower (cooldown 0.7, damage point 0.3, missile at 1800 to a target 384 away)
   sending one in turns 17, 24, 31, and so every seven, its objects freed 52 turns on.

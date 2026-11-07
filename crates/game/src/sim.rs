@@ -418,9 +418,12 @@ impl World {
         // 0.1 and 0.3 on, 22.062787, its missile sent by the main clock 22.062298;
         // `World::bullet_aimed`).
         if self.attacks_in_place(h) {
+            // (Or one carried from the last tick, due after its agent queue's reach,
+            // `World::update_units`: traced, the upgrade game's second h00X's look due
+            // 50.59565 run at turn 507's start, its first shell 0.4 after.)
             if let Some((_, due, _)) = self.unit(h).and_then(|u| u.extra.look_timer) {
                 let due = due as f64;
-                if due > self.time_exact - self.tick_dt as f64 - 1e-6 && due <= self.time_exact + 1e-6 {
+                if due > self.time_exact - 2.0 * self.tick_dt as f64 - 1e-6 && due <= self.time_exact + 1e-6 {
                     return due;
                 }
             }
@@ -1788,9 +1791,10 @@ impl World {
         // The detectors' looks due before the step (`World::plan_detection_looks`), and
         // the structures' damage points (`World::points_before`).
         self.looks_before(self.step_abs(0).map(|s| s.0));
-        if let Some((_, due)) = self.step_abs(0) {
+        if let Some((main, due)) = self.step_abs(0) {
             self.structure_events_before(due);
             self.points_before(vm, Some(due));
+            self.aimed_landings_before(vm, main);
             // (What they let go as an earlier main tick ended goes before the step:
             // traced, the second flyer game's Arrow Tower's take-up's block at turn 330,
             // freed before the step's walk ends' objects.)
@@ -1975,9 +1979,11 @@ impl World {
             // in a turn's second step, before an order due after it).
             self.tags.mark_step(k);
             self.looks_before(self.step_abs(k).map(|s| s.0));
-            if let Some((_, due)) = self.step_abs(k) {
+            if let Some((main, due)) = self.step_abs(k) {
                 self.structure_events_before(due);
                 self.points_before(vm, Some(due));
+                // (Those due after the damage points, which land those due before them.)
+                self.aimed_landings_before(vm, main);
             }
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
@@ -2989,7 +2995,18 @@ impl World {
                 }
                 continue;
             }
-            if !matches!(u.action, Action::Idle) || u.acquire_timer - dt > 0.0 || unit_weapons(self, u).is_empty() {
+            // (Its try as its cooldown runs out, `FUN_6f49a4f0`, an event on the agent queue
+            // too: its cooldown as the last tick left it.)
+            if matches!(u.action, Action::Attack { .. }) && u.swing.as_ref().is_none_or(|s| s.done) && u.extra.first_swing_at.is_none() && !u.extra.attack_tasks.is_empty() && u.cooldown > 0.0 {
+                let f = self.time_exact - dt as f64 + u.cooldown as f64;
+                if f < until && f > begun {
+                    due.push((f, h, 2));
+                }
+                continue;
+            }
+            // (One whose target died looks again as the turn ends, after the death's frees,
+            // `World::looks_after_deaths`.)
+            if !matches!(u.action, Action::Idle) || u.extra.look_after_death || u.acquire_timer - dt > 0.0 || unit_weapons(self, u).is_empty() {
                 continue;
             }
             let Some((_, d, _)) = u.extra.look_timer else { continue };
@@ -3007,11 +3024,55 @@ impl World {
         }
     }
 
+    /// The aimed missiles landing in a main tick before `until` (a step's main clock), in
+    /// the order they fall due: each lands in the behavior dispatch of the first main
+    /// tick at or past its flight's due (`World::bullet_aimed`), after that tick's agent
+    /// queue events and before a later tick's step.  Traced: the upgrade game's h00X's
+    /// shell due 51.116651, landing in the main tick of 51.120121, its five deaths
+    /// between the turn's second step's region trigger and its third step's; the port's
+    /// had waited for the units' logic after the steps.
+    pub(crate) fn aimed_landings_before(&mut self, vm: &mut Vm, until: f64) {
+        let ticks: Vec<f64> = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).collect();
+        let mut due: Vec<(f64, usize)> = Vec::new();
+        for (i, m) in self.missiles.iter().enumerate() {
+            let Some(d) = m.bullet.as_ref().and_then(|b| b.due) else { continue };
+            if m.stampede.is_some() || m.rock.is_some() || (self.unit(m.target).is_none() && m.impact.is_none()) {
+                continue;
+            }
+            if ticks.iter().copied().find(|&c| c >= d - 1e-7).is_some_and(|c| c < until - 1e-7) {
+                due.push((d, i));
+            }
+        }
+        if due.is_empty() {
+            return;
+        }
+        let mut order = due.clone();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut taken: Vec<usize> = due.iter().map(|&(_, i)| i).collect();
+        taken.sort_unstable_by(|a, b| b.cmp(a));
+        let mut by_index: std::collections::HashMap<usize, Missile> = Default::default();
+        for i in taken {
+            by_index.insert(i, self.missiles.remove(i));
+        }
+        let mut hits: Vec<Missile> = order.into_iter().filter_map(|(_, i)| by_index.remove(&i)).collect();
+        // (Each as of its landing's main tick, as `World::fly_bullets` has it.)
+        let off = ticks.last().map_or(0.0, |c| c - self.time_exact);
+        for m in hits.iter_mut() {
+            if let Some(b) = m.bullet.as_mut() {
+                let d = b.due.unwrap_or(0.0);
+                b.at = ticks.iter().copied().find(|&c| c >= d - 1e-7).unwrap_or(d) - off + 2e-7;
+            }
+        }
+        self.missiles_land(vm, hits);
+    }
+
     /// A structure's first try on a target it took up, as it falls due among the steps
-    /// (`FUN_6f49d130`'s timer, `FUN_6f495180`): on one out of reach it gives up then
-    /// (`World::try_given_up`); else its attack begins with the units' logic.  Traced:
-    /// the second flyer game's Arrow Tower, its take-up at turn 330 given up early in
-    /// 331, its creep past its reach, the nine tasks' slots taken by the next step's.
+    /// (`FUN_6f49d130`'s timer, `FUN_6f495180`), or its try as its cooldown runs out
+    /// (`FUN_6f49a4f0`): on one out of reach it gives up then (`World::try_given_up`);
+    /// else its attack begins with the units' logic.  Traced: the second flyer game's
+    /// Arrow Tower, its take-up at turn 330 given up early in 331, its creep past its
+    /// reach, the nine tasks' slots taken by the next step's; the third flyer game's,
+    /// its attack at turn 336 given up at 344's start, its slots then the next order's.
     fn first_try(&mut self, h: u32, at: f64) {
         let Some((u, t)) = self.unit(h).zip(self.unit(h).and_then(|u| match u.action { Action::Attack { target } => self.unit(target).map(|t| (target, t)), _ => None })) else { return };
         let (target, t) = t;
@@ -3471,9 +3532,15 @@ impl World {
                 s.elapsed += dt * speed;
                 let (quick, point) = swing_point(&wp, known, speed);
                 let mut swings = 0;
+                // (A structure's damage point, an event on the agent queue, due after the
+                // queue's reach this tick comes in the next, among its steps: traced, the
+                // upgrade game's second h00X's first shell, due 50.99565, in turn 511.)
+                let reach = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i)).filter(|_| !self.step_clocks.is_empty() && self.attacks_in_place(h));
+                let now = self.time_exact;
+                let late = |s: &Swing| reach.is_some_and(|r| !s.landed && now - ((s.elapsed - point).max(0.0) / speed) as f64 >= r);
                 loop {
                     // (One taken among the steps lands no more, `World::points_before`.)
-                    if !s.done && (s.landed || s.elapsed >= point - STEP_SLACK) {
+                    if !s.done && (s.landed || s.elapsed >= point - STEP_SLACK) && !late(&s) {
                         s.done = true;
                         // (The damage point's moment: as far back in the tick as the
                         // swing has run past it.)
@@ -5884,7 +5951,7 @@ impl World {
                 self.missiles[main].bullet = Some(bullet);
                 // A structure's is aimed where it meets its target (`World::bullet_aimed`;
                 // provisional: the other units' still fly the port's way).
-                if !artillery && self.attacks_in_place(h) {
+                if wp.weapon_type != "artillery" && self.attacks_in_place(h) {
                     let mut m = self.missiles[main].clone();
                     self.bullet_aimed(&mut m, at);
                     self.missiles[main] = m;
@@ -6345,7 +6412,14 @@ impl World {
                 i += 1;
                 continue;
             };
+            // (A line artillery's shell flies to where its target stood, as it was sent:
+            // traced, the upgrade game's h00X's shell sent at 50.607, landing in turn
+            // 512, its 1132 at 2200, where the port's had flown at the creep closing on
+            // it and landed in 511.  Provisional: an artillery's own, which the port
+            // flies at its target, not yet read.)
+            let line = m.weapon.as_ref().is_some_and(|w| w.weapon_type == "aline");
             let target = match self.handles.get(m.target) {
+                Some(Obj::Unit(_)) if line && m.impact.is_some() => m.impact.map(|(x, y)| (x, y, 0.0)),
                 Some(Obj::Unit(u)) => Some(place.map_or((u.x, u.y, u.collision), |p| (p.0, p.1, u.collision))),
                 _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
                 _ => None,
@@ -6628,6 +6702,9 @@ impl World {
         }
         // A bouncing weapon's Farea is how far it looks for its next target, not splash.
         let area = if wp.weapon_type == "mbounce" { 0.0 } else { wp.full_area.max(wp.half_area).max(wp.quarter_area) };
+        // (What an artillery's splash kills bursts: traced, the upgrade game's five creeps
+        // killed by the h00X's line shell at turn 512, each with a burst's course.)
+        self.artillery_strike = artillery;
         if area > 0.0 {
             for u in self.units_in_pub(at.0, at.1, area + 64.0) {
                 if !artillery && u == target {
@@ -6651,6 +6728,7 @@ impl World {
                     self.deal_damage(vm, source, u, raw * f, &wp.attack_type);
                 }
             }
+            self.artillery_strike = false;
             // Trees and other destructables the splash takes in (a catapult's).
             let classes: Vec<&str> = wp.splash_targets.split(',').map(|s| s.trim()).collect();
             if classes.iter().any(|c| matches!(*c, "tree" | "debris" | "wall")) {

@@ -614,7 +614,10 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     let illusion = w.unit(h).and_then(|u| u.extra.illusion);
     // A unit set to explode (SetUnitExploded) or dying under Incinerate bursts, unless a
     // Hero (FUN_6f678280).
-    let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), codes::ability::FIRELORD_INCINERATE_ANIA | codes::ability::FIRELORD_INCINERATE_ANIC))));
+    // So does one an artillery's splash kills (provisional: whatever its type's own
+    // flags; read only for a creep).
+    let shelled = w.artillery_strike && killer != 0 && w.unit(h).is_some_and(|u| !u.is_hero && !u.is_building);
+    let explodes = shelled || w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), codes::ability::FIRELORD_INCINERATE_ANIA | codes::ability::FIRELORD_INCINERATE_ANIC))));
     // Reincarnation: the unit falls and rises again without dying, a hero or not (the
     // creeps' Reincarnation, ACrn, is for units: its hook, `FUN_6f5197e0`, asks nothing
     // of the unit's being a hero).  Starting, it forgets the unit's killer (`FUN_6f51fd50`
@@ -645,9 +648,12 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // Its death's course begun, its objects as the original's (`World::death_begun`;
     // provisional: not for a hero, an illusion, or one that bursts, and KillUnit's
     // as that native makes them).
-    let course = (w.unit(h).is_some_and(|u| !u.dead && !u.is_hero && !u.extra.object_slots[0].is_empty()) && illusion.is_none() && !explodes && !w.script_kill).then(|| {
+    let course = (w.unit(h).is_some_and(|u| !u.dead && !u.is_hero && !u.extra.object_slots[0].is_empty()) && illusion.is_none() && (!explodes || shelled) && !w.script_kill).then(|| {
         let at = w.landing_clock.unwrap_or_else(|| w.bullet_clock(w.time_exact));
-        w.death_begun(h, at)
+        w.bursting = shelled;
+        let c = w.death_begun(h, at);
+        w.bursting = false;
+        c
     }).flatten();
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_bounty(h, killer);

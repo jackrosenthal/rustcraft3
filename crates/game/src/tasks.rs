@@ -400,7 +400,9 @@ impl World {
             }
         }
         let decays = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.int("deathType") & 2 != 0);
-        let course = if decays { 5 } else { 3 };
+        // (A unit bursting has four: its removal 0xd015a, 0xd0157, 0xd0154, and 0xd0156,
+        // `FUN_6f678280`; traced, the upgrade game's creeps killed by the h00X's shell.)
+        let course = if self.bursting { 4 } else if decays { 5 } else { 3 };
         let kept: Vec<u32> = (0..course).map(|_| self.tags.take(codes::class::TASK)).collect();
         let die = self.tags.take(codes::class::TASK);
         let run: Vec<u32> = [codes::class::TASK, codes::class::TASK, codes::class::TASK_A].iter().map(|c| self.tags.take(c)).collect();

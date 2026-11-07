@@ -18,8 +18,12 @@ pub const HOST_PID: u8 = 1;
 pub const MAP_PART: usize = 1442;
 /// Map pieces sent ahead of the player's acknowledgment.
 const MAP_WINDOW: u32 = 16;
-const PING_EVERY: Duration = Duration::from_secs(5);
-const ANNOUNCE_EVERY: Duration = Duration::from_secs(3);
+/// The original's host pings everyone each 30 s from the game's creation, and says how
+/// many are in it (REFRESHGAME) each 5 s from 10 s after it, and at once as one joins
+/// (measured: the runner's trace of the original hosting Booty Bay).
+const PING_EVERY: Duration = Duration::from_secs(30);
+const ANNOUNCE_EVERY: Duration = Duration::from_secs(5);
+const ANNOUNCE_FIRST: Duration = Duration::from_secs(10);
 
 /// What the host heard.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,7 +112,7 @@ pub struct Host {
     pub phase: Phase,
     created: Instant,
     last_ping: Instant,
-    last_announce: Instant,
+    next_announce: Instant,
     /// Turns sent, and the lag screen while the game waits on players.
     turns: u32,
     lag: Option<Lag>,
@@ -130,7 +134,7 @@ impl Host {
             info.host_counter = 1;
         }
         let now = Instant::now();
-        let h = Host { listener, discovery, info, map, slots, name, players: Vec::new(), joining: Vec::new(), joins: 0, phase: Phase::Lobby, created: now, last_ping: now, last_announce: now - ANNOUNCE_EVERY, turns: 0, lag: None };
+        let h = Host { listener, discovery, info, map, slots, name, players: Vec::new(), joining: Vec::new(), joins: 0, phase: Phase::Lobby, created: now, last_ping: now, next_announce: now + ANNOUNCE_FIRST, turns: 0, lag: None };
         if let Some(d) = h.discovery.as_ref() {
             d.broadcast(&Packet::CreateGame { product: h.info.product, version: h.info.version, host_counter: h.info.host_counter });
         }
@@ -176,12 +180,17 @@ impl Host {
         }
         let mut gone = Vec::new();
         for k in 0..self.players.len() {
-            for p in self.players[k].conn.poll() {
+            // A player being let go (`drop_after`) goes as anything more comes from them
+            // (`FUN_6f99b870` takes nothing from one with +0x54 set: measured, a desync's
+            // player dropped at its next keepalive, 0.1 s after its 0x0E).
+            let packets = self.players[k].conn.poll();
+            let going = self.players[k].drop_at.is_some() && !packets.is_empty();
+            for p in packets.into_iter().filter(|_| !going) {
                 self.handle(k, p, &mut events, &mut gone);
             }
             // (The word a dropped connection's PLAYERLEFT carries is the port's choice:
             // provisional.)
-            if !self.players[k].conn.alive || self.players[k].drop_at.is_some_and(|t| Instant::now() >= t) {
+            if going || !self.players[k].conn.alive || self.players[k].drop_at.is_some_and(|t| Instant::now() >= t) {
                 gone.push((self.players[k].pid, leave::DISCONNECT));
             }
             self.send_map_parts(k);
@@ -204,10 +213,9 @@ impl Host {
     }
 
     /// Answers searches for this game (GAMEINFO, only so: `FUN_6f974ed0`), and now and
-    /// then says how many are in it (REFRESHGAME, `FUN_6f9742f0`), which a browser that
-    /// does not know the game answers with a search for it (programs that cannot hear
-    /// searches, sharing this computer's game port, so still find it; the interval is
-    /// provisional).
+    /// then says how many are in it (REFRESHGAME, `FUN_6f9742f0`, `ANNOUNCE_EVERY`), which
+    /// a browser that does not know the game answers with a search for it (programs that
+    /// cannot hear searches, sharing this computer's game port, so still find it).
     fn discover(&mut self) {
         let Some(d) = self.discovery.as_ref() else { return };
         if self.phase != Phase::Lobby {
@@ -222,11 +230,17 @@ impl Host {
                 d.send_to(&self.game_info(), from);
             }
         }
-        if self.last_announce.elapsed() >= ANNOUNCE_EVERY {
-            self.last_announce = Instant::now();
-            let Packet::GameInfo(g) = self.game_info() else { return };
-            d.broadcast(&Packet::RefreshGame { host_counter: g.host_counter, players: g.players, player_slots: g.player_slots });
+        if Instant::now() >= self.next_announce {
+            self.next_announce += ANNOUNCE_EVERY;
+            self.refresh();
         }
+    }
+
+    /// REFRESHGAME to everyone on the network: the game's host counter, its people, and
+    /// its slots for people.
+    fn refresh(&self) {
+        let (Some(d), Packet::GameInfo(g)) = (self.discovery.as_ref(), self.game_info()) else { return };
+        d.broadcast(&Packet::RefreshGame { host_counter: g.host_counter, players: g.players, player_slots: g.player_slots });
     }
 
     fn join(&mut self, mut conn: Conn, name: String, internal: SockAddr) -> Option<Event> {
@@ -263,6 +277,7 @@ impl Host {
         s.status = status::OCCUPIED;
         s.download = DOWNLOAD_UNKNOWN;
         self.send_slots();
+        self.refresh();
         Some(Event::Joined { pid, name })
     }
 
@@ -378,8 +393,9 @@ impl Host {
         }
     }
 
-    /// Lets a player go after `wait` (as `FUN_6f998880` does the players a desync leaves
-    /// out, after 2000 ms): then they leave as dropped.
+    /// Lets a player go after `wait`, or as anything more comes from them (as
+    /// `FUN_6f998880` does the players a desync leaves out, with 2000 ms): then they
+    /// leave as dropped.
     pub fn drop_after(&mut self, pid: u8, wait: Duration) {
         if let Some(q) = self.players.iter_mut().find(|q| q.pid == pid) {
             q.drop_at.get_or_insert(Instant::now() + wait);

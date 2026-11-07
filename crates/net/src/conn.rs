@@ -151,12 +151,6 @@ impl Discovery {
         Discovery::with(socket, port, listening)
     }
 
-    /// Seeks games on the game port from any port of its own (hearing the answers to
-    /// its searches), leaving the game port to a game this computer hosts.
-    pub fn seeker(port: u16) -> std::io::Result<Discovery> {
-        Discovery::with(UdpSocket::bind(("0.0.0.0", 0))?, port, false)
-    }
-
     fn with(socket: UdpSocket, port: u16, listening: bool) -> std::io::Result<Discovery> {
         socket.set_broadcast(true)?;
         socket.set_nonblocking(true)?;

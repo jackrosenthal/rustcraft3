@@ -254,7 +254,9 @@ pub struct Browser {
 
 impl Browser {
     pub fn new(port: u16, product: [u8; 4], version: u32) -> std::io::Result<Browser> {
-        Ok(Browser { discovery: Discovery::seeker(port)?, product, version, last_search: None, games: Vec::new() })
+        // On the game port when it is free, as the original browses (measured: its UDP
+        // socket bound to 0.0.0.0:6112), hearing games created, refreshed, and gone.
+        Ok(Browser { discovery: Discovery::new(port)?, product, version, last_search: None, games: Vec::new() })
     }
 
     /// Returns whether the list changed.

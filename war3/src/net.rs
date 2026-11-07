@@ -287,7 +287,8 @@ pub fn leave_word(w: &World) -> u32 {
 /// turns' (`FUN_6f99e310`: the tick count since the last turn).
 pub const TURN: f32 = 0.1;
 const TURN_MAX: u16 = 400;
-/// The players a desync leaves out go after 2 s (`FUN_6f998880`).
+/// The players a desync leaves out go as anything more comes from them, or after 2 s
+/// (`FUN_6f998880`, `Host::drop_after`).
 const DESYNC_DROP: Duration = Duration::from_millis(2000);
 
 impl Session {
@@ -528,12 +529,11 @@ impl Session {
     /// theirs.  Games that have parted are grouped by their checksum, as the original's
     /// router does (`FUN_6f999b50`): each player is told (DESYNC) the others in their
     /// group, themselves first in the largest (the host's, when two are as large:
-    /// provisional), and the other groups' players go after `DESYNC_DROP`.
+    /// provisional), and the other groups' players go (`DESYNC_DROP`).
     fn compare_checks(&mut self) {
-        // (Those told they are out of step are compared no more: `FUN_6f999b50` marks
-        // the turns compared.)
-        let parted: Vec<u8> = self.role.players.iter().filter(|p| self.desynced.contains(&p.1)).map(|p| p.0).collect();
-        let people: Vec<u8> = std::iter::once(HOST_PID).chain(self.played_by.keys().copied()).filter(|p| !parted.contains(p)).collect();
+        // (Each turn that differs is told, until those out of step are gone: measured,
+        // the original's 0x0E for turns 1 and 2 to a player answering checksum 0.)
+        let people: Vec<u8> = std::iter::once(HOST_PID).chain(self.played_by.keys().copied()).collect();
         let complete: Vec<u32> = self.checks.iter().filter(|(_, sums)| people.iter().all(|p| sums.iter().any(|s| s.0 == *p))).map(|(&n, _)| n).collect();
         for n in complete {
             let sums: Vec<(u8, u32)> = self.checks.remove(&n).unwrap_or_default().into_iter().filter(|s| people.contains(&s.0)).collect();
@@ -563,8 +563,11 @@ impl Session {
                 }
             }
             let out: Vec<u8> = groups.iter().enumerate().filter(|(k, _)| *k != main).flat_map(|(_, g)| g.1.clone()).filter_map(|pid| self.player_of(pid)).collect();
-            self.desynced.extend(out);
-            break;
+            for p in out {
+                if !self.desynced.contains(&p) {
+                    self.desynced.push(p);
+                }
+            }
         }
         // Turns no one still in the game has yet to send are not kept.
         let oldest = self.played_by.values().copied().min().unwrap_or(self.next);

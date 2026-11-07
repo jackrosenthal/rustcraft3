@@ -429,7 +429,9 @@ original images.
   widened was not traced).  The unit portrait is a CSpriteFrame too (CPortraitButton's
   vtables `0x6fabfbc0` and `0x6fabfce8` keep CSpriteFrame's `FUN_6f0f6490`,
   `FUN_6f0f7700`, `FUN_6f0f7080`, and `FUN_6f0f6fc0`), so its model camera goes the
-  same way; `FUN_6f126e30` has no other caller.
+  same way; `FUN_6f126e30` has no other caller.  But it is not widened: the original's
+  Arrow Tower portrait at 1272 × 686 is as tall as by the 4:3 frame and 1.39 times as
+  wide, stretched with the console.
 - The main menu's version (`0x6f2dc0c4`): "%d.%d.%d.%d" of the constants 1, 27, 1, 7085
   in a `CTextFrame` made by code (`FUN_6f0fd2c0`), right justified (`FUN_6f0fdd20(2)`),
   its BOTTOMRIGHT on the menu's at (−0.013, 0) (`0x6f2dc144`).  Captured, its digits'

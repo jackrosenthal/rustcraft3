@@ -5435,10 +5435,13 @@ impl Scene {
         // camera (FUN_6f0f64e0, FUN_6f1adf40, FUN_6f126e30), which shares the field of
         // view out along the diagonal of the frame in interface units, the angle and not
         // its tangent, as the menu background does; the cinematic one (a SPRITE frame)
-        // takes it as the vertical extent (matched against the original's).
+        // takes it as the vertical extent (matched against the original's).  Unlike the
+        // menu background, the portrait is stretched with the console on a wider screen
+        // (the original's Arrow Tower at 1272 by 686: as tall as at 4:3, 1.39 times as
+        // wide), so it keeps the frame's shape in interface units.
         let frame = (rect.x1 - rect.x0) / (rect.y1 - rect.y0);
         let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0 / (1.0 + frame * frame).sqrt()).tan() };
-        let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
+        let proj = Mat4::perspective_rh(2.0 * half_h.atan(), if cine { aspect } else { frame }, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
         // Lit from the camera's way and its left (compared against the original: faces
         // and walls toward the viewer show bright, where a light from above left the Town

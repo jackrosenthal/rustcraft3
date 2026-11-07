@@ -66,6 +66,10 @@ impl ProfilePanel {
         for n in NEEDS_PROFILE {
             tree.set_enabled(n, any);
         }
+        // The list's scroll bar shows only when its rows outgrow it (FUN_6f2ac2a0), not
+        // before the list is laid out.
+        let rows = tree.get("ProfileListContainer").and_then(|i| tree.frames[i].rect).map(|c| ((c.h() - 0.016) / ROW) as usize);
+        tree.set_visible("ListScrollBar", rows.is_some_and(|n| self.profiles.entries.len() > n));
         // Create needs a name not already taken (FUN_6f2faa30).
         tree.set_enabled("AddProfileButton", !self.text.is_empty() && self.profiles.find(&self.text).is_none());
         tree.set_text("ProfileNameText", &self.name().unwrap_or_default());

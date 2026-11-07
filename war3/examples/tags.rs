@@ -171,6 +171,7 @@ fn main() -> anyhow::Result<()> {
     if let Ok(file) = std::env::var("TAGS_LOAD") {
         let s = w3_game::save::read(Path::new(&file))?;
         g.restore_original(&s)?;
+        g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
         println!("loaded {file}");
         // TAGS_LOADSAVE=<file>: the restored game saved at once in the original's
         // format (its header the loaded save's), to compare its records with the

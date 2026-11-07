@@ -47,6 +47,7 @@ fn game(data: &war3::data::GameData, local: u8) -> anyhow::Result<w3_game::Game>
 fn restored(data: &war3::data::GameData, bytes: &[u8], local: u8) -> anyhow::Result<w3_game::Game> {
     let mut g = game(data, local)?;
     g.restore_original(&w3_game::save::parse(bytes)?)?;
+    g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
     g.world.local_player = local;
     Ok(g)
 }

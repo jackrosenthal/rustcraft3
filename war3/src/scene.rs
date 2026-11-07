@@ -838,9 +838,12 @@ impl Scene {
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
                 }
+                // The loaded game's triggers hear it (EVENT_GAME_LOADED; provisional: when the
+                // original's load fires it, unread).
                 if let Some(s) = &original {
-                    if let Err(e) = g.restore_original(s) {
-                        log::error!("loading the saved game: {e:#}");
+                    match g.restore_original(s) {
+                        Ok(()) => g.game_event(w3_game::event_ids::EVENT_GAME_LOADED),
+                        Err(e) => log::error!("loading the saved game: {e:#}"),
                     }
                 }
                 // Without a setup screen the local player is not the map's: a campaign's

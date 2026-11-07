@@ -4313,6 +4313,12 @@ impl Scene {
                     if on != *noted {
                         *noted = on;
                         g.note(w3_game::replay::Command::Pause { player, on });
+                        // The Pause in a turn of its own as the game stops (read: the
+                        // original's at its dialog's showing, the Resume with the button's
+                        // actions).
+                        if on {
+                            g.close_record();
+                        }
                     }
                 }
             }

@@ -486,7 +486,8 @@ these are the findings behind them.
   2, and was gone at its next keepalive, 0.1 s later.
 - Turns: the LAN provider's turn is 100 ms (`FUN_6f974710`; Battle.net's 250,
   `FUN_6f970fa0`), each turn as long as the tick count since the last, at least 1 and
-  at most four turns' (`FUN_6f99e310`).
+  at most four turns' (`FUN_6f99e310`; measured 100, 99, 95, 86).  The port's host
+  sends 100 ms turns (see the 25 ms ticks below).
 - Discovery: a host answers SEARCHGAME with GAMEINFO (`FUN_6f974ed0`), for the game its
   third word names by host counter, or all for 0, and otherwise says REFRESHGAME (host
   counter, people, slots for people: `FUN_6f9742f0`); a browser answers CREATEGAME, and
@@ -497,6 +498,23 @@ these are the findings behind them.
   original binds, 0.0.0.0:6112, which its browser uses too; PING_FROM_HOST each 30 s
   from the game's creation; turns 100, 99, and 95 ms.  The host never connected to its
   joiner (no peer-to-peer from the host).
+- Measured with the original joined to the port's host (Booty Bay, the runner's M2):
+  its chat lines go `to` the host only (`f7281500 01 01 02 20 00000000 ...`), all of
+  scope 0 with no allies (its Enter's box says "To All:"; "/w" is plain text over LAN);
+  the port's private line reached it with scope 4 (3 + its player, 1); the port's
+  allies' line, with no allies, was not sent; after a 10 s SIGSTOP it read START_LAG
+  `f7100a00 01 02 00000000` and then STOP_LAG `f7110900 02 ac190000` (6572 ms); its
+  menu's Quit Mission sent LEAVEGAME `f7210800 07000000`, answered by LEFTGAME
+  `f71b0400` in 5 ms; its REQJOIN from a fresh process carries net client id 1; its
+  setup choices go to 0xFF (`f7280900 01 ff 02 11 00`); its first keepalive's byte
+  before the checksum is 0, the later ones 4.  The port's w3gplay plays its replay of
+  that game with all 1799 keepalives agreeing.  With three people (Forestwalk, Lost
+  Temple) or two on Forestwalk, the original's keepalive differs from the port's at turn
+  1, also playing the original's own replays: a difference in the game's setup, not the
+  network's.
+- The original's game takes game time in whole 25 ms ticks, keeping the rest of a turn
+  for the next: its keepalive's time was 175 after turns of 100 and 99 ms, and 100, 200,
+  300 after the port's host sent turns making 113, 203, 314.
 - The player's 0x13 closes the connection with reason 0x0E, 0x1C with its word, and
   0x1B (the answer to its LEAVEGAME) closes it.  Its 0x14 and 0x16 to 0x1A are its
   states 9 and 10 (a host's handoff, as its strings name it), 0x3E, 0x40, 0x44, and 0x45

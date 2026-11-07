@@ -184,11 +184,12 @@ impl Client {
         self.conn.send(&Packet::MapSize { flag: 1, size: if have { self.map_size } else { 0 } });
     }
 
-    /// A line in the setup's chat to everyone else, or a setup choice to the host.
+    /// A line in the setup's chat to everyone else, or a setup choice to the host, which
+    /// the original addresses to 0xFF (measured: its team choice in the port's lobby).
     pub fn chat(&mut self, chat: Chat) {
         let to: Vec<u8> = match chat {
             Chat::Lobby(_) | Chat::Game { .. } => self.players.iter().map(|p| p.0).collect(),
-            _ => vec![crate::host::HOST_PID],
+            _ => vec![0xFF],
         };
         self.conn.send(&Packet::ChatToHost { to, from: self.pid, chat });
     }

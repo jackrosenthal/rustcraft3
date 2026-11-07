@@ -1134,15 +1134,24 @@ impl World {
         let Some(&pcu) = u.extra.object_slots[0].get(1) else { return out };
         let cells = |(x, y): (f32, f32)| ((x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0);
         let (gx, gy) = cells(goal);
-        // (Its local goal the point itself while its way is direct.)
-        let (lx, ly) = if u.path.len() > 1 { cells(u.path[u.path.len() - 1]) } else { (gx, gy) };
+        // (Its local goal the point itself while its way is direct; a cluster walker's its
+        // cluster's point, its coarse way's node it goes for in half cells, past the
+        // first, `World::cluster_goal`: read, Mafarazzo TD's creeps', (105.5, 143.5) on
+        // the way to (104.5, 79.5).)
+        let (lx, ly) = match u.extra.coarse.as_ref() {
+            Some(c) if c.index > 0 && c.index < c.points.len() => (c.points[c.index].0 * 2.0, c.points[c.index].1 * 2.0),
+            _ if u.path.len() > 1 => cells(u.path[u.path.len() - 1]),
+            _ => (gx, gy),
+        };
         let (cx, cy) = cells((u.x, u.y));
         let heading = u.extra.mover.as_ref().map_or(0.0, |m| f32::from_bits(m.heading));
         let moving = u.extra.mover.as_ref().is_some_and(|m| f32::from_bits(m.vx) != 0.0 || f32::from_bits(m.vy) != 0.0);
         let speed = if moving { self.walk_speed_cells(h) } else { 0.0 };
         let array = Array { words: [528, 528, 0, 12], entries: vec![([pcu.0, pcu.1, 0], [0.0, 0.0, lx, ly, speed, heading], 0)] };
         // (A walker whose pathing a script turned off: its cluster's word 0, and its
-        // path's owner word without 0x200; read, Mafarazzo TD's creeps; provisional.)
+        // path's owner word without 0x200; read, Mafarazzo TD's creeps; provisional: 78
+        // of their 180 clusters at 53.8 seconds have 0x20000 though every creep's
+        // pathing is off, most of them the newest walks, but not all.)
         let pathing = !u.extra.no_pathing;
         out.push((clu.0, First::Cluster2 { array, words: [u32::MAX, u32::MAX, 0], reals: [gx, gy, lx, ly], more: [0, 0, 0, 0, 0], last_reals: [heading, f32::MAX], word: if pathing { 0x2_0000 } else { 0 }, refs: [NONE, NONE, rf(path)] }, None));
         // (A collision of none as one: read, Mafarazzo TD's creeps' 0.03125.)
@@ -4049,13 +4058,15 @@ impl World {
     /// the times it has been set back, the span, and two words (read: Forestwalk's
     /// computer game saved at 450 seconds, main 150.0 and agent 150.66518, each set back
     /// once; at 300, the main 300.0 not yet).  The main clock as the port keeps it (its
-    /// properties' dues reckoned from their makings' clocks); the agent queue's the
-    /// game's time set back as often (its timers' dues reckoned on that time).
-    /// Provisional: their last words, the queues' counts, 0.
+    /// properties' dues reckoned from their makings' clocks), the engine's at its last
+    /// tick as the manager's header has it (read: Mafarazzo TD's LAN save at 53.8
+    /// seconds, its main clock 53.783657, a script's save at 60 seconds 60.0); the agent
+    /// queue's the game's time set back as often (its timers' dues reckoned on that
+    /// time).  Provisional: their last words, the queues' counts, 0.
     pub(crate) fn saved_clocks(&self, time: f32) -> [(f32, u32, f32, u32, u32); 2] {
         let wraps = self.tick_wraps.last().copied().unwrap_or(0);
         if wraps == 0 {
-            return [(time, 0, 300.0, 4096, 0), (time, 0, 300.0, 0, 0)];
+            return [(self.main_clock_now(), 0, 300.0, 4096, 0), (time, 0, 300.0, 0, 0)];
         }
         let mut agent = time.to_bits();
         for _ in 0..wraps {

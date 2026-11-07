@@ -2568,29 +2568,39 @@ impl World {
                 ));
             }
         }
-        // A walk to a point (read: Forestwalk's peasants sent off by script): its local
-        // goal thrice, 0x2000000 in its first word, its collision, a local way from its
-        // local goal to where it stands and its long way; its fine region.
+        // A walk to a point (read: Forestwalk's peasants sent off by script, Mafarazzo
+        // TD's creeps): its local goal thrice, 0x2000000 in its first word, its collision
+        // (none as one, read: the creeps' 0.03125), a local way and its own coarse way;
+        // its fine region.  The local way from its local goal (its path's last) to the
+        // node it steers for (its path's first), by that node's index, then where it
+        // stands; its own coarse way (to its cluster's point, `move_coarse`) by its index,
+        // none an empty way (as `Game::restore_original` reads them back).  Its last word
+        // 0x2000002, a unit's whose pathing a script turned off 0 (read: the creeps').
         // Provisional: the unit it yields to and the ways' counters (none written).
         if let (Some(p), &crate::types::Action::Move { x, y }) = (self.pathing.as_ref(), &u.action) {
             if self.saved_order(h).is_some_and(|o| o.walk.is_some()) && u.extra.gold_run.is_none() {
                 let cells = |(x, y): (f32, f32)| [(x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0];
                 let here = cells((u.x, u.y));
-                let [gx, gy] = cells((x, y));
-                let local = if u.path.len() > 1 { cells(u.path[u.path.len() - 1]) } else { [gx, gy] };
-                let set = |entries: Vec<[f32; 2]>, limit: u16| (super::path_array(entries), 0, 0, limit);
-                let corners: Vec<[f32; 2]> = match u.extra.coarse.as_ref() {
-                    Some(c) => c.points.iter().map(|&(x, y)| [x, y]).collect(),
-                    None => vec![[gx / 2.0, gy / 2.0], [here[0] / 2.0, here[1] / 2.0]],
+                let goal = cells((x, y));
+                let mut local: Vec<[f32; 2]> = u.path.iter().rev().map(|&q| cells(q)).collect();
+                let index = local.len().saturating_sub(1) as u32;
+                if local.is_empty() {
+                    local.push(goal);
+                }
+                let end = local[0];
+                local.push(here);
+                let own = match u.extra.move_coarse.as_ref() {
+                    Some(c) => (super::path_array(c.points.iter().map(|&(x, y)| [x, y]).collect()), c.index as u32, 0, 400),
+                    None => (super::path_array(Vec::new()), u32::MAX, 0, 400),
                 };
                 return Some((
                     first[9].0,
                     w3_formats::w3z::First::Path {
-                        reals: [local[0], local[1], local[0], local[1], local[0], local[1]],
+                        reals: [end[0], end[1], end[0], end[1], end[0], end[1]],
                         words: [word | 0x0200_0000, 0, 0, u32::MAX, u32::MAX, 0],
-                        real: o.real("collision") / 32.0,
-                        word: 0x0200_0002,
-                        ways: [set(vec![local, here], 700), set(corners, 400)],
+                        real: o.real("collision").max(1.0) / 32.0,
+                        word: if u.extra.no_pathing { 0 } else { 0x0200_0002 },
+                        ways: [(super::path_array(local), index, 0, 700), own],
                         refs: [NONE, NONE, rf(first[3]), NONE],
                     },
                 ));

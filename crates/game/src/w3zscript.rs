@@ -523,12 +523,14 @@ impl Game {
     /// The game as a saved game in the original's format (`.w3z`, its recorded-game
     /// container with the header the original's 1.27 writes; a Reign of Chaos game's
     /// product as its replays').  Its header from the game's record: the map's path and
-    /// checksums, and a network game's description (`Replay::network_head`), else a
-    /// game played alone's (the local player's name, the speed fast).
+    /// checksums (a map inside the game's archives, a campaign's mission, as
+    /// `archive_map_stat` reckons them), and a network game's description
+    /// (`Replay::network_head`), else a game played alone's (the local player's name,
+    /// the speed fast).
     pub fn save_files(&self) -> anyhow::Result<Vec<u8>> {
         use anyhow::Context;
         let record = self.recorder.as_ref().map(|r| &r.replay);
-        let ms = record.and_then(|r| r.map_stat.clone()).context("the map's checksums are not known")?;
+        let ms = record.and_then(|r| r.map_stat.clone().or_else(|| self.archive_map_stat(&r.map))).context("the map's checksums are not known")?;
         let expansion = record.is_none_or(|r| r.version != 0);
         let network = record.and_then(|r| r.network_head());
         let stat = match &network {
@@ -541,6 +543,21 @@ impl Game {
         let head = SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network };
         let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
         Ok(self.write_save_fresh(&head).to_file(&header))
+    }
+
+    /// A map inside the game's archives (a campaign's mission, `map` as the archives
+    /// name it) as a save's header names it: that name, its playable size, and its
+    /// checksums over the game's scripts, as a map file's (`war3::replays::map_stat`).
+    /// Provisional: the original's save of a mission not yet read.
+    fn archive_map_stat(&self, map: &str) -> Option<crate::replay::MapStat> {
+        let name = map.replace('/', "\\");
+        let chain = &self.world.chain;
+        let bytes = chain.read(&name).ok()?;
+        let archive = w3_mpq::Archive::from_bytes(&name, bytes.clone()).ok()?;
+        let info = w3_formats::map::MapInfo::parse(&archive.read("war3map.w3i").ok()?).ok()?;
+        let (common, blizzard) = (chain.read("Scripts\\common.j").unwrap_or_default(), chain.read("Scripts\\blizzard.j").unwrap_or_default());
+        let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
+        Some(crate::replay::MapStat { path: name, width: info.playable_width as u16, height: info.playable_height as u16, xoro: checksums.xoro, sha1: checksums.sha1 })
     }
 
     /// A save from the port's state alone, without a template: the header (`head`'s map
@@ -614,6 +631,14 @@ impl Game {
                 }
                 empty.retain(|_, e| e.0 + e.1 > 0);
                 eprintln!("fresh: objects without records by kind (first, second): {empty:?}");
+                // (W3Z_COVERAGE=list: each such object, and the handles of a destroyed
+                // object scripts still hold that name it, `Tags::dead_handles`.)
+                if std::env::var("W3Z_COVERAGE").is_ok_and(|v| v == "list") {
+                    for o in objects[0].iter().filter(|o| o.first.is_empty()) {
+                        let dead = w.tags.dead_handles.iter().filter(|(_, d)| d.0 .0 == o.entry.tag).map(|(h, _)| *h).collect::<Vec<_>>();
+                        eprintln!("  fresh: no first record: slot {} {} birth {} dead handles {dead:?}", o.entry.tag, String::from_utf8_lossy(&o.entry.kind.to_be_bytes()), o.entry.birth);
+                    }
+                }
             }
         }
         // The objects the port makes no records for yet (a walk's order, tasks, cluster,
@@ -641,9 +666,16 @@ impl Game {
                 }
             }
         }
-        // The objects' word, their sum over the records as written (0 while a record is
-        // not read).
-        s.objects_word = s.objects_sum().unwrap_or(0);
+        // The objects' word, their sum over the records as written (0, and a warning
+        // naming it, while a record the writer made does not read back).
+        s.objects_word = match s.objects_sum() {
+            Ok(word) => word,
+            Err(e) => {
+                let bad = s.objects.as_ref().and_then(|m| m.objects().ok()).and_then(|o| o[0].iter().find(|o| o.sum().is_err()).map(|o| (o.entry.tag, String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).into_owned())));
+                log::warn!("the save's objects' sum: {e} (the object {bad:?}); its word written 0");
+                0
+            }
+        };
         let Ok(script) = self.saved_script_data(&ScriptData::default()).to_bytes() else { return s };
         let parts: Vec<(&'static str, Vec<Field>)> = vec![
             ("game", w.saved_game_part()),

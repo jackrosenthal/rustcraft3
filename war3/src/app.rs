@@ -640,9 +640,12 @@ impl ApplicationHandler for App {
                         Some(crate::glue::GlueAction::LoadSave(file)) => {
                             match w3_game::save::read(&file) {
                                 Ok(save) => {
-                                    self.data.campaign_game.set(false);
                                     let map = save.map.clone();
                                     let path = self.data.map_of_save(&save);
+                                    // (A campaign's mission is a map inside the game's
+                                    // archives, as its save names it; provisional, the
+                                    // original's save of one not yet read.)
+                                    self.data.campaign_game.set(!path.is_file() && self.data.chain.contains(&map));
                                     glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
                                     glue.show_loading(&mut r.assets);
                                     r.pending = Some((path, None, Some(save)));

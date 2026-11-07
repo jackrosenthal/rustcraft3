@@ -490,6 +490,8 @@ impl Glue {
         // A list's scroll bar takes its range from the rows on a page, known only now.
         if Self::lists(screen) {
             self.skirmish.set_bar(&mut self.tree);
+            // The list does not have the keyboard until it is pressed (provisional).
+            self.skirmish.list_focus = false;
         }
         if screen == Screen::SinglePlayer {
             self.profile.sync(&mut self.tree);
@@ -811,9 +813,9 @@ impl Glue {
         }
     }
 
-    /// A key for the screen's list (see Skirmish::key).
+    /// A key for the screen's list (see Skirmish::key), while the list has the keyboard.
     pub fn list_key(&mut self, key: crate::skirmish::ListKey, assets: &Assets) {
-        if Self::lists(self.screen) && self.dialog.is_none() {
+        if Self::lists(self.screen) && self.dialog.is_none() && self.skirmish.list_focus {
             self.skirmish.key(&mut self.tree, &assets.frames, key);
         }
     }
@@ -824,7 +826,11 @@ impl Glue {
             return true;
         }
         let (x, y) = self.pointer;
-        if self.tree.pointer_down(x, y).is_some() {
+        if let Some(hit) = self.tree.pointer_down(x, y) {
+            // A press on another control takes the keyboard from the list.
+            if !self.skirmish.is_bar(&self.tree, hit) {
+                self.skirmish.list_focus = false;
+            }
             self.follow_bars();
             return true;
         }

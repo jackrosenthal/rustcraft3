@@ -137,6 +137,10 @@ pub struct Skirmish {
     scroll: usize,
     /// Wheel movement short of a notch.
     wheel_lines: f32,
+    /// The list has the keyboard (FUN_6f0f0a00): a press on it gives it, and a press on
+    /// another control takes it, but not one on the list's scroll bar's arrows and thumb
+    /// (their flag 0x80).  Its keys act only while it has it.
+    pub list_focus: bool,
     pub summary: Option<MapSummary>,
     /// Map list rows' rectangle, from MapListContainer.
     list: Option<Rect>,
@@ -200,6 +204,7 @@ impl Skirmish {
             selected: None,
             scroll: 0,
             wheel_lines: 0.0,
+            list_focus: false,
             summary: None,
             list: None,
             world_edit: w3_formats::profile::Profile::default(),
@@ -737,6 +742,11 @@ impl Skirmish {
         })
     }
 
+    /// A control is the list's scroll bar or one of its parts.
+    pub fn is_bar(&self, tree: &FrameTree, i: usize) -> bool {
+        self.bar(tree).is_some_and(|b| i == b || tree.frames[i].parent == Some(b))
+    }
+
     /// The rows the list shows at once, inside its margins.
     fn rows(&self, tree: &FrameTree) -> usize {
         let Some(r) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return 0 };
@@ -793,6 +803,7 @@ impl Skirmish {
         if !r.contains(x, y) {
             return;
         }
+        self.list_focus = true;
         let row = ((r.y1 - y) / self.row_h()) as usize + self.scroll;
         if row >= self.entries.len() {
             return;

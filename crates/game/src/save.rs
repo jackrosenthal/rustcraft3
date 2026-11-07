@@ -974,6 +974,15 @@ impl Game {
                         u.extra.detect_ahead = None;
                     }
                 }
+                // (Its pathing off, SetUnitPathing's, where its own flags, its record's
+                // first word (CUnit +0x20), lack 0x40; a structure's never have it.  Read:
+                // Mafarazzo TD's creeps', 0x20000406, their walks' clusters' words a
+                // poorer guide.)
+                if !u.is_building {
+                    if let Some(Ok(w3_formats::w3z::Second::Unit { own, .. })) = by.get(&u.extra.oid).map(|o| o.second()) {
+                        u.extra.no_pathing = own & 0x40 == 0;
+                    }
+                }
                 let Some(pcu) = u.extra.object_slots[0].get(1).copied() else { continue };
                 let Some(Ok(First::Cluster { base, values, words, last, .. })) = by.get(&pcu).filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::UNIT_POSITION).map(|o| o.first()) else { continue };
                 (u.x, u.y) = (origin[0] + values[0] * crate::pathing::CELL, origin[1] + values[1] * crate::pathing::CELL);
@@ -1009,12 +1018,8 @@ impl Game {
                         }
                         u.extra.move_coarse = coarse_of(&ways[1]);
                     }
-                    if let Some(Ok(First::Cluster2 { refs, word: cluster_word, .. })) = by.get(&(words[0], words[1])).map(|o| o.first()) {
+                    if let Some(Ok(First::Cluster2 { refs, .. })) = by.get(&(words[0], words[1])).map(|o| o.first()) {
                         u.extra.coarse = path_of((refs[2].0, refs[2].1)).and_then(|ways| coarse_of(&ways[1]));
-                        // (Its pathing off, SetUnitPathing's, where its cluster's word lacks
-                        // 0x20000: read, Mafarazzo TD's creeps', 0.  Provisional: a unit
-                        // not walking keeps the map's start's.)
-                        u.extra.no_pathing = cluster_word & 0x2_0000 == 0;
                         // (Its place among the walks, which step and free their old paths
                         // newest first: the load links each cluster at the list's head as
                         // it comes in the table, so the highest slot's is the newest, all

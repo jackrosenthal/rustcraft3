@@ -5360,8 +5360,11 @@ Formats the port made its own, to be replaced by the original's:
     games, had been made anew at free slots, their in-range objects too.
   - The properties made again keep their saved stamps (reals', flags', and
     positions' base reals: the creeps' reals 19.997644, made at 20 seconds), the units
-    their saved facings in radians, and a walker its pathing as its cluster's word has
-    it (0x20000 on; the creeps' 0, SetUnitPathing's).  Saved at once after the load,
+    their saved facings in radians, and a unit its pathing (SetUnitPathing's) as its
+    own flags have it: off where its record's first word (CUnit +0x20) lacks 0x40, a
+    structure's never having it (read: every Mafarazzo TD creep's, 0x20000406; its
+    walk's cluster's 0x20000, set on 78 of the 180, no guide to it, as the port had
+    taken it).  Saved at once after the load,
     the port's records are then the save's for every real (917) and every standing
     unit's position; the 180 walkers' positions (their speed scalar, the original's
     6.2227297 where the port's velocity's length is 6.222687, two turning reals, and

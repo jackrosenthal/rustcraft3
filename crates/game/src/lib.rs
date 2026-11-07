@@ -1130,6 +1130,28 @@ impl Game {
         out
     }
 
+    /// A command the interface carries out by itself, noted for the replay only: a game
+    /// played alone's game menu pausing it and letting it go on, as the original sends
+    /// Pause and Resume then (read: its replays' 0x01 as the menu opens and 0x02 as it
+    /// closes), where the port's menu stops the game by itself.
+    pub fn note(&mut self, c: replay::Command) {
+        let local = self.world.local_player;
+        if let Some(r) = self.recorder.as_mut().filter(|_| self.outbox.is_none() && !self.locked) {
+            r.command(&self.world, local, c);
+        }
+    }
+
+    /// The replay's last frame: the commands noted since the last step, as a turn of no
+    /// time (the menu's pause as the game is quit through it).
+    pub fn close_record(&mut self) {
+        if self.recorder.as_ref().is_some_and(|r| r.pending()) {
+            let checksum = self.world.keepalive();
+            if let Some(r) = self.recorder.as_mut() {
+                r.step(0.0, None, checksum);
+            }
+        }
+    }
+
     /// A command from the interface (noted for the replay); none while a replay plays,
     /// and in a network game sent to the host rather than carried out.
     pub fn apply(&mut self, c: replay::Command) -> replay::Outcome {
@@ -1305,6 +1327,11 @@ impl Game {
                 let observer = |w: &world::World, p: u8| w.players.get(p as usize).is_some_and(|pl| pl.get_state(types::player_state::OBSERVER) != 0);
                 let w = &mut self.world;
                 if p != player {
+                    return O::Done;
+                }
+                // A game played alone's pause is its game menu's, uncounted and unannounced.
+                if !w.net_sleeps() {
+                    w.net_paused = on.then_some(p);
                     return O::Done;
                 }
                 match (on, w.net_paused) {

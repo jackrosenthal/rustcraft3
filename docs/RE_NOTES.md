@@ -1768,7 +1768,10 @@ these are the findings behind them.
     1), and the original's replays hold 0x21 too (two bytes).  The original's game
     played alone sends Pause (0x01) as its game menu opens and Resume (0x02) as it
     closes, its turns going on at their length meanwhile, and Pause as a script dialog
-    shows (Mafarazzo TD's at its turn 12); the port pauses its menu by itself.
+    shows (Mafarazzo TD's at its turn 12); quit through the menu, its last Pause goes
+    unanswered.  The port notes its menu's Pause and Resume for its replay
+    (`Game::note`), its menu stopping the game by itself, so both fall in the turn after
+    the menu (the last Pause in a turn of no time); not yet a script dialog's.
     Settings: a map loaded directly MAP_LOCK_RANDOM_SEED alone (0x800002), a Custom
     Game the setup's options (0x64802 by default).  Turns of a game played alone are of
     96 to 101 ms of game time.  A campaign mission is recorded nowhere

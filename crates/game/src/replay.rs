@@ -624,6 +624,11 @@ impl Recorder {
         self.pending.push((player, c));
     }
 
+    /// Whether commands are noted that no frame has closed yet.
+    pub fn pending(&self) -> bool {
+        !self.pending.is_empty() || !self.chat.is_empty()
+    }
+
     /// Closes a frame of `dt` seconds and the game's checksum for it: the frame played
     /// (`from`, a network turn's or a replay's) as it came, its actions, turn, leaves,
     /// and chat; else the commands noted since the last.

@@ -3113,9 +3113,13 @@ impl Scene {
             }
             "EndGameButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
             "PreviousButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
+            // Quit Mission (FUN_6f3c2de0) leaves the game, whose end shows the score
+            // screen (FUN_6f1e0620): the game's flag for it is set as it starts
+            // (FUN_6f1eab40), and only EndGame and a level change set it otherwise.
             "QuitButton" => {
                 h.menu = None;
                 self.ended = true;
+                self.final_score = self.score_data();
             }
             "ExitButton" => crate::hud::Hud::menu_panel(m, "ConfirmQuitPanel"),
             "ConfirmQuitCancelButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),

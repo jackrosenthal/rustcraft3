@@ -40,6 +40,22 @@ original images.
   every player forced by its slots' setup, draws nothing for the placement: the
   original's 16 draws of the main generator before the first turn are other draws
   (measured with a breakpoint on `FUN_6f1b7130`), where the port had drawn 20 more.
+- **A team placed together** (`FUN_6f1ea2f0`): the team with the most players not yet
+  placed (the first such) takes the free locations shuffled, and `FUN_6f1e5140` tries
+  each as an anchor: breadth first from it, each location taken in turn adds the free
+  locations its priorities name (SetStartLocPrioCount's slots, SetStartLocPrio's high
+  to one list and any other, an unset slot's location 0 included, to another), and as
+  the queue runs out the high list, then the low, each shuffled, join it; with a
+  location for each player the players, shuffled, take them in order.  None that
+  finds enough (no backtracking: the anchors' entry is let go either way), the same
+  anchors again taking as many as are found, the rest left for the next turn of the
+  loop.  So a team of two draws two more than the anchors' shuffle on Forestwalk and
+  Lost Temple.  A slot the setup left open, as a closed one, draws no random race
+  (`FUN_6f1e9dd0`, its player's +0xf0).  Read: the original's replays of mixed LAN
+  games of three people on Forestwalk (teams 0, 0, 2) and Lost Temple (0, 0, 2, the
+  fourth open) and of two on Forestwalk (its third open), which parted at turn 1 by
+  two draws of the main generator and by one race, agree with the port's until the
+  original dropped the port's players (turns 2, 2, and 8).
 - **Destructables without pathing** (a pathing texture empty or `_`): two pathing
   regions as a dead one, not five (measured: Mafarazzo TD's two OTds, its keepalive's
   births and presence agreeing at turn 1 only so).

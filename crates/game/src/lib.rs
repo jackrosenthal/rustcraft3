@@ -428,10 +428,13 @@ impl Game {
         // Random races are drawn as the game starts (FUN_6f1e9dd0): for each of the 12
         // players in turn whose preference is random, the main generator's next number's
         // top two bits plus one.  A player the map does not have is random; one it has
-        // whose slot the setup closed draws none (measured: all 12 drew in a two-player
-        // Booty Bay, 11 in Forestwalk with its third slot closed).
+        // whose slot the setup left open or closed draws none (measured: all 12 drew in a
+        // two-player Booty Bay, 11 in Forestwalk with its third slot closed; read: the
+        // original's replays of Forestwalk with its third slot open and of Lost Temple
+        // with its fourth, from the original's seeds).
         for id in 0..12u8 {
             let random = match slots.iter().find(|s| s.player == id) {
+                Some(s) if matches!(s.fill, SlotFill::Empty) => !self.info.players.iter().any(|i| i.id == id as u32),
                 Some(s) => s.race.is_none() || random_races,
                 None => !self.info.players.iter().any(|i| i.id == id as u32),
             };

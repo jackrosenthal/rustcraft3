@@ -1502,7 +1502,10 @@ impl FrameTree {
                     }
                 }
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "GLUEEDITBOX") | (_, "SCROLLBAR") => {
+            // A SLASHCHATBOX (The Frozen Throne's lobby chat line) is a CEditBox
+            // (CSlashChatBox's constructor, FUN_6f2a6bb0, builds one first) and shows its
+            // backdrop as one does.
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "GLUEEDITBOX") | (_, "SLASHCHATBOX") | (_, "SCROLLBAR") => {
                 let key = match (f.enabled, f.pushed) {
                     (false, true) if d.str("ControlDisabledPushedBackdrop").is_some() => "ControlDisabledPushedBackdrop",
                     (false, _) => "ControlDisabledBackdrop",
@@ -1538,7 +1541,7 @@ impl FrameTree {
                 // An edit box without an EditTextFrame shows its text in its own text frame
                 // (CEditBox's +0x254): MasterFont, white, from its left past EditBorderSize,
                 // 0.015 high as measured from the original's Game Port box.
-                if matches!(d.kind.as_str(), "EDITBOX" | "GLUEEDITBOX") && d.str("EditTextFrame").is_none() {
+                if matches!(d.kind.as_str(), "EDITBOX" | "GLUEEDITBOX" | "SLASHCHATBOX") && d.str("EditTextFrame").is_none() {
                     if let Some(text) = f.text.as_deref().filter(|t| !t.is_empty()) {
                         let border = d.prop("EditBorderSize").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
                         let rect = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: r.y0, y1: r.y1 };

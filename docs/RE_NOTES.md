@@ -1751,16 +1751,27 @@ these are the findings behind them.
     records 0x1A to 0x1C (each 1), each turn followed by its checksum, a chat line as
     0x20 (the sender, flags 0x20, its recipients, 0 for all in a game played alone,
     and the line) before the turn after it, a leave as 0x17, and the local player's
-    leaving at its end: reason 12, its LEAVEGAME word (7 left by the menu while
-    playing, 11 by the defeat dialog's Quit Game or the victory dialog's Continue), and
-    the program's games so far (one more as each begins and once more at a game over:
-    1, 2, 4, 5 for a quit, a quit, a defeat, and a quit in one run; 2 for a defeat or a
-    victory in a fresh one, 3 for the game after that victory, 4 for a second victory).  As the local player
-    leaves, `FUN_6f985030` writes one for each player still in the game; another's
-    leave (`FUN_6f98c680`, after the host's PLAYERLEFT) has reason 1 and its word.
+    leaving at its end: reason 12, its LEAVEGAME word (7 left by the menu, even after
+    its victory; 11 by the defeat dialog's Quit Game or the victory dialog's Continue),
+    and the program's games so far (one more as each begins and once more at a game
+    over, however it is left: 1, 2, 4, 5 for a quit, a quit, a defeat, and a quit in one
+    run; 2 for a defeat or a victory in a fresh one, 3 for the game after that victory,
+    4 for a second victory; the LAN host's 7 and 2 after its victory).  As the local
+    player leaves, `FUN_6f985030` writes one for each player still in the game, by
+    network id, each with the local word (the original joined to a LAN game as its
+    second player: the host's, then its own, both 7); another's leave
+    (`FUN_6f98c680`, after the host's PLAYERLEFT) has reason 1 and its word (1 for a
+    guest the original host dropped as out of step, counted before its victory).  A
+    network game's record names its host first, then the others, the local player
+    among them.  A host writes 0x23 at a desync (`FUN_6f9680a0`: a word, a counted run
+    of at most 96 bytes, and one of at most 16; read: 1 and 2, the checksum, and pid
+    1), and the original's replays hold 0x21 too (two bytes).  The original's game
+    played alone sends Pause (0x01) as its game menu opens and Resume (0x02) as it
+    closes, its turns going on at their length meanwhile, and Pause as a script dialog
+    shows (Mafarazzo TD's at its turn 12); the port pauses its menu by itself.
     Settings: a map loaded directly MAP_LOCK_RANDOM_SEED alone (0x800002), a Custom
     Game the setup's options (0x64802 by default).  Turns of a game played alone are of
-    96 to 101 ms of game time (0 while paused).  A campaign mission is recorded nowhere
+    96 to 101 ms of game time.  A campaign mission is recorded nowhere
     (Sentinels chapter one quit through the menu: LastReplay.w3g untouched, no
     TempReplay.w3g, no Save Replay on its score screen), and a record the original does
     not know ends its reading: it would not load the port's replay holding 0x7E ("The

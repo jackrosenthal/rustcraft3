@@ -43,7 +43,7 @@ pub enum Record {
     Chat { pid: u8, scope: Option<u32>, text: String },
     /// 0x17: a player left, why (as LEAVEGAME says), and with what result.
     Leave { reason: u32, pid: u8, result: u32, unknown: u32 },
-    /// Anything else (0x1A to 0x1C at the start, 0x23, 0x2F), unread.
+    /// Anything else (0x1A to 0x1C at the start, 0x21, 0x23, 0x2F), unread.
     Other { id: u8, body: Vec<u8> },
 }
 
@@ -151,8 +151,21 @@ impl Replay {
                 }
                 0x17 => Record::Leave { reason: r.u32()?, pid: r.u8()?, result: r.u32()?, unknown: r.u32()? },
                 0x1A..=0x1C => Record::Other { id, body: r.bytes(4)?.to_vec() },
-                0x23 => Record::Other { id, body: r.bytes(10)?.to_vec() },
+                // A word, then two counted runs of bytes, of at most 96 and 16
+                // (`FUN_6f9680a0`; read: the original host's desync records, a count, the
+                // checksum's 4 bytes, and the one pid 1).
+                0x23 => {
+                    let start = r.pos;
+                    r.u32()?;
+                    let n = r.u8()? as usize;
+                    r.bytes(n)?;
+                    let m = r.u8()? as usize;
+                    r.bytes(m)?;
+                    Record::Other { id, body: r.data[start..r.pos].to_vec() }
+                }
                 0x2F => Record::Other { id, body: r.bytes(8)?.to_vec() },
+                // Two bytes (`FUN_6f967e50`).
+                0x21 => Record::Other { id, body: r.bytes(2)?.to_vec() },
                 _ => return Err(Error::Format("unknown replay record")),
             })) };
             match read(&mut r) {
@@ -283,6 +296,23 @@ mod tests {
         assert!(turns > 0);
         assert_eq!(r.checksums().count(), turns);
         assert_eq!(r.slots.len(), r.start_spots as usize);
+    }
+
+    /// The original's replay of a LAN game it hosted, whose guest it dropped at the first
+    /// turns as out of step: its desync records (0x23, a count, the checksum's 4 bytes, and
+    /// the host's pid), the guest's leave (reason 1, its word 1), and its own leave by
+    /// the menu after its victory (12, 7, and the games counted once more).
+    #[test]
+    fn a_lan_hosts_replay_reads() {
+        let b = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/reference/bootybay_lan_host.w3g")).unwrap();
+        let r = Replay::parse(&b).unwrap();
+        let rest: Vec<&Record> = r.records.iter().filter(|r| !matches!(r, Record::Turn { .. } | Record::Checksum(_))).skip(3).take(4).collect();
+        assert_eq!(rest, [
+            &Record::Other { id: 0x23, body: vec![1, 0, 0, 0, 4, 0xe9, 0xab, 0x7e, 0x8a, 1, 1] },
+            &Record::Other { id: 0x23, body: vec![2, 0, 0, 0, 4, 0xb1, 0x96, 0xc3, 0x93, 1, 1] },
+            &Record::Leave { reason: 1, pid: 2, result: 1, unknown: 1 },
+            &Record::Leave { reason: 12, pid: 1, result: 7, unknown: 2 },
+        ]);
     }
 
     /// A replay the original wrote reads back the same after this writes it, its record

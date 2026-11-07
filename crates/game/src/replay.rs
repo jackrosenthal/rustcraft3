@@ -224,14 +224,18 @@ pub struct Replay {
     /// screen is of type 9 then, else 1 (read: the original's of Glacial Thaw, 9).
     pub signed: bool,
     /// The word the local player left with, as the record's closing leave has it (the
-    /// LEAVEGAME reason; 0 for the one of a game left while still playing).
+    /// LEAVEGAME reason: 7 through the game menu, 0 standing for it; 11 through the
+    /// victory or defeat dialog).
     pub left: u32,
     /// The games the program had begun when this one began, this one among them, as the
-    /// leave records' last word counts them (the original's net layer's +0xc, which a
-    /// game over for the local player counts once more; read: 1, 2, 4, and 5 for a quit,
-    /// a quit, a defeat, and a quit in one run of the original, 2 for a defeat in a
-    /// fresh one); 0 as 1.
+    /// leave records' last word counts them (the original's net layer's +0xc; read: 1, 2,
+    /// 4, and 5 for a quit, a quit, a defeat, and a quit in one run of the original, 2
+    /// for a defeat in a fresh one); 0 as 1.
     pub games: u32,
+    /// Whether the local player's game was over as they left (a victory or a defeat),
+    /// which the games count once more from then (read: the original's LAN host left by
+    /// the menu after its victory, its leave 7 and 2 after the guest's 1).
+    pub over: bool,
 }
 
 /// A network game's setup as the original's record copies it (read: its replay of a
@@ -293,13 +297,16 @@ const LANGUAGE: u32 = 0x26fb68;
 /// The setup's advanced option a map loaded directly runs with (MAP_LOCK_RANDOM_SEED),
 /// which the original's record of such a game has alone (its settings word 0x800002).
 const LOCK_RANDOM_SEED: u32 = 0x8000;
+/// The network id of a network game's host, as W3GS numbers it.
+const HOST_PID: u8 = 1;
 /// A leave record's reasons: the leave of another player (`FUN_6f98c680`, after the
 /// host's PLAYERLEFT), and those as the local player leaves (`FUN_6f985030`).
 const LEFT_REMOTE: u32 = 1;
 const LEFT_LOCAL: u32 = 12;
-/// The LEAVEGAME words of a player who left still playing and of one whose game was
-/// over (read: the original's game played alone, quit, its closing leave 7; and left by
-/// the defeat dialog's Quit Game, 11).
+/// The LEAVEGAME words of a player who left through the game menu and of one who left
+/// through the victory or defeat dialog (read: the original's game played alone quit
+/// through the menu, its closing leave 7, even after its victory; left by the defeat
+/// dialog's Quit Game or the victory dialog's Continue, 11).
 pub const LEFT_PLAYING: u32 = 7;
 pub const LEFT_OVER: u32 = 11;
 
@@ -353,16 +360,27 @@ impl Replay {
     pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
         use w3_formats::w3g;
         let lobby = self.lobby.clone().unwrap_or_default();
+        let multiplayer = lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote));
         let name_of = |s: &crate::LobbySlot| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1));
-        let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
-        // A game begun without a setup screen: its user in the record's slots.
-        let loaded_pid = self.net.as_ref().and_then(|n| n.slots.iter().find(|s| s.pid != 0 && !s.computer)).map(|s| s.pid);
-        let host = w3g::PlayerRecord { pid: host_slot.map(|s| s.player + 1).or(loaded_pid).unwrap_or(1), name: host_slot.map(name_of).or(self.local_name.clone()).unwrap_or_default(), extra: vec![0] };
-        let players = lobby
+        // The people by their network ids (the slot table's, the lobby's slots being the
+        // table's in order; a game played alone's its slots' numbers from 1).
+        let pid_of = |k: usize, s: &crate::LobbySlot| self.net.as_ref().and_then(|n| n.slots.get(k)).map(|t| t.pid).filter(|&p| p != 0).unwrap_or(s.player + 1);
+        let people: Vec<(w3g::PlayerRecord, bool)> = lobby
             .iter()
-            .filter(|s| matches!(s.fill, crate::SlotFill::Remote) || matches!(s.fill, crate::SlotFill::Observer(false)))
-            .map(|s| w3g::PlayerRecord { pid: s.player + 1, name: name_of(s), extra: vec![0] })
-            .collect::<Vec<_>>();
+            .enumerate()
+            .filter(|(_, s)| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote | crate::SlotFill::Observer(_)))
+            .map(|(k, s)| (w3g::PlayerRecord { pid: pid_of(k, s), name: name_of(s), extra: vec![0] }, matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Observer(true))))
+            .collect();
+        // The record's first player is a network game's host (read: the original's replay
+        // of a LAN game it joined as its second player, the host's first), else the local
+        // player; a game begun without a setup screen has its user in the record's slots.
+        let loaded_pid = self.net.as_ref().and_then(|n| n.slots.iter().find(|s| s.pid != 0 && !s.computer)).map(|s| s.pid);
+        let first = if multiplayer { people.iter().position(|p| p.0.pid == HOST_PID) } else { None }.or_else(|| people.iter().position(|p| p.1));
+        let host = match first {
+            Some(k) => people[k].0.clone(),
+            None => w3g::PlayerRecord { pid: loaded_pid.unwrap_or(1), name: self.local_name.clone().unwrap_or_default(), extra: vec![0] },
+        };
+        let players = people.iter().enumerate().filter(|&(k, _)| Some(k) != first && multiplayer).map(|(_, p)| p.0.clone()).collect::<Vec<_>>();
         // Races as the slot table has them: human 1, orc 2, night elf 4, undead 8, random
         // 0x20, each selectable (0x40).
         let race = |r: Option<i32>| 0x40 | match r {
@@ -383,11 +401,14 @@ impl Replay {
                 })
                 .collect::<Vec<_>>(),
         };
-        let multiplayer = lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote));
-        // The settings word holds the advanced options eight bits up and the speed (fast,
+        // The game's description: a network game's as its host offered it; else the
+        // settings word holding the advanced options eight bits up and the speed (fast,
         // 2) below them, as the original's games are.
         let ms = self.map_stat.clone().unwrap_or_else(|| MapStat { path: self.map.clone(), ..Default::default() });
-        let stat = w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host: host.name.clone(), map_sha1: ms.sha1 }.to_bytes();
+        let stat = match self.net.as_ref().filter(|n| multiplayer && !n.stat.is_empty()) {
+            Some(n) => n.stat.clone(),
+            None => w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host: host.name.clone(), map_sha1: ms.sha1 }.to_bytes(),
+        };
         let mut records = Vec::new();
         for id in [0x1A, 0x1B, 0x1C] {
             records.push(w3g::Record::Other { id, body: 1u32.to_le_bytes().to_vec() });
@@ -414,14 +435,16 @@ impl Replay {
             records.push(w3g::Record::Turn { ms, actions });
             records.push(w3g::Record::Checksum(f.checksum.unwrap_or(0).to_le_bytes().to_vec()));
         }
-        // The game's record ends with the local player leaving: a leave for each player
-        // still in the game, the local one first, each with the word the local player
-        // left with (`FUN_6f985030`; read: a game played alone, reason 12, result 7).
+        // The game's record ends with the local player leaving: a leave for each person
+        // still in the game by network id, each with the word the local player left with
+        // (`FUN_6f985030`; read: a game played alone, reason 12, result 7; the original
+        // joined to a LAN game as its second player, the host's then its own, both 7).
         let gone: Vec<u8> = self.frames.iter().flat_map(|f| f.leaves.iter().map(|l| l.pid)).collect();
-        let unknown = unknown + (word == LEFT_OVER) as u32;
-        records.push(w3g::Record::Leave { reason: LEFT_LOCAL, pid: host.pid, result: word, unknown });
-        for p in players.iter().filter(|p| !gone.contains(&p.pid)) {
-            records.push(w3g::Record::Leave { reason: LEFT_LOCAL, pid: p.pid, result: word, unknown });
+        let unknown = unknown + self.over as u32;
+        let mut staying: Vec<u8> = std::iter::once(host.pid).chain(players.iter().map(|p| p.pid)).filter(|p| !gone.contains(p)).collect();
+        staying.sort();
+        for pid in staying {
+            records.push(w3g::Record::Leave { reason: LEFT_LOCAL, pid, result: word, unknown });
         }
         let length_ms = (self.length() * 1000.0).round() as u32;
         let humans = lobby.iter().filter(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote)).count();
@@ -497,7 +520,9 @@ impl Replay {
         let map_stat = Some(MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
         let slots = r.slots.iter().map(|s| NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
         let net = NetRecord { game_type: r.game_type, layout: r.select_mode, slots, stat: if multiplayer { r.stat.clone() } else { Vec::new() }, start_spots: r.start_spots };
-        // The local player's leaving as the record closes: its word and the games counted.
+        // The local player's leaving as the record closes: its word and the games counted
+        // (a game over when the word says so; one left by the menu after a victory looks
+        // as though it were not, but for its count).
         let (left, games) = r
             .records
             .iter()
@@ -507,6 +532,7 @@ impl Replay {
                 _ => None,
             })
             .unwrap_or((0, 0));
+        let over = left == LEFT_OVER;
         Ok(Replay {
             map: stat.map_path.clone(),
             lobby: (!loaded).then(|| Self::lobby_of(&r)),
@@ -522,6 +548,7 @@ impl Replay {
             signed: r.game_type & 8 != 0,
             left,
             games,
+            over,
         })
     }
 
@@ -763,6 +790,13 @@ mod tests {
         assert!(matches!(&w.records[5..], [R::Leave { reason: 1, pid: 2, result: 7, .. }, R::Turn { .. }, R::Checksum(_), R::Leave { reason: 12, pid: 1, .. }, R::Leave { reason: 12, pid: 3, .. }]));
         let back = Replay::parse(&b).unwrap();
         assert_eq!(back.frames[1].leaves, vec![Leave { pid: 2, player: 1, word: 7 }]);
+        // A game joined: the host's first in the record, by the slot table's network ids,
+        // the local player among the others (as the original's replay of a LAN game it
+        // joined as the second player).
+        let s = |pid: u8| NetRecordSlot { pid, download: 100, status: 2, computer: false, team: pid, color: pid, race: 0x60, ai: 1, handicap: 100 };
+        let r = Replay { lobby: Some(vec![slot(0, crate::SlotFill::Remote), slot(1, crate::SlotFill::Local)]), net: Some(NetRecord { game_type: 1, layout: 0, slots: vec![s(1), s(3)], stat: Vec::new(), start_spots: 2 }), ..r };
+        let w = w3_formats::w3g::Replay::parse(&r.to_bytes().unwrap()).unwrap();
+        assert_eq!((w.host.pid, w.host.name.as_str(), w.players.iter().map(|p| p.pid).collect::<Vec<_>>()), (1, "P0", vec![3]));
     }
 
     /// A network game's turn with a trigger's resumption (the original's 0x62 from its

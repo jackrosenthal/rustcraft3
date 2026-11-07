@@ -241,17 +241,23 @@ mod tests {
         assert_eq!(out.to_text(), ORIGINAL);
     }
 
-    /// A custom campaign's file: its values in its version's section, the checksum
-    /// after, and back.
+    /// A custom campaign's file as the original wrote it for a copy of DemoCampaign.w3n
+    /// (campaign version 158), byte for byte: the Custom Campaign screen's OK at Normal,
+    /// then its first mission showing button 1 and hiding 2, then OK again at Hard; and
+    /// back.
     #[test]
-    fn custom_campaign_files_keep_their_buttons() {
+    fn custom_campaign_files_as_the_original_writes_them() {
         let mut c = w3_game::persist::CustomCampaign { name: "BtnTest".into(), version: 158, difficulty: Some(1), ..Default::default() };
+        let ok = put_custom("", &c);
+        assert_eq!(ok, "[Version000158]\r\nDifficulty=1\r\n\r\n[Mojo]\r\nJojo=346198499\r\n\r\n");
         c.set_button(1, true);
         c.set_button(2, false);
-        let text = put_custom("", &c);
-        assert_eq!(text, "[Version000158]\r\nDifficulty=1\r\nButton01=1\r\nButton02=0\r\n\r\n[Mojo]\r\nJojo=-324297440\r\n\r\n");
+        let played = put_custom(&ok, &c);
+        assert_eq!(played, "[Version000158]\r\nDifficulty=1\r\nButton01=1\r\nButton02=0\r\n\r\n[Mojo]\r\nJojo=-324297440\r\n\r\n");
+        c.difficulty = Some(2);
+        assert_eq!(put_custom(&played, &c), "[Version000158]\r\nDifficulty=2\r\nButton01=1\r\nButton02=0\r\n\r\n[Mojo]\r\nJojo=-324559584\r\n\r\n");
         let mut back = w3_game::persist::CustomCampaign { name: "BtnTest".into(), version: 158, ..Default::default() };
-        take_custom(&text, &mut back);
+        take_custom(&played, &mut back);
         assert_eq!((back.button(0), back.button(1), back.button(2), back.difficulty), (false, true, false, Some(1)));
     }
 }

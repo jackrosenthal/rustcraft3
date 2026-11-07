@@ -6712,7 +6712,12 @@ Formats the port made its own, to be replaced by the original's:
   registry; those it has no use for go back as they came.  The Map key's six strings
   are the last map chosen on the Custom Game, LAN, and Battle.net screens per data
   version (`FUN_6f2bf310` with 0x42, 0x44, and 0x46 plus the version; `FUN_6f2b9ab0`
-  stores the selection).
+  stores the selection), its path from the game's folder (measured: selecting
+  FrozenThrone\(2)EchoIsles.w3x on the Custom Game screen and (4)LostTemple.w3m on LAN
+  Create Game, each left with Cancel, wrote skirmish_V1 `Maps\FrozenThrone\(2)EchoIsles.w3x`
+  and lan_V1 `Maps\(4)LostTemple.w3m` at exit).  The in-game Game Speed (Normal) was not
+  kept (gamespeed stayed 3); the Video key took the window's size and a refresh rate of
+  0 (measured).
 - Profiles: campaign progress, the menu's race, the tutorial, and the difficulty are in
   the original's `Campaigns.w3p` (`war3/src/w3p.rs`: `[Campaign]` for Reign of Chaos and
   `[Campaign1]` for The Frozen Throne, a 64-bit mask per campaign named as CampaignList
@@ -6738,7 +6743,22 @@ Formats the port made its own, to be replaced by the original's:
   3).  The native acts only while a custom campaign's archive is mounted
   (`FUN_6f219630`); a plain map's call changed nothing on disk or in the registry
   (measured).  The custom campaign screen shows a mission whose war3campaign.w3f word
-  has bit 0 set or whose button is set (`FUN_6f308600`).
+  has bit 0 set or whose button is set (`FUN_6f308600`).  Measured with a copy of
+  DemoCampaign.w3n whose first mission reads buttons 0 to 2, sets 1 and clears 2, and
+  reads them again: "b0=0 b1=0 b2=0" then "b0=0 b1=1 b2=0", GetDefaultDifficulty 1;
+  its screen first showed Chapter One alone (the words are 0x12f8e5, 0x12f8e4, and
+  0x12f8e4), and Chapter Two too after Quit Mission.  The object keeps the profile's
+  folder in a 100-byte field (`FUN_6f21de00`'s SStrCopy with 100), so an install whose
+  `<folder>\Save\ProfileN` is 100 bytes or longer gets the path cut and the file is
+  never written (measured: the reference install under Wine, 116 bytes, wrote none,
+  and the button was gone after a restart).  Run from a short path (a Wine drive W:
+  for the install), it wrote `Save\Profile1\BtnTest.w3p` at the screen's OK as
+  `[Version000158]` `Difficulty=1`, `[Mojo]` `Jojo=346198499`; at the mission's
+  SetCustomCampaignButtonVisible, before its end, `Button01=1` and `Button02=0` after
+  Difficulty and `Jojo=-324297440`; at OK again with Hard, `Difficulty=2` in place and
+  `Jojo=-324559584` (CRLF lines, a blank line after each section; the test
+  `custom_campaign_files_as_the_original_writes_them` holds the three); and Chapter Two
+  still showed after a restart.
 - Where files go (`FUN_6f2bfc90`): saves from the game menu and quick saves
   (`QuickSaveFile` of UI\MiscUI.txt [Misc] with ".w3z", `FUN_6f3c5a70`) in
   `Save\<profile folder>`, or `Save\WorldEdit` with no profile, network games'
@@ -6749,7 +6769,11 @@ Formats the port made its own, to be replaced by the original's:
   `Save\Profile2\CustomSaves\fw10\fw10.w3z` for Maps\Test\fw10.w3x), or the profile's
   folder itself for a map from the game's own archives (game type bit 8,
   `FUN_6f03e1a0`); names with ".." or ":" refused, and no extension added (its
-  `CustomSaves\mafsv\mafsv30` for SaveGame("mafsv30")).
+  `CustomSaves\mafsv\mafsv30` for SaveGame("mafsv30")).  Measured: a Custom Game with
+  profile Test (Profile1) saved from the menu as `Save\Profile1\menusave.w3z` and with
+  F6 as `Save\Profile1\QuickSave.w3z`; the same under -loadfile in the WorldEdit
+  profile's `Save\Profile2`; a custom campaign mission's SaveGame("btnsave.w3z") in
+  `Save\Profile1\CustomSaves\BtnTest\btnsave.w3z` for Campaigns\BtnTest.w3n.
 - Saved game caches: SaveGameCache writes every saved cache into the profile's one
   `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
   PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a

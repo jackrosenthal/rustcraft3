@@ -1869,6 +1869,9 @@ impl World {
         let mut late: Vec<(usize, u32, u32)> = if tick.is_some() { self.agent_dues().into_iter().filter(|e| e.0 == 1 && self.agent_tick(e.1) == tick).collect() } else { Vec::new() };
         late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         let trigger = self.region_trigger_due(0);
+        if let Some((due, true)) = trigger {
+            self.structure_events_before(self.kept_abs(due));
+        }
         let after = self.after_step_events(vm, &late, 0, trigger);
         self.step_tick_frees(0);
         // Orders given at this step's tick free their objects after it, before its walk
@@ -2076,6 +2079,13 @@ impl World {
             let (late, rest): (Vec<_>, Vec<_>) = due.iter().copied().partition(|e| e.0 == k + 1 && self.agent_tick(e.1) == tick);
             due = rest;
             let trigger = self.region_trigger_due(k);
+            // (A structure's event due after the step and before its region triggers'
+            // timer comes between them: traced, the upgrade game's Tower of Vengence's
+            // reaction ending at 51.178535, after the step due 51.178459, its walk's
+            // objects before that step's trigger's `+tex`.)
+            if let Some((due, true)) = trigger {
+                self.structure_events_before(self.kept_abs(due));
+            }
             let after = self.after_step_events(vm, &late, k, trigger);
             self.step_tick_frees(k);
             self.tags.end_step();
@@ -6703,10 +6713,21 @@ impl World {
         // A bouncing weapon's Farea is how far it looks for its next target, not splash.
         let area = if wp.weapon_type == "mbounce" { 0.0 } else { wp.full_area.max(wp.half_area).max(wp.quarter_area) };
         // (What an artillery's splash kills bursts: traced, the upgrade game's five creeps
-        // killed by the h00X's line shell at turn 512, each with a burst's course.)
+        // killed by the h00X's line shell at turn 512, each as one KillUnit bursts.)
         self.artillery_strike = artillery;
+        let doomed = self.tags.doomed.len();
+        let bursts = self.pending_bursts.len();
         if area > 0.0 {
-            for u in self.units_in_pub(at.0, at.1, area + 64.0) {
+            // (An artillery's takes them by 512 square, west to east, and the newest
+            // first in each: traced, the h00X's shell's five, killed 1879048381 and 380,
+            // then 367 and 355, then 378.  Provisional: the squares' order across rows,
+            // and the other splashes keep the units' own order.)
+            let mut near = self.units_in_pub(at.0, at.1, area + 64.0);
+            if artillery {
+                let key = |w: &World, u: u32| w.unit(u).map_or((0, 0), |t| ((t.y / 512.0).floor() as i32, (t.x / 512.0).floor() as i32));
+                near.sort_by_key(|&u| (key(self, u), std::cmp::Reverse(u)));
+            }
+            for u in near {
                 if !artillery && u == target {
                     continue;
                 }
@@ -6729,6 +6750,18 @@ impl World {
                 }
             }
             self.artillery_strike = false;
+            // (Its bursts' objects all go together 0.0001 on, before the next step:
+            // traced, the five's freed after the last's death trigger's `+tex`, before
+            // the next step's region trigger's.)
+            if self.pending_bursts.len() > bursts {
+                self.burst_ends();
+                if !self.after_steps {
+                    let n = self.tags.doomed.len();
+                    for s in self.tags.doomed.split_off(doomed.min(n)) {
+                        self.tags.release(s);
+                    }
+                }
+            }
             // Trees and other destructables the splash takes in (a catapult's).
             let classes: Vec<&str> = wp.splash_targets.split(',').map(|s| s.trim()).collect();
             if classes.iter().any(|c| matches!(*c, "tree" | "debris" | "wall")) {

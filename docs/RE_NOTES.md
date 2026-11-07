@@ -2218,8 +2218,21 @@ these are the findings behind them.
   What an artillery's splash kills bursts: its death's course is a burst's four,
   0xd015a, 0xd0157, 0xd0154, and 0xd0156 (`FUN_6f678280`), the kill's objects nine
   (traced: the five creeps the shell killed, each `tskA`, seven tasks, `tskA`,
-  `pudd`, the death trigger's `+tex`).  (Provisional: the burst's frees after, the
-  port's a death's.)
+  `pudd`, the death trigger's `+tex`).  It bursts as a unit KillUnit bursts
+  (`World::burst_begun`, `World::burst_end`): its objects all go together 0.0001 on,
+  before the next step, for each in turn the towers attacking it giving it up (in
+  the order they took it up), its AI's, its kill's first task, its walk's tree, its
+  kill's ninth to seventh, its `` `rtl ``, its death trigger's execution and `pudd`,
+  and its kill's sixth; then each's end.  The splash takes its units by 512 square,
+  west to east, the newest first in each (traced: killed 1879048381 and 380, then 367
+  and 355, then 378).  A Tower of Vengence walking into range is none of its target's
+  attackers (its attack done).  A structure's event due after a step and before
+  that step's region triggers' timer comes between them (traced: the Tower of
+  Vengence's reaction ending at 51.178535, after the step due 51.178459, its walk's
+  objects before the step's trigger's `+tex`).  The upgrade game's trace
+  (`abtest/mafv5.*`) now agrees to turn 529 (from 511), and its keepalives for all
+  536 turns (from 512), with the tower's blocked count drawn at its walk's first step
+  (below).
 - An aimed missile lands in the behavior dispatch of the first main tick at or past
   its flight's due, so before a later main tick's step (`World::aimed_landings_before`,
   after that step's damage points, which land those due before them): traced, that
@@ -2352,9 +2365,13 @@ these are the findings behind them.
   a real drawn on stream 9 (`FUN_6f49ea80`, `FUN_6f6936a0`), from the look's due.  As
   it ends (event 0xd01af) its task goes as that main tick ends, and its walk into
   range (`tskt` 0xd016f, its range 1500) begins with a walk's `^clg ^clu l^pa`, the
-  `^clg` let go at once.  From inside its footprint it is blocked from the start: its
-  count, 7 or 8, is drawn then on the main generator (`FUN_6f167290` →
-  `FUN_6f1689d0`, `FUN_6f1d62b0(2)`), and it walks in the walkers' order, ending in
+  `^clg` let go at once.  From inside its footprint it is blocked from its first
+  step: its count, 7 or 8, is drawn as that step searches, on the main generator
+  (`FUN_6f167290` → `FUN_6f1689d0`, `FUN_6f1d62b0(2)`), not as the walk begins (from
+  the keepalives: the upgrade game's tower's walk begun at 51.178535, after that main
+  tick's step, due 51.178459; the original's keepalive at turn 513 is the port's
+  state with one main draw fewer, the next step being in turn 513), and it walks in
+  the walkers' order, ending in
   the step after its count runs out (CAbilityMove's event 0xd0198, `FUN_6f603110`):
   its task popped, a block and two tasks 0xd0144 pushed, all freed top first as the
   step ends, its path and cluster at the next step, and its look again 0.01 after the

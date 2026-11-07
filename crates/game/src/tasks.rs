@@ -54,7 +54,8 @@ pub(crate) const LOOK_AFTER_DROP: f32 = 0.01;
 pub enum ReachWalk {
     /// Its reaction wait, due then on the agent queue (seconds since the game began).
     React { due: f64 },
-    /// Its walk, held: the steps left of its blocked count, and its path and cluster.
+    /// Its walk, held: the steps left of its blocked count (0 before its first step,
+    /// which draws it), and its path and cluster.
     Walk { steps: u32, path: [u32; 2] },
 }
 
@@ -182,15 +183,11 @@ impl World {
         let cluster = self.tags.take(codes::class::CLUSTER);
         let path = self.tags.take(codes::class::PATH);
         self.tags.release(goal);
-        let r = f32::from_bits((self.rng.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
-        let count = 7 + (r * 2.0) as u32;
-        log::trace!("{h} walks into range at {at:.6}: blocked {count}");
+        log::trace!("{h} walks into range at {at:.6}");
         let serial = self.tags.born;
         if let Some(u) = self.unit_mut(h) {
             u.extra.walk_serial = serial;
-            // (Its count's steps, then the one it searches again in, finding nothing
-            // from inside its footprint; measured: a count of 7, its end in the eighth.)
-            u.extra.reach_walk = Some(ReachWalk::Walk { steps: count + 1, path: [path, cluster] });
+            u.extra.reach_walk = Some(ReachWalk::Walk { steps: 0, path: [path, cluster] });
         }
     }
 
@@ -206,7 +203,20 @@ impl World {
     /// and cluster after the next look's.  False for any other walker.
     pub(crate) fn reach_walk_step(&mut self, h: u32, k: usize) -> bool {
         use crate::efloat as ef;
-        let Some(ReachWalk::Walk { steps, path }) = self.unit(h).and_then(|u| u.extra.reach_walk.clone()) else { return false };
+        let Some(ReachWalk::Walk { mut steps, path }) = self.unit(h).and_then(|u| u.extra.reach_walk.clone()) else { return false };
+        // Its first step searches and finds it blocked: its count, 7 or 8, is drawn
+        // then on the main generator (`FUN_6f167290` → `FUN_6f1689d0`,
+        // `FUN_6f1d62b0(2)`), and it holds the count's steps, then the one it searches
+        // again in, finding nothing from inside its footprint (measured: a count of 7,
+        // its end in the eighth step).  (Keepalives: the upgrade game's tower's walk
+        // begun at 51.178535, after that main tick's step, its draw not in that turn's
+        // keepalive, as the step that draws it was in the next turn.)
+        if steps == 0 {
+            let r = f32::from_bits((self.rng.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
+            let count = 7 + (r * 2.0) as u32;
+            log::trace!("{h} is blocked in step {k}: {count}");
+            steps = count + 1;
+        }
         if steps > 1 {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.reach_walk = Some(ReachWalk::Walk { steps: steps - 1, path });
@@ -337,24 +347,16 @@ impl World {
         Some(m.within((cell(u.x, origin[0]), cell(u.y, origin[1])), r, clock))
     }
 
-    /// The tasks a unit's removal destroys after its own first (`FUN_6f673fe0`: a
-    /// block made and destroyed, then the stack top first), as their slots.
-    /// A unit's death begun (`FUN_6f679bb0`), its objects as the original's: the
-    /// structures attacking it give it up (their tasks freed, the last first, and each
-    /// looks again `LOOK_AFTER_DROP` after `at`, the main clock), its AI's objects go,
-    /// its orders are cleared (`FUN_6f673610`: a block made and destroyed, its task
-    /// stack destroyed top first, then its order), its death's course is put on its
-    /// stack (`FUN_6f678280`: its removal 0xd015a, a corpse's two, 0xd0159 and 0xd0158,
-    /// 0xd0154, and the corpse's wait 0xd0155), then the death 0xd0153, 0xd0178, 0xd0144,
-    /// and a block, and run, the last put first: the block, 0xd0144, and 0xd0178 go.
-    /// Traced: the flyer game's creep killed by the Arrow Tower at turn 274 (the tower's
-    /// nine tasks, `uref`, `AI-U`, the block, its walk's seven, the block, 0xd0144,
-    /// 0xd0178; then, as 0xd0153 runs, its `` `rtl ``, its death trigger's `+tex` and
-    /// `pudd`, 0xd0153, and its walk's path and cluster, `World::death_ended`).
-    /// Provisional: a corpse's two for a type whose corpse decays (its flag 0x200, not
-    /// read), and a current order other than a walk's not freed.
-    pub(crate) fn death_begun(&mut self, h: u32, at: f64) -> Option<(u32, Vec<u32>)> {
-        let attackers: Vec<u32> = self.unit_order.iter().copied().filter(|&a| self.attacks_in_place(a) && self.unit(a).is_some_and(|u| u.extra.acquired == h && !u.extra.attack_tasks.is_empty())).collect();
+    /// The structures attacking a unit as its death begins give it up (`FUN_6f49d280`),
+    /// each looking again `LOOK_AFTER_DROP` after `at` (`World::death_begun`), in the
+    /// order they took it up (traced: the upgrade game's two towers on a creep the
+    /// h00X's shell killed at turn 512, the one that took it up at turn 503 first, then
+    /// the one at 507); not one walking into range, its attack done (a Tower of
+    /// Vengence's, `ReachWalk`).
+    pub(crate) fn attackers_give_up(&mut self, h: u32, at: f64) {
+        let mut attackers: Vec<u32> = self.unit_order.iter().copied().filter(|&a| self.attacks_in_place(a) && self.unit(a).is_some_and(|u| u.extra.acquired == h && !u.extra.attack_tasks.is_empty() && u.extra.reach_walk.is_none())).collect();
+        let taken = |w: &World, a: u32| w.unit(a).and_then(|u| u.extra.attack_tasks.first()).and_then(|t| w.tags.live.get(&t.0)).map_or(u32::MAX, |e| e.1);
+        attackers.sort_by_key(|&a| taken(self, a));
         for a in attackers {
             self.attack_given_up(a, at);
             let due = (at + LOOK_AFTER_DROP as f64) as f32;
@@ -373,6 +375,26 @@ impl World {
                 u.acquire_timer = (due as f64 - now) as f32;
             }
         }
+    }
+
+    /// The tasks a unit's removal destroys after its own first (`FUN_6f673fe0`: a
+    /// block made and destroyed, then the stack top first), as their slots.
+    /// A unit's death begun (`FUN_6f679bb0`), its objects as the original's: the
+    /// structures attacking it give it up (their tasks freed, the last first, and each
+    /// looks again `LOOK_AFTER_DROP` after `at`, the main clock), its AI's objects go,
+    /// its orders are cleared (`FUN_6f673610`: a block made and destroyed, its task
+    /// stack destroyed top first, then its order), its death's course is put on its
+    /// stack (`FUN_6f678280`: its removal 0xd015a, a corpse's two, 0xd0159 and 0xd0158,
+    /// 0xd0154, and the corpse's wait 0xd0155), then the death 0xd0153, 0xd0178, 0xd0144,
+    /// and a block, and run, the last put first: the block, 0xd0144, and 0xd0178 go.
+    /// Traced: the flyer game's creep killed by the Arrow Tower at turn 274 (the tower's
+    /// nine tasks, `uref`, `AI-U`, the block, its walk's seven, the block, 0xd0144,
+    /// 0xd0178; then, as 0xd0153 runs, its `` `rtl ``, its death trigger's `+tex` and
+    /// `pudd`, 0xd0153, and its walk's path and cluster, `World::death_ended`).
+    /// Provisional: a corpse's two for a type whose corpse decays (its flag 0x200, not
+    /// read), and a current order other than a walk's not freed.
+    pub(crate) fn death_begun(&mut self, h: u32, at: f64) -> Option<(u32, Vec<u32>)> {
+        self.attackers_give_up(h, at);
         let live = |w: &World, s: u32, b: u32| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
         let ai = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.ai_slots)).unwrap_or_default();
         for (s, b) in ai {
@@ -400,9 +422,7 @@ impl World {
             }
         }
         let decays = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.int("deathType") & 2 != 0);
-        // (A unit bursting has four: its removal 0xd015a, 0xd0157, 0xd0154, and 0xd0156,
-        // `FUN_6f678280`; traced, the upgrade game's creeps killed by the h00X's shell.)
-        let course = if self.bursting { 4 } else if decays { 5 } else { 3 };
+        let course = if decays { 5 } else { 3 };
         let kept: Vec<u32> = (0..course).map(|_| self.tags.take(codes::class::TASK)).collect();
         let die = self.tags.take(codes::class::TASK);
         let run: Vec<u32> = [codes::class::TASK, codes::class::TASK, codes::class::TASK_A].iter().map(|c| self.tags.take(c)).collect();

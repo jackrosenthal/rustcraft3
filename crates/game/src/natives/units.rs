@@ -648,13 +648,25 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // Its death's course begun, its objects as the original's (`World::death_begun`;
     // provisional: not for a hero, an illusion, or one that bursts, and KillUnit's
     // as that native makes them).
-    let course = (w.unit(h).is_some_and(|u| !u.dead && !u.is_hero && !u.extra.object_slots[0].is_empty()) && illusion.is_none() && (!explodes || shelled) && !w.script_kill).then(|| {
+    let course = (w.unit(h).is_some_and(|u| !u.dead && !u.is_hero && !u.extra.object_slots[0].is_empty()) && illusion.is_none() && !explodes && !w.script_kill).then(|| {
         let at = w.landing_clock.unwrap_or_else(|| w.bullet_clock(w.time_exact));
-        w.bursting = shelled;
-        let c = w.death_begun(h, at);
-        w.bursting = false;
-        c
+        w.death_begun(h, at)
     }).flatten();
+    // One an artillery's splash kills bursts as one KillUnit bursts: its kill's nine
+    // tasks, then `World::burst_begun` (traced: the upgrade game's five creeps killed by
+    // the h00X's shell at turn 512, each `tskA`, seven tasks, `tskA`, `pudd`, the death
+    // trigger's `+tex`; then, freed together, for each the towers attacking it giving it
+    // up, its AI's, first task, walk's tree, ninth to seventh, `` `rtl ``, death
+    // trigger's execution and `pudd`, and sixth; then each's `World::burst_end`).
+    let shell_burst = (shelled && illusion.is_none() && !w.script_kill && w.unit(h).is_some_and(|u| !u.dead && !u.extra.object_slots[0].is_empty())).then(|| {
+        let at = w.landing_clock.unwrap_or_else(|| w.bullet_clock(w.time_exact));
+        w.attackers_give_up(h, at);
+        let mut t = vec![w.tags.take(codes::class::TASK_A)];
+        t.extend((0..7).map(|_| w.tags.take(codes::class::TASK)));
+        t.push(w.tags.take(codes::class::TASK_A));
+        w.burst_begun(h, &t);
+        t
+    });
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_bounty(h, killer);
         w.grant_kill_xp(h, killer);
@@ -739,7 +751,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     let heard = w.events.iter().any(|&e| matches!(w.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::PlayerUnit { player, event, .. } if player == owner && event == EVENT_PLAYER_UNIT_DEATH)));
     // (A unit KillUnit bursts makes it too: read, Mafarazzo TD's creep exploded at
     // WalkEnd, its `pudd` after its kill's tasks.)
-    let bursts = explodes && w.script_kill && w.unit(h).is_some_and(|u| !u.is_building);
+    let bursts = (explodes && w.script_kill && w.unit(h).is_some_and(|u| !u.is_building)) || shell_burst.is_some();
     let data = ((course.is_some() || bursts) && heard).then(|| w.tags.take(codes::class::PLAYER_UNIT_DEATH_DATA));
     w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
         EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
@@ -755,6 +767,11 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     });
     if let Some((die, path)) = course {
         w.death_ended(die, path);
+    }
+    if let Some(t) = shell_burst {
+        w.tags.doom(t[5]);
+        // (Its end after the splash's others, `World::burst_ends`.)
+        w.pending_bursts.push((h, [t[4], t[3], t[2], t[1]]));
     }
     // A fallen hero can be revived (EVENT_PLAYER_HERO_REVIVABLE).
     if w.unit(h).is_some_and(|u| u.is_hero && u.dead) && illusion.is_none() {

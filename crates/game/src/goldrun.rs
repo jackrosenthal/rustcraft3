@@ -1412,7 +1412,8 @@ impl World {
             // Meadows' night elf computer's Tree of Life as it first fills its places at
             // 0.1, all as the port's so, where taking out only the tree's own cells gave
             // (180, 170) 25 for 27, (196, 178) 29 for 31, and no way from three).
-            let Some(mut pyr) = self.accel_pyramid_with(Some(hall)) else { continue };
+            let Some(pyr) = self.accel_pyramid_with(Some(hall)) else { continue };
+            let mut pyr = (*pyr).clone();
             self.lift_region(&mut pyr, d);
             let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(x, p.origin[0]), acc(y, p.origin[1])), (acc(fx, p.origin[0]), acc(fy, p.origin[1])), 0x20) else { continue };
             log::trace!("town tree from {hall}: ({x}, {y}) cost {cost}");

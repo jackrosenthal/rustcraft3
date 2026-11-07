@@ -384,4 +384,3 @@ impl UiRenderer {
         w3_ui::line_width_px(&self.fonts[font].1, px as f32, line)
     }
 }
-

@@ -188,6 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = from;
                 }
                 Event::Chat { from, chat: Chat::Lobby(text) } => host.chat(&[from], Chat::Lobby(format!("you said: {text}"))),
+                Event::Chat { from, chat: Chat::Game { text, .. } } => host.chat(&[from], Chat::Game { scope: 0, text: format!("you said: {text}") }),
                 Event::Left { .. } if host.players().len() == 1 => return Ok(()),
                 _ => {}
             }

@@ -887,8 +887,10 @@ impl Hud {
         };
         self.tree.backdrop(db, &def, r, out);
         let mut y = r.y1 - 0.006;
+        // Each line a font string a line tall, its text centered in it (as the command
+        // tooltip's, tooltip_draws).
         for (t, color) in lines {
-            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0: r.x0 + 0.008, x1: r.x1, y0: y - size * 1.2, y1: y }, text: t.clone(), color: *color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Start, shadow: None });
+            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0: r.x0 + 0.008, x1: r.x1, y0: y - size, y1: y }, text: t.clone(), color: *color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow: None });
             y -= 0.0125;
         }
     }
@@ -939,8 +941,11 @@ impl Hud {
             children: vec![],
         };
         self.tree.backdrop(db, &def, r, out);
+        // Each text is a CSimpleFontString (FUN_6f113870: centered vertically, flags
+        // 0x212), its top left anchored in the box (0x6f3a20e1), as tall as its lines.
         let text = |out: &mut Vec<Draw>, t: &str, x0: f32, y1: f32, size: f32, w: f32, color: [f32; 4]| {
-            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0, x1: x0 + w, y0: y1 - size * 1.2, y1 }, text: t.to_string(), color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Start, shadow: None });
+            let lines = t.split('\n').count().max(1) as f32;
+            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0, x1: x0 + w, y0: y1 - size * lines, y1 }, text: t.to_string(), color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow: None });
         };
         let (x0, mut y) = (r.x0 + 0.005, r.y1 - 0.005);
         text(out, &b.tip, x0, y, name_h, name_w + 0.01, [1.0; 4]);

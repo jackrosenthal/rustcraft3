@@ -50,6 +50,10 @@ pub struct PathingMap {
     /// each cell: no other structure's whole footprint may.
     #[serde(default)]
     pub no_build: Vec<u16>,
+    /// Counts the changes to `flags` (`PathingMap::set_flags`), for what is built from
+    /// them (`World::accel_pyramid_lifting`).
+    #[serde(skip)]
+    pub flags_revision: u64,
     /// The search's working arrays, kept between searches.
     #[serde(skip)]
     scratch: std::cell::RefCell<Scratch>,
@@ -214,7 +218,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], by_destructables: vec![0; (w * h) as usize], no_build: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], by_destructables: vec![0; (w * h) as usize], no_build: vec![0; (w * h) as usize], flags_revision: 0, scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -250,6 +254,7 @@ impl PathingMap {
             } else {
                 self.flags[i] &= !mask;
             }
+            self.flags_revision += 1;
         }
     }
 

@@ -1156,7 +1156,7 @@ impl World {
             // A walk to a tree plans with the tree's region lifted (below), and picks its
             // point by the way's legs (`accelpath::pick`, 10 on, as a cluster's).
             if wood {
-                self.lift_region(&mut pyr, target);
+                self.lift_region(std::rc::Rc::make_mut(&mut pyr), target);
             }
             let layer = if self.move_kind(h) == crate::pathing::Move::Fly { 3 } else { 0 };
             let way = crate::accelpath::plan(&pyr, layer, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);

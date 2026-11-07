@@ -4065,6 +4065,17 @@ Formats the port made its own, to be replaced by the original's:
   computer's ghoul, its tree felled at 40.6459 with ten of its twenty, given the
   harvest order's seventeen at 41.085636, its `^clg` freed then, the old order's
   eight and the new one's five after.  The keepalives agree to turn 415.
+- The port builds the accelerator pyramid a coarse plan searches once for what it is
+  built from (`World::accel_pyramid_lifting`, `World::accel_cache`): the pathing map's
+  flags as changed (`PathingMap::flags_revision`), the live destructables in it with
+  their cells, and its structures (a walk's target and lifted destructables left out
+  as before).  The original keeps its pyramid and updates it as the map changes; the
+  port had built it anew for every plan.  Measured in the port (the plain Mafarazzo TD
+  map, W3PROF): the New Round's 180 creeps, each planning twice as it is sent off, cost
+  about 2.4 seconds in the turn they were made (`path_to`), the client's frames held so
+  long that the wave stood at its spawns a few seconds; built once, the turn takes 0.02
+  seconds, and the creeps walk in the next frame, as in the original (within 0.3
+  seconds, seen).  What the plans find is unchanged (the suite and captures the same).
 - A next tree's cost (`FUN_6f4153a0`, each candidate by `FUN_6f439e00`, the first
   of the cheapest kept, strict `<`): `FUN_6f059590` lifts the two ends' pathing and
   plans over the accelerator pyramid (`FUN_6f1627e0`, 0x20 pops): within one node

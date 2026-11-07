@@ -2810,7 +2810,7 @@ impl World {
 
     /// The accelerator pyramid as the map stands (`crate::accel`): a cell refuses a
     /// layer by its static byte or a destructable's or structure's footprint.
-    pub fn accel_pyramid(&self) -> Option<crate::accel::Pyramid> {
+    pub fn accel_pyramid(&self) -> Option<std::rc::Rc<crate::accel::Pyramid>> {
         self.accel_pyramid_with(None)
     }
 
@@ -2818,15 +2818,45 @@ impl World {
     /// walk's target (`except`; provisional: read, the altar's acolyte's way from beside
     /// its haunted mine going south about it, as a mine in the pyramid gives, the
     /// acolytes' ways to the mine reaching its middle, as one open there gives).
-    pub(crate) fn accel_pyramid_with(&self, except: Option<u32>) -> Option<crate::accel::Pyramid> {
+    pub(crate) fn accel_pyramid_with(&self, except: Option<u32>) -> Option<std::rc::Rc<crate::accel::Pyramid>> {
         self.accel_pyramid_lifting(except, &[])
     }
 
     /// The same with the destructables `lifted` out of it, as a search lifts its ends'
-    /// (`FUN_6f059590`'s `FUN_6f15d360` about its `FUN_6f1627e0`).
-    pub(crate) fn accel_pyramid_lifting(&self, except: Option<u32>, lifted: &[u32]) -> Option<crate::accel::Pyramid> {
+    /// (`FUN_6f059590`'s `FUN_6f15d360` about its `FUN_6f1627e0`).  Built once for what it
+    /// is built from (the map's flags as changed, the destructables and structures in it):
+    /// a script's 180 creeps sent off at once plan their ways over the same one, where
+    /// building it for each had taken some seconds.
+    pub(crate) fn accel_pyramid_lifting(&self, except: Option<u32>, lifted: &[u32]) -> Option<std::rc::Rc<crate::accel::Pyramid>> {
         let p = self.pathing.as_ref()?;
         let (w, h) = (p.width as usize, p.height as usize);
+        let in_it = |dh: u32| match self.handles.get(dh) {
+            Some(crate::types::Obj::Destructable(d)) => d.object_slots.len() == 6 && !lifted.contains(&dh),
+            _ => false,
+        };
+        let stands = |uh: u32| self.unit(uh).is_some_and(|u| u.is_building && !u.hidden && u.extra.footprint_slots.len() == 3) && !except.map_or(self.is_gold_mine(uh), |e| e == uh);
+        let mut key = (w as u64) << 32 | h as u64;
+        let mut mix = |v: u64| key = (key ^ v).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(29);
+        mix(p.flags.as_ptr() as u64);
+        mix(p.flags_revision);
+        for &dh in self.destructable_order.iter().filter(|&&dh| in_it(dh)) {
+            let cells = match self.handles.get(dh) {
+                Some(crate::types::Obj::Destructable(d)) => &d.pathing_cells[..],
+                _ => &[][..],
+            };
+            mix((dh as u64) << 32 | cells.len() as u64);
+            mix(cells.first().map_or(0, |&(x, y)| (x as u32 as u64) << 32 | y as u32 as u64));
+        }
+        for &uh in self.unit_order.iter().filter(|&&uh| stands(uh)) {
+            let cells = self.unit(uh).map_or(&[][..], |u| &u.pathing_cells[..]);
+            mix((uh as u64) << 32 | cells.len() as u64);
+            mix(cells.first().map_or(0, |&(x, y)| (x as u32 as u64) << 32 | y as u32 as u64));
+        }
+        if let Some((k, pyr)) = self.accel_cache.borrow().as_ref() {
+            if *k == key {
+                return Some(pyr.clone());
+            }
+        }
         let mut regions = vec![0u8; w * h];
         for &dh in &self.destructable_order {
             let Some(crate::types::Obj::Destructable(d)) = self.handles.get(dh) else { continue };
@@ -2858,12 +2888,15 @@ impl World {
             }
         }
         let masks = [(0x06u8, 0x06u8), (0x80, 0x80), (0x40, 0x40), (0x04, 0x04)];
-        Some(crate::accel::Pyramid::build(w, h, |x, y, layer| {
+        let pyr = crate::accel::Pyramid::build(w, h, |x, y, layer| {
             let k = y as usize * w + x as usize;
             let f = p.flags[k];
             let stat = f | 0x01 | if f & 0x02 != 0 { 0x10 } else { 0 };
             stat & masks[layer].0 != 0 || regions[k] & masks[layer].1 != 0
-        }))
+        });
+        let pyr = std::rc::Rc::new(pyr);
+        *self.accel_cache.borrow_mut() = Some((key, pyr.clone()));
+        Some(pyr)
     }
 }
 

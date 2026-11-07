@@ -772,6 +772,10 @@ pub struct World {
     /// W3PROF times measured from `&self` code.
     #[serde(skip)]
     pub prof_cells: std::cell::RefCell<HashMap<&'static str, f64>>,
+    /// The last accelerator pyramid built, by a key of what it was built from
+    /// (`World::accel_pyramid_lifting`).
+    #[serde(skip)]
+    pub accel_cache: std::cell::RefCell<Option<(u64, std::rc::Rc<crate::accel::Pyramid>)>>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -1213,6 +1217,7 @@ impl World {
             queued_region_events: Vec::new(),
             step_region_events: Vec::new(),
             prof_cells: Default::default(),
+            accel_cache: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,
             saves_dir: None,

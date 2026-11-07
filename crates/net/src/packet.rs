@@ -50,7 +50,9 @@ pub enum Chat {
     Game { scope: u32, text: String },
 }
 
-/// Why a player left (PLAYERLEFT, LEAVEGAME).
+/// Why a player left (PLAYERLEFT, LEAVEGAME).  The host's PLAYERLEFT carries the
+/// leaver's own LEAVEGAME word unchanged (`FUN_6f99cdc0` keeps it at the player's +0x44,
+/// `FUN_6f99dbb0` sends it).
 pub mod leave {
     pub const DISCONNECT: u32 = 0x01;
     pub const LOST: u32 = 0x07;
@@ -94,14 +96,26 @@ pub enum Packet {
     /// 0x0C: a turn: its length in milliseconds and each player's actions.  0x48 is the
     /// same with more of the turn's actions to come.
     IncomingAction { interval: u16, actions: Vec<(u8, Vec<u8>)>, more: bool },
-    /// 0x0E: players found out of step (game.dll `FUN_6f98b5d0`); kept raw.
-    Desync(Vec<u8>),
+    /// 0x0E: the players found out of step at keepalive `turn` (counted from 1), as the
+    /// host tells each player (`FUN_6f999b50`, `FUN_6f990a10`): the keepalive data of
+    /// the player's group (its checksum's four bytes), and the others whose games agree
+    /// with it, the player itself first when its group is the largest (the player's
+    /// handler is `FUN_6f98b5d0`).
+    Desync { turn: u32, checksum: Vec<u8>, players: Vec<u8> },
     /// 0x0F
     ChatFromHost { to: Vec<u8>, from: u8, chat: Chat },
     /// 0x10: players the game waits on, with how long it has waited (ms).
     StartLag(Vec<(u8, u32)>),
     /// 0x11
     StopLag { pid: u8, waited: u32 },
+    /// 0x13: the host turns the player out (`FUN_6f989820`: the connection closes, the
+    /// player's reason 0x0E); its word is not read.
+    Disconnect(u32),
+    /// 0x1B: the host's answer to LEAVEGAME, empty (`FUN_6f994500`): the player may go
+    /// (`FUN_6f98a100` closes the connection).
+    LeftGame,
+    /// 0x1C: the host turns the player out with a reason (`FUN_6f993040`, `FUN_6f9897b0`).
+    Kick { reason: u32 },
     /// 0x3D: the map a joining player must have.
     MapCheck { path: String, size: u32, crc32: u32, xoro: u32, sha1: [u8; 20] },
     /// 0x3F: the map comes from player `from`.
@@ -122,10 +136,17 @@ pub enum Packet {
     OutgoingKeepalive { checksum: u32 },
     /// 0x28
     ChatToHost { to: Vec<u8>, from: u8, chat: Chat },
+    /// 0x29: a vote on the lag screen to drop the players waited on, empty
+    /// (`FUN_6f97f2f0`, sent by `Net::NetClient::vf15_6f985b10`; the host's handler is
+    /// `FUN_6f99c4e0`).
+    DropReq,
     /// 0x42: how much of the checked map the player has (flag 1, its size; 0 for none).
     MapSize { flag: u8, size: u32 },
     /// 0x44: the map pieces received so far.
     MapPartOk { from: u8, to: u8, received: u32 },
+    /// 0x45: a map piece came wrong (`FUN_6f99c310` passes it on to the player sending
+    /// the map, `from`; `to` is the one downloading it).
+    MapPartNotOk { from: u8, to: u8 },
     /// 0x46
     PongToHost(u32),
 
@@ -208,10 +229,13 @@ impl Packet {
             P::CountdownEnd => 0x0B,
             P::IncomingAction { more: false, .. } => 0x0C,
             P::IncomingAction { more: true, .. } => 0x48,
-            P::Desync(_) => 0x0E,
+            P::Desync { .. } => 0x0E,
             P::ChatFromHost { .. } => 0x0F,
             P::StartLag(_) => 0x10,
             P::StopLag { .. } => 0x11,
+            P::Disconnect(_) => 0x13,
+            P::LeftGame => 0x1B,
+            P::Kick { .. } => 0x1C,
             P::MapCheck { .. } => 0x3D,
             P::StartDownload { .. } => 0x3F,
             P::MapPart { .. } => 0x43,
@@ -221,8 +245,10 @@ impl Packet {
             P::OutgoingAction(_) => 0x26,
             P::OutgoingKeepalive { .. } => 0x27,
             P::ChatToHost { .. } => 0x28,
+            P::DropReq => 0x29,
             P::MapSize { .. } => 0x42,
             P::MapPartOk { .. } => 0x44,
+            P::MapPartNotOk { .. } => 0x45,
             P::PongToHost(_) => 0x46,
             P::SearchGame { .. } => 0x2F,
             P::GameInfo(_) => 0x30,
@@ -245,7 +271,7 @@ impl Packet {
                 slots.write_sized(&mut w);
                 w.u8(*pid).bytes(&addr.0);
             }
-            P::RejectJoin { reason } | P::LeaveGame { reason } => {
+            P::RejectJoin { reason } | P::LeaveGame { reason } | P::Kick { reason } | P::Disconnect(reason) => {
                 w.u32(*reason);
             }
             P::PlayerInfo { join_counter, pid, name, marks, external, internal } => {
@@ -258,7 +284,7 @@ impl Packet {
                 w.u8(*pid);
             }
             P::SlotInfo(slots) => slots.write_sized(&mut w),
-            P::CountdownStart | P::CountdownEnd | P::GameLoadedSelf => {}
+            P::CountdownStart | P::CountdownEnd | P::GameLoadedSelf | P::LeftGame | P::DropReq => {}
             P::IncomingAction { interval, actions, .. } => {
                 w.u16(*interval);
                 if !actions.is_empty() {
@@ -269,8 +295,8 @@ impl Packet {
                     w.u16(crc32fast::hash(&a.0) as u16).bytes(&a.0);
                 }
             }
-            P::Desync(b) => {
-                w.bytes(b);
+            P::Desync { turn, checksum, players } => {
+                w.u32(*turn).u8(checksum.len() as u8).bytes(checksum).u8(players.len() as u8).bytes(players);
             }
             P::ChatFromHost { to, from, chat } | P::ChatToHost { to, from, chat } => write_chat(&mut w, to, *from, chat),
             P::StartLag(lagging) => {
@@ -305,6 +331,9 @@ impl Packet {
             }
             P::MapPartOk { from, to, received } => {
                 w.u8(*from).u8(*to).u32(1).u32(*received);
+            }
+            P::MapPartNotOk { from, to } => {
+                w.u8(*from).u8(*to).u32(1);
             }
             P::SearchGame { product, version } => {
                 w.bytes(product).u32(*version).u32(0);
@@ -381,7 +410,13 @@ impl Packet {
                 }
                 P::IncomingAction { interval, actions, more: id == 0x48 }
             }
-            0x0E => P::Desync(r.rest().to_vec()),
+            0x0E => {
+                let turn = r.u32()?;
+                let n = r.u8()? as usize;
+                let checksum = r.bytes(n)?.to_vec();
+                let n = r.u8()? as usize;
+                P::Desync { turn, checksum, players: r.bytes(n)?.to_vec() }
+            }
             0x0F => {
                 let (to, from, chat) = read_chat(&mut r)?;
                 P::ChatFromHost { to, from, chat }
@@ -391,6 +426,9 @@ impl Packet {
                 P::StartLag((0..n).map(|_| Ok((r.u8()?, r.u32()?))).collect::<Result<_, Error>>()?)
             }
             0x11 => P::StopLag { pid: r.u8()?, waited: r.u32()? },
+            0x13 => P::Disconnect(r.u32()?),
+            0x1B => P::LeftGame,
+            0x1C => P::Kick { reason: r.u32()? },
             0x3D => {
                 r.u32()?;
                 P::MapCheck { path: r.cstr()?, size: r.u32()?, crc32: r.u32()?, xoro: r.u32()?, sha1: r.array()? }
@@ -427,6 +465,7 @@ impl Packet {
                 let (to, from, chat) = read_chat(&mut r)?;
                 P::ChatToHost { to, from, chat }
             }
+            0x29 => P::DropReq,
             0x42 => {
                 r.u32()?;
                 P::MapSize { flag: r.u8()?, size: r.u32()? }
@@ -435,6 +474,11 @@ impl Packet {
                 let (from, to) = (r.u8()?, r.u8()?);
                 r.u32()?;
                 P::MapPartOk { from, to, received: r.u32()? }
+            }
+            0x45 => {
+                let (from, to) = (r.u8()?, r.u8()?);
+                r.u32()?;
+                P::MapPartNotOk { from, to }
             }
             0x46 => P::PongToHost(r.u32()?),
             0x2F => {

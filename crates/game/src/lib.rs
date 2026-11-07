@@ -991,6 +991,7 @@ impl Game {
         if f.turn.is_some() {
             self.world.net_turns = true;
         }
+        self.play_leaves(f);
         let out = self.play_commands(f);
         self.save_turn(f.turn.as_ref().map_or((f.dt * 1000.0).round() as u16, |t| t.0));
         self.after_keepalive();
@@ -998,10 +999,14 @@ impl Game {
         out
     }
 
-    /// A network turn as the original plays it: its message hashed into the
-    /// keepalive's net module, its actions carried out, the keepalive made (returned),
-    /// a save it called for made, then its step.
+    /// A network turn as the original plays it: the leaves before it and its message
+    /// hashed into the keepalive's net module, the leaves taken and its actions carried
+    /// out, the keepalive made (returned), a save it called for made, then its step.
     pub fn play_turn(&mut self, f: &replay::Frame) -> (Vec<(u8, replay::Outcome)>, u32) {
+        for l in &f.leaves {
+            self.world.net_leave(l.pid, l.word);
+        }
+        self.play_leaves(f);
         if let Some((ms, blocks)) = &f.turn {
             if blocks.is_empty() {
                 self.world.net_turn(*ms);
@@ -1015,6 +1020,26 @@ impl Game {
         self.after_keepalive();
         self.play_step(f);
         (out, keepalive)
+    }
+
+    /// A network game's people who left before a frame's turn, as the host's
+    /// PLAYERLEFT said (`replay::Frame::leaves`), each taken as the original's net game
+    /// takes its leave message (`FUN_6f32daf0`).
+    fn play_leaves(&mut self, f: &replay::Frame) {
+        for l in &f.leaves {
+            self.player_left(l.player);
+        }
+    }
+
+    /// A network game's player is gone: a save under way counts their part done
+    /// (`FUN_6f32daf0` calls `FUN_6f32c7b0` with 0), their slot is left, and
+    /// EVENT_PLAYER_LEAVE fires.
+    fn player_left(&mut self, player: u8) {
+        self.save_done(player, 0);
+        if let Some(p) = self.world.players.get_mut(player as usize) {
+            p.slot_state = types::slot_state::LEFT;
+        }
+        self.player_event(player, event_ids::EVENT_PLAYER_LEAVE);
     }
 
     /// A turn's time counts against a network game's save under way, after its actions
@@ -1447,13 +1472,10 @@ impl Game {
                 self.game_event(if build { event_ids::EVENT_GAME_BUILD_SUBMENU } else { event_ids::EVENT_GAME_SHOW_SKILL });
                 O::Done
             }
-            // A network game's player is gone: their slot is left, and EVENT_PLAYER_LEAVE
-            // fires.
+            // A network game's player is gone, as the port's older replays say it (a
+            // leave now comes as the host's PLAYERLEFT, `replay::Frame::leaves`).
             C::PlayerLeft { player } => {
-                if let Some(p) = self.world.players.get_mut(player as usize) {
-                    p.slot_state = types::slot_state::LEFT;
-                }
-                self.player_event(player, event_ids::EVENT_PLAYER_LEAVE);
+                self.player_left(player);
                 O::Done
             }
             C::Signal { player, x, y } => {

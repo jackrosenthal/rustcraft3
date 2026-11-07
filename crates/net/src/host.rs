@@ -59,6 +59,32 @@ struct Player {
     sent: Option<u32>,
     acked: u32,
     loaded: bool,
+    /// When the host lets the player go (`drop_after`).
+    drop_at: Option<Instant>,
+    /// Keepalives come (turns played), and when the last came.
+    played: u32,
+    heard: Instant,
+    /// The time the game has waited on the player (their +0x88: at most `LAG_BUDGET`),
+    /// and when it last stopped.
+    lag_used: u32,
+    lag_ended: Option<Instant>,
+}
+
+/// The lag screen as the original's router keeps it (`FUN_6f997a30`, read: not
+/// measured): with no one waited on, it waits on those behind it who have sent no
+/// keepalive for `LAG_AFTER`; each player's waits count against `LAG_BUDGET`, the time a
+/// drop vote waits for before it drops them; after `LAG_FORCED` everyone waited on is
+/// dropped (`FUN_6f999a60`).
+const LAG_AFTER: Duration = Duration::from_secs(4);
+const LAG_BUDGET: u32 = 45_000;
+const LAG_FORCED: Duration = Duration::from_secs(60);
+
+/// The players the game waits on, since when, and the drop votes (protocol ids).
+#[derive(Debug)]
+struct Lag {
+    since: Instant,
+    players: Vec<u8>,
+    votes: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +109,9 @@ pub struct Host {
     created: Instant,
     last_ping: Instant,
     last_announce: Instant,
+    /// Turns sent, and the lag screen while the game waits on players.
+    turns: u32,
+    lag: Option<Lag>,
 }
 
 impl Host {
@@ -101,7 +130,7 @@ impl Host {
             info.host_counter = 1;
         }
         let now = Instant::now();
-        let h = Host { listener, discovery, info, map, slots, name, players: Vec::new(), joining: Vec::new(), joins: 0, phase: Phase::Lobby, created: now, last_ping: now, last_announce: now - ANNOUNCE_EVERY };
+        let h = Host { listener, discovery, info, map, slots, name, players: Vec::new(), joining: Vec::new(), joins: 0, phase: Phase::Lobby, created: now, last_ping: now, last_announce: now - ANNOUNCE_EVERY, turns: 0, lag: None };
         if let Some(d) = h.discovery.as_ref() {
             d.broadcast(&Packet::CreateGame { product: h.info.product, version: h.info.version, host_counter: h.info.host_counter });
         }
@@ -150,7 +179,9 @@ impl Host {
             for p in self.players[k].conn.poll() {
                 self.handle(k, p, &mut events, &mut gone);
             }
-            if !self.players[k].conn.alive {
+            // (The word a dropped connection's PLAYERLEFT carries is the port's choice:
+            // provisional.)
+            if !self.players[k].conn.alive || self.players[k].drop_at.is_some_and(|t| Instant::now() >= t) {
                 gone.push((self.players[k].pid, leave::DISCONNECT));
             }
             self.send_map_parts(k);
@@ -160,6 +191,9 @@ impl Host {
                 self.drop_player(pid, reason);
                 events.push(Event::Left { pid, reason });
             }
+        }
+        if self.phase == Phase::Playing {
+            self.lag_screen(&mut events);
         }
         if self.last_ping.elapsed() >= PING_EVERY {
             self.last_ping = Instant::now();
@@ -218,7 +252,7 @@ impl Host {
         }
         let c = &self.map.checksums;
         conn.send(&Packet::MapCheck { path: self.map.path.clone(), size: c.size, crc32: c.crc32, xoro: c.xoro, sha1: c.sha1 });
-        self.players.push(Player { pid, name: name.clone(), conn, internal, external, sent: None, acked: 0, loaded: false });
+        self.players.push(Player { pid, name: name.clone(), conn, internal, external, sent: None, acked: 0, loaded: false, drop_at: None, played: 0, heard: Instant::now(), lag_used: 0, lag_ended: None });
         let s = &mut self.slots.slots[slot];
         s.pid = pid;
         s.status = status::OCCUPIED;
@@ -232,7 +266,21 @@ impl Host {
         log::trace!("w3gs: host: from {pid}: {p:?}");
         match p {
             Packet::PongToHost(_) => {}
-            Packet::LeaveGame { reason } => gone.push((pid, reason)),
+            // A player leaving is answered (LEFTGAME, `FUN_6f994500`), and the others hear
+            // the word it gave (`FUN_6f99cdc0`).
+            Packet::LeaveGame { reason } => {
+                self.players[k].conn.send(&Packet::LeftGame);
+                gone.push((pid, reason));
+            }
+            Packet::DropReq => self.vote(pid),
+            // A piece the host sent came wrong: it sends again from what the player has
+            // (provisional: what the map's sender does with it is not read).
+            Packet::MapPartNotOk { from: HOST_PID, to } if to == pid => {
+                let pl = &mut self.players[k];
+                if pl.sent.is_some() {
+                    pl.sent = Some(pl.acked);
+                }
+            }
             Packet::MapSize { flag, size } => {
                 if flag == 1 && size == self.map.checksums.size {
                     self.players[k].sent = None;
@@ -273,7 +321,14 @@ impl Host {
                 events.push(Event::Loaded { pid });
             }
             Packet::OutgoingAction(data) => events.push(Event::Actions { pid, data }),
-            Packet::OutgoingKeepalive { checksum } => events.push(Event::Keepalive { pid, checksum }),
+            Packet::OutgoingKeepalive { checksum } => {
+                let pl = &mut self.players[k];
+                pl.played += 1;
+                pl.heard = Instant::now();
+                events.push(Event::Keepalive { pid, checksum });
+            }
+            // The router's others (0x1D, 0x1F, 0x20, 0x22, 0x24, 0x25, 0x2A to 0x2E, 0x34
+            // to 0x3C, 0x41, 0x4B, and 0x4C) are not taken: not read yet.
             other => log::debug!("w3gs: host: unexpected {other:?} from {pid}"),
         }
     }
@@ -311,6 +366,21 @@ impl Host {
         }
     }
 
+    /// A packet to one player.
+    pub fn send(&mut self, pid: u8, p: &Packet) {
+        if let Some(q) = self.players.iter_mut().find(|q| q.pid == pid) {
+            q.conn.send(p);
+        }
+    }
+
+    /// Lets a player go after `wait` (as `FUN_6f998880` does the players a desync leaves
+    /// out, after 2000 ms): then they leave as dropped.
+    pub fn drop_after(&mut self, pid: u8, wait: Duration) {
+        if let Some(q) = self.players.iter_mut().find(|q| q.pid == pid) {
+            q.drop_at.get_or_insert(Instant::now() + wait);
+        }
+    }
+
     /// The host's chat line, to the players `to`.
     pub fn chat(&mut self, to: &[u8], chat: Chat) {
         for q in self.players.iter_mut().filter(|q| to.contains(&q.pid)) {
@@ -318,8 +388,98 @@ impl Host {
         }
     }
 
-    /// Removes a player: the others are told, and in the setup their slot opens.
+    /// The lag screen (see `LAG_AFTER`): with no one waited on, those behind who have
+    /// sent no keepalive for `LAG_AFTER` are (StartLag, with the time each has been
+    /// waited on, less 45 ms for each 290 ms past 10 s since their last wait); one caught
+    /// up no longer is (`stop_lag`); and once the drop votes are enough
+    /// (`FUN_6f96ea70`: of those not waited on, half and one more) those whose share of
+    /// `LAG_BUDGET` is spent are dropped, or all after `LAG_FORCED`
+    /// (`FUN_6f999ab0`).
+    fn lag_screen(&mut self, events: &mut Vec<Event>) {
+        let now = Instant::now();
+        let ms = |d: Duration| d.as_millis().min(u32::MAX as u128) as u32;
+        let Some(lag) = self.lag.as_ref() else {
+            let turns = self.turns;
+            let behind: Vec<usize> = (0..self.players.len()).filter(|&k| self.players[k].played < turns && now - self.players[k].heard > LAG_AFTER).collect();
+            if behind.is_empty() {
+                return;
+            }
+            let mut list = Vec::new();
+            for &k in &behind {
+                let p = &mut self.players[k];
+                if let Some(ended) = p.lag_ended.map(|t| ms(now - t)).filter(|&t| t > 10_000) {
+                    let back = if ended < 300_000 { (ended - 10_000) * 45 / 290 } else { LAG_BUDGET };
+                    p.lag_used = p.lag_used.saturating_sub(back);
+                }
+                list.push((p.pid, p.lag_used.min(LAG_BUDGET)));
+            }
+            self.lag = Some(Lag { since: now, players: list.iter().map(|l| l.0).collect(), votes: Vec::new() });
+            self.broadcast(&Packet::StartLag(list));
+            return;
+        };
+        let since = lag.since;
+        let caught: Vec<u8> = lag.players.iter().copied().filter(|&pid| self.players.iter().any(|p| p.pid == pid && p.played >= self.turns)).collect();
+        for pid in caught {
+            self.stop_lag(pid);
+        }
+        let Some(lag) = self.lag.as_ref() else { return };
+        let people = 1 + self.players.len() as u32;
+        let waiting = lag.players.len() as u32;
+        let forced = people >= 2 && now - since >= LAG_FORCED;
+        let voted = people < waiting || lag.votes.len() as u32 > (people - waiting) / 2;
+        if !(forced || voted) {
+            return;
+        }
+        let waited = ms(now - since);
+        let due: Vec<u8> = lag.players.iter().copied().filter(|&pid| forced || self.players.iter().any(|p| p.pid == pid && waited >= LAG_BUDGET - p.lag_used.min(LAG_BUDGET))).collect();
+        if !due.is_empty() && !forced {
+            if let Some(l) = self.lag.as_mut() {
+                l.votes.clear();
+            }
+        }
+        // (The word their PLAYERLEFT carries is the port's choice: provisional.)
+        for pid in due {
+            self.drop_player(pid, leave::DISCONNECT);
+            events.push(Event::Left { pid, reason: leave::DISCONNECT });
+        }
+    }
+
+    /// The game no longer waits on a player: the others hear how long it has waited on
+    /// them in all (StopLag, `FUN_6f99a170`).
+    fn stop_lag(&mut self, pid: u8) {
+        let Some(lag) = self.lag.as_mut() else { return };
+        if !lag.players.contains(&pid) {
+            return;
+        }
+        lag.players.retain(|&p| p != pid);
+        let (since, over) = (lag.since, lag.players.is_empty());
+        if over {
+            self.lag = None;
+        }
+        let now = Instant::now();
+        let Some(p) = self.players.iter_mut().find(|p| p.pid == pid) else { return };
+        p.lag_used = (p.lag_used + (now - since).as_millis().min(LAG_BUDGET as u128) as u32).min(LAG_BUDGET);
+        p.lag_ended = Some(now);
+        let waited = p.lag_used;
+        self.broadcast(&Packet::StopLag { pid, waited });
+    }
+
+    /// A vote to drop the players waited on (a player's DROPREQ, or the host's own).
+    pub fn vote(&mut self, pid: u8) {
+        if let Some(l) = self.lag.as_mut().filter(|l| !l.votes.contains(&pid)) {
+            l.votes.push(pid);
+        }
+    }
+
+    /// The players the game waits on.
+    pub fn lagging(&self) -> Vec<u8> {
+        self.lag.as_ref().map_or(Vec::new(), |l| l.players.clone())
+    }
+
+    /// Removes a player: the others are told (after StopLag, if the game waited on
+    /// them: `FUN_6f99dbb0`), and in the setup their slot opens.
     pub fn drop_player(&mut self, pid: u8, reason: u32) {
+        self.stop_lag(pid);
         let Some(k) = self.players.iter().position(|p| p.pid == pid) else { return };
         let mut p = self.players.remove(k);
         p.conn.close();
@@ -361,6 +521,13 @@ impl Host {
     /// A turn: its length and each player's actions.
     pub fn send_turn(&mut self, interval: u16, actions: Vec<(u8, Vec<u8>)>) {
         self.phase = Phase::Playing;
+        // Everyone is heard from as the game begins.
+        if self.turns == 0 {
+            for p in self.players.iter_mut() {
+                p.heard = Instant::now();
+            }
+        }
+        self.turns += 1;
         // A packet holds at most 1460 bytes; a longer turn goes in parts (0x48), the
         // last a 0x0C.
         let mut parts: Vec<Vec<(u8, Vec<u8>)>> = vec![Vec::new()];

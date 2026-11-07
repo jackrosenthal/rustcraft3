@@ -40,6 +40,21 @@ pub fn net_message(kind: u8, payload: &[u8]) -> u32 {
     byte_hash(x)
 }
 
+/// The leave message's reason for a leave the host said (PLAYERLEFT): `FUN_6f98c680`
+/// passes 1 to `FUN_6f98b9d0`.
+pub const LEFT_REMOTE: u32 = 1;
+
+/// What the net module adds for a player's leave: the message of kind 0x17
+/// (CNetEventPlayerLeave, `FUN_6f97a290`) each computer's net client makes of the host's
+/// PLAYERLEFT, hashed (`FUN_6f328550`, `FUN_6f14eb60`) as the byte hash of the kind plus
+/// its first three fields' byte hashes: the reason (`LEFT_REMOTE`), the player's network
+/// id, and the word PLAYERLEFT carried (its fourth, the net client's id, is left out).
+/// Of the other kinds hashed so, 0x21 is never sent and 0x2f (a forced end's countdown)
+/// only over Battle.net (W3GS 0x50, under the client's flag 0x100000).
+pub fn leave_message(pid: u8, word: u32) -> u32 {
+    byte_hash(0x17u32.wrapping_add(byte_hash(LEFT_REMOTE)).wrapping_add(byte_hash(pid as u32)).wrapping_add(byte_hash(word)))
+}
+
 /// An object as the game module names it: its slot ^ birth (the handles in a player's
 /// lists carry the unit's tag at +0xc and +0x10), 0 for one in a slot never freed.
 pub type Tagged = u32;
@@ -97,6 +112,12 @@ impl World {
     pub fn net_turn(&mut self, ms: u16) {
         self.net_turns = true;
         self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &ms.to_le_bytes()));
+    }
+
+    /// The net module's part of a player's leave, its message handled before the next
+    /// turn's.
+    pub fn net_leave(&mut self, pid: u8, word: u32) {
+        self.net_sum = self.net_sum.wrapping_add(leave_message(pid, word));
     }
 
     /// The net module's part of a turn with its players' actions: its message carries

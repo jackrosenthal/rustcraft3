@@ -30,13 +30,27 @@ pub enum Event {
     Loaded { pid: u8 },
     /// A turn: its length in milliseconds and each player's actions.
     Turn { interval: u16, actions: Vec<(u8, Vec<u8>)> },
-    /// The game waits on players, or stops waiting on one.
+    /// The game waits on players (each with the time it has waited on them before, in
+    /// ms), or stops waiting on one.
     StartLag(Vec<(u8, u32)>),
     StopLag { pid: u8 },
-    Desync(Vec<u8>),
+    /// The host found the games out of step at keepalive `turn`: the players whose
+    /// games agree with this one's (DESYNC, 0x0E).
+    Desync { turn: u32, players: Vec<u8> },
+    /// The host turned this player out (0x13, or 0x1C with its reason).
+    Kicked { reason: u32 },
     /// The connection to the host is gone.
     Closed,
 }
+
+/// The net client's id, as REQJOIN carries it (its +0xc, which `FUN_6f98a740` copies to
+/// the request's +0x1a) and a leave record its last word: 2 in each the original sent
+/// (measured: its REQJOIN, and adpeople.w3g's last leave record).
+pub const SESSION: u32 = 2;
+
+/// How long a player leaving waits for the host's answer (`Net::NetClient::vf7_6f986990`
+/// waits 5000 ms for it).
+const LEAVE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct Client {
     conn: Conn,
@@ -62,7 +76,7 @@ impl Client {
             Some(SocketAddr::V4(a)) => SockAddr::new(a),
             _ => SockAddr::default(),
         };
-        conn.send(&Packet::ReqJoin { host_counter: game.host_counter, entry_key: game.entry_key, listen_port, peer_key: 0, name: name.to_string(), internal });
+        conn.send(&Packet::ReqJoin { host_counter: game.host_counter, entry_key: game.entry_key, listen_port, peer_key: SESSION, name: name.to_string(), internal });
         Ok(Client { conn, pid: 0, slots: SlotTable { slots: Vec::new(), seed: 0, layout: 0, player_slots: 0 }, players: Vec::new(), map_size: 0, map_crc32: 0, download: None, received: 0, partial: Vec::new(), closed: false })
     }
 
@@ -103,7 +117,19 @@ impl Client {
                         events.push(Event::Turn { interval, actions: std::mem::take(&mut self.partial) });
                     }
                 }
-                Packet::Desync(b) => events.push(Event::Desync(b)),
+                Packet::Desync { turn, players, .. } => events.push(Event::Desync { turn, players }),
+                // Turned out: the connection closes (`FUN_6f989820` with reason 0x0E,
+                // `FUN_6f9897b0` with the packet's).
+                Packet::Disconnect(_) | Packet::Kick { .. } => {
+                    let reason = match p {
+                        Packet::Kick { reason } => reason,
+                        _ => 0x0E,
+                    };
+                    events.push(Event::Kicked { reason });
+                    self.conn.close();
+                }
+                // The host's answer to this player's LEAVEGAME (`leave` waits for it).
+                Packet::LeftGame => self.conn.close(),
                 Packet::ChatFromHost { from, chat, .. } => events.push(Event::Chat { from, chat }),
                 Packet::StartLag(l) => events.push(Event::StartLag(l)),
                 Packet::StopLag { pid, .. } => events.push(Event::StopLag { pid }),
@@ -117,6 +143,10 @@ impl Client {
                     self.received = 0;
                 }
                 Packet::MapPart { from, offset, data, .. } => self.map_part(from, offset, &data, &mut events),
+                // Not taken (as read: provisional): 0x14 and 0x16 to 0x1A (the net
+                // client's states 9 and 10, its host's handoff, as its strings name it),
+                // 0x3E, 0x40, 0x44, and 0x45 (a map from another player), and 0x47, 0x50,
+                // and 0x51 (only under the client's flag 0x100000, Battle.net's).
                 other => log::debug!("w3gs: client: unexpected {other:?}"),
             }
         }
@@ -153,13 +183,23 @@ impl Client {
         self.conn.send(&Packet::MapSize { flag: 1, size: if have { self.map_size } else { 0 } });
     }
 
-    /// A chat line to everyone else (or a setup choice, to the host).
+    /// A line in the setup's chat to everyone else, or a setup choice to the host.
     pub fn chat(&mut self, chat: Chat) {
         let to: Vec<u8> = match chat {
             Chat::Lobby(_) | Chat::Game { .. } => self.players.iter().map(|p| p.0).collect(),
             _ => vec![crate::host::HOST_PID],
         };
         self.conn.send(&Packet::ChatToHost { to, from: self.pid, chat });
+    }
+
+    /// A chat line to the players `to` only (the host passes it on to each of them).
+    pub fn chat_to(&mut self, to: Vec<u8>, chat: Chat) {
+        self.conn.send(&Packet::ChatToHost { to, from: self.pid, chat });
+    }
+
+    /// The lag screen's vote to drop the players waited on.
+    pub fn drop_vote(&mut self) {
+        self.conn.send(&Packet::DropReq);
     }
 
     pub fn loaded(&mut self) {
@@ -175,8 +215,16 @@ impl Client {
         self.conn.send(&Packet::OutgoingKeepalive { checksum });
     }
 
+    /// Leaves the game with `reason`: LEAVEGAME, then (as `Net::NetClient::vf7_6f986990`)
+    /// up to 5 s for the host's answer (LEFTGAME) before the connection closes.
     pub fn leave(&mut self, reason: u32) {
         self.conn.send(&Packet::LeaveGame { reason });
+        let since = std::time::Instant::now();
+        while self.conn.alive && since.elapsed() < LEAVE_WAIT {
+            if self.conn.poll_wait(LEAVE_WAIT - since.elapsed()).iter().any(|p| matches!(p, Packet::LeftGame)) {
+                break;
+            }
+        }
         self.conn.close();
         self.closed = true;
     }

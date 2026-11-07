@@ -2,7 +2,7 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
-use std::sync::mpsc::{Receiver, TryRecvError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError, channel};
 
 use crate::Packet;
 
@@ -79,6 +79,18 @@ impl Conn {
             }
         }
         out
+    }
+
+    /// The packets that have come, waiting up to `wait` for the first.
+    pub fn poll_wait(&mut self, wait: std::time::Duration) -> Vec<Packet> {
+        match self.rx.recv_timeout(wait) {
+            Ok(p) => std::iter::once(p).chain(self.poll()).collect(),
+            Err(RecvTimeoutError::Timeout) => Vec::new(),
+            Err(RecvTimeoutError::Disconnected) => {
+                self.alive = false;
+                Vec::new()
+            }
+        }
     }
 
     /// This end's address, as a joining player tells the host (REQJOIN).

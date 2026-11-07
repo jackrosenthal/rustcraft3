@@ -23,6 +23,29 @@ pub struct Codec {
     selection: HashMap<u8, Vec<u32>>,
     /// Each player's subgroup unit (the selection's first, as SelectSubgroup names it).
     subgroup: HashMap<u8, u32>,
+    /// Each player's control groups (0 to 9), as AssignGroup made them.
+    groups: HashMap<(u8, u8), Vec<u32>>,
+}
+
+impl Codec {
+    /// A player's selection after SelectGroup recalls `group`: its living units in
+    /// place of the selection (mode 3) or added to it (1), twelve at most, as
+    /// `SelOp::SelectGroup` keeps the original's.
+    fn recall(&mut self, w: &World, player: u8, group: u8, mode: u8) -> Vec<u32> {
+        let members: Vec<u32> = self.groups.get(&(player, group)).into_iter().flatten().copied().filter(|&h| w.unit(h).is_some_and(|u| !u.dead)).collect();
+        let mut sel = if mode == 1 { self.selection.get(&player).cloned().unwrap_or_default() } else { Vec::new() };
+        if mode == 1 && members.is_empty() {
+            return sel;
+        }
+        for h in members {
+            if sel.len() < 12 && !sel.contains(&h) {
+                sel.push(h);
+            }
+        }
+        self.selection.insert(player, sel.clone());
+        self.subgroup.insert(player, sel.first().copied().unwrap_or(0));
+        sel
+    }
 }
 
 impl World {
@@ -70,6 +93,17 @@ impl Codec {
                 }
                 self.selection.insert(player, units.clone());
                 self.subgroup.insert(player, units.first().copied().unwrap_or(0));
+            }
+            // A control group made (measured: 17, the group, and its units; the keys 1
+            // to 9 and 0 are groups 0 to 9) and recalled (18, the group, and 3; the
+            // selection becomes the group's, as the receiving side will have it).
+            Command::SyncSelection { op: crate::selection::SelOp::DefineGroup { group, units }, .. } => {
+                acts.push(Action::AssignGroup { group: *group, objects: units.iter().map(|&h| w.oid(h)).collect() });
+                self.groups.insert((player, *group), units.clone());
+            }
+            Command::SyncSelection { op: crate::selection::SelOp::SelectGroup { group, mode }, .. } => {
+                acts.push(Action::SelectGroup { group: *group, unknown: *mode });
+                self.recall(w, player, *group, *mode);
             }
             Command::SelectionOrder { order, at, target, queue, formation, .. } => {
                 let flags = (*queue as u16) | if *formation { 0x10 } else { 0 };
@@ -302,6 +336,13 @@ impl Codec {
                 Action::PreSubselection => {}
                 Action::SelectSubgroup { object, .. } => {
                     self.subgroup.insert(player, w.by_oid(object).unwrap_or(0));
+                }
+                Action::AssignGroup { group, objects } => {
+                    self.groups.insert((player, group), objects.iter().filter_map(|&o| w.by_oid(o)).collect());
+                }
+                Action::SelectGroup { group, unknown } => {
+                    self.recall(w, player, group, unknown);
+                    changed = true;
                 }
                 other => {
                     let sel = sel.clone();

@@ -1,16 +1,18 @@
 //! Local area network games, over Warcraft III's own protocol (W3GS, the `w3_net`
 //! crate): the lobby's setup and the slot table everyone is sent, and a game under way.
 //! In a game the host sends every player each turn: its length and each person's
-//! commands.  Everyone, the host too, plays only these turns, and the game runs the
-//! same for the same turns, so all play the same game; after each turn a player sends
-//! the host its game's checksum, which the host compares with its own.  The commands
-//! travel as this game's own (`Command`), not yet as the original's actions, so its
-//! games are played with copies of itself.
+//! actions, as the original's (`w3_game::actions::Codec`).  Everyone, the host too,
+//! plays only these turns, and the game runs the same for the same turns, so all play
+//! the same game; after each turn a player sends the host its game's checksum (the
+//! original's keepalive), which the host compares with its own and the others'.  A
+//! player who leaves is said by the host's PLAYERLEFT, which every computer takes
+//! before the next turn; chat goes to its recipients only, as the original sends it.
 
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-use w3_game::replay::{Command, Frame};
+use w3_game::replay::{Command, Frame, Leave};
+use w3_game::world::World;
 use w3_net::client::{self, Client};
 use w3_net::host::{self, HOST_PID, Host};
 use w3_net::packet::leave;
@@ -201,6 +203,30 @@ fn frame(players: &[(u8, u8)], ms: u16, blocks: &[(u8, Vec<u8>)]) -> Frame {
     Frame { dt: ms as f32 / 1000.0, actions: Some(actions), turn: Some((ms, blocks.to_vec())), ..Default::default() }
 }
 
+/// The people a chat line goes to, by protocol id, as the original's sender picks them
+/// (`FUN_6f36ee10`, `FUN_6f32ca60`): to all (scope 0), everyone else in the game; to
+/// allies (1), the players still playing whom the speaker is allied with (IsPlayerAlly's
+/// alliance); to observers (2), the observers; to a player (3 + the player), that one.
+/// The speaker and players without a person (computers) are left out.
+pub fn recipients(w: &World, people: &[(u8, u8)], speaker: u8, scope: u8) -> Vec<u8> {
+    use w3_game::types::{player_state, slot_state};
+    let other = |p: &u8| *p != speaker && (*p as usize) < 12;
+    let state = |p: u8| w.players.get(p as usize).map_or(slot_state::EMPTY, |pl| pl.slot_state);
+    let players: Vec<u8> = match scope {
+        0 => people.iter().map(|x| x.1).filter(other).collect(),
+        1 => (0..12).filter(other).filter(|&p| state(p) == slot_state::PLAYING && w3_game::natives::players::is_ally(w, speaker, p)).collect(),
+        2 => (0..12).filter(other).filter(|&p| state(p) != slot_state::EMPTY && w.players[p as usize].get_state(player_state::OBSERVER) != 0).collect(),
+        n => vec![n - 3],
+    };
+    players.into_iter().filter_map(|p| people.iter().find(|x| x.1 == p).map(|x| x.0)).collect()
+}
+
+/// What came, to the host or to a player.
+enum Heard {
+    Host(host::Event),
+    Player(client::Event),
+}
+
 /// A network game under way.
 pub struct Session {
     pub role: Role,
@@ -220,8 +246,13 @@ pub struct Session {
     clock: f32,
     /// The connection to the host is gone.
     pub lost: bool,
-    /// Players who left, for the next turn to say so.
-    pub left: Vec<u8>,
+    /// The people who left (protocol ids).
+    gone: Vec<u8>,
+    /// The leaves and chat lines that came since the last turn, for the next turn's
+    /// frame (the host's next, or the next the host sends a player): each computer takes
+    /// them before that turn, as the original's net client does its messages.
+    leaves: Vec<Leave>,
+    chat: Vec<(u8, u32, String)>,
     /// Waiting on a player who has fallen behind (or not yet loaded).
     pub waiting: bool,
     /// The players the host says the game waits on (StartLag), for a player's game.
@@ -230,16 +261,31 @@ pub struct Session {
     pub limit: Option<u32>,
     /// When the last frame came (a player's game waits on the host after two seconds).
     last_frame: Instant,
-    /// The host's own checksums by turn, players' not yet compared, and players dropped
-    /// for being out of step.
-    own_checks: HashMap<u32, u32>,
-    peer_checks: Vec<(u8, u32, u32)>,
+    /// The host's keepalives by turn, each person's (the host's own among them) as they
+    /// come, and the players found out of step.
+    checks: std::collections::BTreeMap<u32, Vec<(u8, u32)>>,
     pub desynced: Vec<u8>,
+    /// The word this computer leaves with (`leave_word`).
+    pub word: u32,
 }
 
-/// A turn is 50 ms of game time; the host waits for any player more than 40 behind.
+/// The word a player leaves the game with (LEAVEGAME), as the original's game gives it
+/// (`FUN_6f32c130`'s first argument): LOST leaving a game under way through the menu
+/// (`FUN_6f29f430` and the menu's others), and OBSERVER once the player's game is over
+/// or as an observer (`FUN_6f1de050`; measured after a defeat left by its dialog, as the
+/// original's replays' closing leave record has it; after a victory or a tie
+/// provisional).
+pub fn leave_word(w: &World) -> u32 {
+    use w3_game::types::player_state;
+    let me = w.local_player;
+    let observer = w.players.get(me as usize).is_some_and(|p| p.get_state(player_state::OBSERVER) != 0);
+    if observer || w.player_results.contains_key(&me) { leave::OBSERVER } else { leave::LOST }
+}
+
+/// A turn is 50 ms of game time.
 pub const TURN: f32 = 0.05;
-const BEHIND: u32 = 40;
+/// The players a desync leaves out go after 2 s (`FUN_6f998880`).
+const DESYNC_DROP: Duration = Duration::from_millis(2000);
 
 impl Session {
     pub fn new(mut role: Role) -> Session {
@@ -259,14 +305,16 @@ impl Session {
             owed: 0.0,
             clock: 0.0,
             lost: false,
-            left: Vec::new(),
+            gone: Vec::new(),
+            leaves: Vec::new(),
+            chat: Vec::new(),
             waiting: false,
             lag: Vec::new(),
             limit: None,
             last_frame: Instant::now(),
-            own_checks: HashMap::new(),
-            peer_checks: Vec::new(),
+            checks: Default::default(),
             desynced: Vec::new(),
+            word: leave::LOST,
         }
     }
 
@@ -274,24 +322,51 @@ impl Session {
         self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1)
     }
 
+    /// This computer's protocol id.
+    fn local_pid(&self) -> u8 {
+        match &self.role.link {
+            Link::Host(_) => HOST_PID,
+            Link::Client(c) => c.pid,
+        }
+    }
+
+    /// The people still in the game, by protocol id and player.
+    fn people(&self) -> Vec<(u8, u8)> {
+        self.role.players.iter().copied().filter(|p| !self.gone.contains(&p.0)).collect()
+    }
+
+    /// A person left, as the host's PLAYERLEFT said (with its word): the next turn's
+    /// frame says so.
+    fn left(&mut self, pid: u8, word: u32) {
+        if self.gone.contains(&pid) {
+            return;
+        }
+        self.gone.push(pid);
+        self.played_by.remove(&pid);
+        self.lag.retain(|&p| p != pid);
+        if let Some(player) = self.player_of(pid) {
+            self.leaves.push(Leave { pid, player, word });
+        }
+    }
+
     /// The local player's commands: the host keeps its own for the next turn; a player
     /// sends them to the host.
     /// They go as the original's actions (`actions::Codec`), as the world stands.
-    /// A chat line goes as the game's chat to everyone (W3GS chat, scope 0 for all as
-    /// the original sends it), its trigger events as actions; the lines are returned for
-    /// this computer to show.
-    pub fn send_commands(&mut self, w: &w3_game::world::World, local: u8, commands: Vec<Command>) -> Vec<(u8, String, u8)> {
+    /// A chat line goes as the game's chat to its recipients only (`recipients`), its
+    /// trigger events as actions; the lines are returned for this computer to show.
+    pub fn send_commands(&mut self, w: &World, local: u8, commands: Vec<Command>) -> Vec<(u8, String, u8)> {
         let mut said = Vec::new();
         for c in &commands {
             if let Command::Chat { text, to, .. } = c {
                 let chat = w3_net::Chat::Game { scope: *to as u32, text: text.clone() };
-                match &mut self.role.link {
-                    Link::Host(h) => {
-                        let all: Vec<u8> = h.players().iter().map(|p| p.0).collect();
-                        h.chat(&all, chat);
+                let to_pids = recipients(w, &self.people(), local, *to);
+                if !to_pids.is_empty() {
+                    match &mut self.role.link {
+                        Link::Host(h) => h.chat(&to_pids, chat),
+                        Link::Client(c) => c.chat_to(to_pids, chat),
                     }
-                    Link::Client(c) => c.chat(chat),
                 }
+                self.chat.push((self.local_pid(), *to as u32, text.clone()));
                 said.push((local, text.clone(), *to));
             }
         }
@@ -306,96 +381,63 @@ impl Session {
         said
     }
 
-
-
     /// Takes in what has come; the host makes turns as game time passes.  Returns the
     /// chat lines that came (player, text, and scope).
     pub fn pump(&mut self, dt: f32) -> Vec<(u8, String, u8)> {
         let mut chat = Vec::new();
-        match &mut self.role.link {
-            Link::Host(h) => {
-                let events = h.poll();
-                for e in events {
-                    match e {
-                        host::Event::Actions { pid, data } => self.pending.push((pid, data)),
-                        host::Event::Keepalive { pid, checksum } => {
-                            let n = self.played_by.entry(pid).or_default();
-                            *n += 1;
-                            let n = *n;
-                            self.peer_checks.push((pid, n, checksum));
-                        }
-                        host::Event::Left { pid, .. } => {
-                            self.played_by.remove(&pid);
-                            if let Some(p) = self.player_of(pid) {
-                                self.left.push(p);
-                            }
-                        }
-                        host::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } } => {
-                            if let Some(p) = self.player_of(from) {
-                                chat.push((p, text, scope as u8));
-                            }
-                        }
-                        _ => {}
+        let events: Vec<Heard> = match &mut self.role.link {
+            Link::Host(h) => h.poll().into_iter().map(Heard::Host).collect(),
+            Link::Client(c) => c.poll().into_iter().map(Heard::Player).collect(),
+        };
+        for e in events {
+            match e {
+                Heard::Host(host::Event::Actions { pid, data }) => self.pending.push((pid, data)),
+                Heard::Host(host::Event::Keepalive { pid, checksum }) => {
+                    let n = self.played_by.entry(pid).or_default();
+                    *n += 1;
+                    let n = *n;
+                    self.checks.entry(n).or_default().push((pid, checksum));
+                }
+                Heard::Host(host::Event::Left { pid, reason }) | Heard::Player(client::Event::PlayerLeft { pid, reason }) => self.left(pid, reason),
+                Heard::Host(host::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } }) | Heard::Player(client::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } }) => {
+                    if let Some(p) = self.player_of(from) {
+                        self.chat.push((from, scope, text.clone()));
+                        chat.push((p, text, scope as u8));
                     }
                 }
-                self.host_turns(dt);
-            }
-            Link::Client(c) => {
-                for e in c.poll() {
-                    match e {
-                        client::Event::Turn { interval, actions } => {
-                            let f = frame(&self.role.players, interval, &actions);
-                            self.queue.push_back(f);
-                            self.next += 1;
-                            self.last_frame = Instant::now();
-                        }
-                        client::Event::StartLag(players) => {
-                            self.lag = players.iter().filter_map(|&(pid, _)| self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1)).collect();
-                        }
-                        client::Event::StopLag { pid } => {
-                            if let Some(p) = self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1) {
-                                self.lag.retain(|&q| q != p);
-                            }
-                        }
-                        client::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } } => {
-                            if let Some(p) = self.role.players.iter().find(|p| p.0 == from).map(|p| p.1) {
-                                chat.push((p, text, scope as u8));
-                            }
-                        }
-                        client::Event::Desync(_) => log::warn!("net: the host finds this game out of step"),
-                        client::Event::Closed => self.lost = true,
-                        _ => {}
-                    }
+                Heard::Player(client::Event::Turn { interval, actions }) => {
+                    let mut f = frame(&self.role.players, interval, &actions);
+                    f.leaves = std::mem::take(&mut self.leaves);
+                    f.chat = std::mem::take(&mut self.chat);
+                    self.queue.push_back(f);
+                    self.next += 1;
+                    self.last_frame = Instant::now();
                 }
-                if !c.alive() {
-                    self.lost = true;
-                }
+                Heard::Player(client::Event::StartLag(players)) => self.lag = players.iter().map(|&(pid, _)| pid).collect(),
+                Heard::Player(client::Event::StopLag { pid }) => self.lag.retain(|&q| q != pid),
+                Heard::Player(client::Event::Desync { turn, players }) => log::warn!("net: the host finds the games out of step at turn {turn}; this one's agrees with {players:?}"),
+                Heard::Player(client::Event::Kicked { reason }) => log::warn!("net: the host turned this player out ({reason:#x})"),
+                Heard::Player(client::Event::Closed) => self.lost = true,
+                _ => {}
             }
         }
-        if !self.peer_checks.is_empty() {
+        if matches!(self.role.link, Link::Host(_)) {
+            self.host_turns(dt);
+        } else if let Link::Client(c) = &self.role.link {
+            self.lost |= !c.alive();
+        }
+        if !self.checks.is_empty() {
             self.compare_checks();
         }
         chat
     }
 
-    /// The host's turns: one each TURN of game time, unless it waits on a player not yet
-    /// loaded or fallen too far behind (StartLag tells the players whom, StopLag when it
-    /// no longer waits on one).
+    /// The host's turns: one each TURN of game time, unless it waits on players not yet
+    /// loaded or fallen behind (the host's lag screen, `Host::lagging`).
     fn host_turns(&mut self, dt: f32) {
         let Link::Host(h) = &mut self.role.link else { return };
-        let behind: Vec<u8> = self.played_by.iter().filter(|(_, n)| self.next.saturating_sub(**n) > BEHIND).map(|(&pid, _)| pid).collect();
-        let waiting = !h.all_loaded() || !behind.is_empty();
-        if h.all_loaded() && behind != self.lag {
-            if !behind.is_empty() {
-                h.broadcast(&w3_net::Packet::StartLag(behind.iter().map(|&pid| (pid, 0)).collect()));
-            }
-            for &pid in self.lag.iter().filter(|p| !behind.contains(p)) {
-                h.broadcast(&w3_net::Packet::StopLag { pid, waited: 0 });
-            }
-            self.lag = behind;
-        }
-        self.waiting = waiting;
-        if waiting {
+        self.waiting = !h.all_loaded() || !h.lagging().is_empty();
+        if self.waiting {
             return;
         }
         self.clock += dt;
@@ -409,7 +451,9 @@ impl Session {
                     None => blocks.push((pid, data)),
                 }
             }
-            let f = frame(&self.role.players, (TURN * 1000.0) as u16, &blocks);
+            let mut f = frame(&self.role.players, (TURN * 1000.0) as u16, &blocks);
+            f.leaves = std::mem::take(&mut self.leaves);
+            f.chat = std::mem::take(&mut self.chat);
             h.send_turn((TURN * 1000.0) as u16, blocks);
             self.queue.push_back(f);
             self.next += 1;
@@ -438,10 +482,11 @@ impl Session {
 
     /// The players the game waits on.
     pub fn lagging(&self) -> Vec<u8> {
-        match &self.role.link {
-            Link::Host(_) => self.lag.iter().filter_map(|&pid| self.player_of(pid)).collect(),
+        let pids = match &self.role.link {
+            Link::Host(h) => h.lagging(),
             Link::Client(_) => self.lag.clone(),
-        }
+        };
+        pids.into_iter().filter_map(|pid| self.player_of(pid)).collect()
     }
 
     /// A player waits on a host that has sent nothing for two seconds.
@@ -449,63 +494,83 @@ impl Session {
         matches!(self.role.link, Link::Client(_)) && self.queue.is_empty() && self.last_frame.elapsed() > Duration::from_secs(2)
     }
 
-    /// The host drops the players it waits on: they leave the game.
+    /// The lag screen's Drop: the host's own vote, or a player's sent to the host
+    /// (DROPREQ); enough votes drop the players waited on (`Host::vote`).
     pub fn drop_lagging(&mut self) {
-        let Link::Host(h) = &mut self.role.link else { return };
-        for pid in std::mem::take(&mut self.lag) {
-            h.drop_player(pid, leave::DISCONNECT);
-            self.played_by.remove(&pid);
-            if let Some(p) = self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1) {
-                self.left.push(p);
-            }
+        match &mut self.role.link {
+            Link::Host(h) => h.vote(HOST_PID),
+            Link::Client(c) => c.drop_vote(),
         }
     }
 
     /// Notes this computer's game checksum after turn `frame` (counted from 1): a player
-    /// sends it to the host (its keepalive); the host keeps it and drops each player
-    /// whose checksum for the turn differs (their games have parted).
+    /// sends it to the host (its keepalive); the host keeps it with the players' to
+    /// compare.
     pub fn check(&mut self, frame: u32, sum: u64) {
         let sum = (sum ^ sum >> 32) as u32;
+        log::debug!("net: keepalive {frame} {sum:08x}");
         match &mut self.role.link {
             Link::Client(c) => c.keepalive(sum),
             Link::Host(_) => {
-                self.own_checks.insert(frame, sum);
+                self.checks.entry(frame).or_default().push((HOST_PID, sum));
                 self.compare_checks();
             }
         }
     }
 
+    /// Compares each turn's keepalives once every person still in the game has sent
+    /// theirs.  Games that have parted are grouped by their checksum, as the original's
+    /// router does (`FUN_6f999b50`): each player is told (DESYNC) the others in their
+    /// group, themselves first in the largest (the host's, when two are as large:
+    /// provisional), and the other groups' players go after `DESYNC_DROP`.
     fn compare_checks(&mut self) {
-        let mut keep = Vec::new();
-        for (pid, frame, sum) in std::mem::take(&mut self.peer_checks) {
-            match self.own_checks.get(&frame) {
-                Some(&mine) if mine != sum => {
-                    let player = self.player_of(pid);
-                    log::warn!("net: player {player:?} is out of step at turn {frame}");
-                    if let Link::Host(h) = &mut self.role.link {
-                        h.drop_player(pid, leave::DISCONNECT);
-                    }
-                    self.played_by.remove(&pid);
-                    if let Some(p) = player {
-                        self.left.push(p);
-                        self.desynced.push(p);
+        // (Those told they are out of step are compared no more: `FUN_6f999b50` marks
+        // the turns compared.)
+        let parted: Vec<u8> = self.role.players.iter().filter(|p| self.desynced.contains(&p.1)).map(|p| p.0).collect();
+        let people: Vec<u8> = std::iter::once(HOST_PID).chain(self.played_by.keys().copied()).filter(|p| !parted.contains(p)).collect();
+        let complete: Vec<u32> = self.checks.iter().filter(|(_, sums)| people.iter().all(|p| sums.iter().any(|s| s.0 == *p))).map(|(&n, _)| n).collect();
+        for n in complete {
+            let sums: Vec<(u8, u32)> = self.checks.remove(&n).unwrap_or_default().into_iter().filter(|s| people.contains(&s.0)).collect();
+            if sums.iter().all(|s| s.1 == sums[0].1) {
+                continue;
+            }
+            let mut groups: Vec<(u32, Vec<u8>)> = Vec::new();
+            for &(pid, sum) in &sums {
+                match groups.iter_mut().find(|g| g.0 == sum) {
+                    Some(g) => g.1.push(pid),
+                    None => groups.push((sum, vec![pid])),
+                }
+            }
+            let size = groups.iter().map(|g| g.1.len()).max().unwrap_or(0);
+            let main = groups.iter().position(|g| g.1.len() == size && g.1.contains(&HOST_PID)).or_else(|| groups.iter().position(|g| g.1.len() == size)).unwrap_or(0);
+            log::warn!("net: the games are out of step at turn {n}: {groups:x?}");
+            if let Link::Host(h) = &mut self.role.link {
+                for (k, (sum, members)) in groups.iter().enumerate() {
+                    for &pid in members.iter().filter(|&&p| p != HOST_PID) {
+                        let others = members.iter().copied().filter(|&p| p != pid);
+                        let players: Vec<u8> = if k == main { std::iter::once(pid).chain(others).collect() } else { others.collect() };
+                        h.send(pid, &w3_net::Packet::Desync { turn: n, checksum: sum.to_le_bytes().to_vec(), players });
+                        if k != main {
+                            h.drop_after(pid, DESYNC_DROP);
+                        }
                     }
                 }
-                Some(_) => {}
-                None => keep.push((pid, frame, sum)),
             }
+            let out: Vec<u8> = groups.iter().enumerate().filter(|(k, _)| *k != main).flat_map(|(_, g)| g.1.clone()).filter_map(|pid| self.player_of(pid)).collect();
+            self.desynced.extend(out);
+            break;
         }
-        self.peer_checks = keep;
-        // Old checksums are no longer needed once everyone is past them.
+        // Turns no one still in the game has yet to send are not kept.
         let oldest = self.played_by.values().copied().min().unwrap_or(self.next);
-        self.own_checks.retain(|&f, _| f + 1000 >= oldest);
+        self.checks.retain(|&f, _| f + 1000 >= oldest);
     }
 
-    /// Leaves the game: the host closes it, a player says goodbye.
+    /// Leaves the game: the host closes it, a player says goodbye with `word`.
     pub fn leave(&mut self) {
+        let word = self.word;
         match &mut self.role.link {
             Link::Host(h) => h.close(),
-            Link::Client(c) => c.leave(leave::DISCONNECT),
+            Link::Client(c) => c.leave(word),
         }
     }
 }

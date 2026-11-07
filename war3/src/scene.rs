@@ -2871,28 +2871,38 @@ impl Scene {
 
     /// A digit key: with Ctrl the selection becomes control group `n`, with Shift it
     /// joins it; alone the group (its living units) is selected, and the camera goes
-    /// to it when it is chosen again within half a second.
+    /// to it when it is chosen again within half a second.  The game hears each as the
+    /// original sends it (`SelOp::DefineGroup` and `SelectGroup`, 0x17 and 0x18), the
+    /// digits 1 to 9 and 0 its groups 0 to 9; Shift's sends the group whole
+    /// (provisional: not measured).
     pub fn control_group(&mut self, n: usize, ctrl: bool, shift: bool) {
+        use w3_game::selection::SelOp;
         if n >= 10 || !self.user_control() {
             return;
         }
-        if ctrl {
-            self.groups[n] = self.selection.clone();
-            return;
-        }
-        if shift {
+        let group = ((n + 9) % 10) as u8;
+        if ctrl || shift {
+            if ctrl {
+                self.groups[n] = self.selection.clone();
+            }
             for &h in &self.selection.clone() {
                 if !self.groups[n].contains(&h) {
                     self.groups[n].push(h);
                 }
             }
+            if let Some(g) = self.game.as_mut() {
+                let player = g.world.local_player;
+                g.apply(w3_game::replay::Command::SyncSelection { player, op: SelOp::DefineGroup { group, units: self.groups[n].clone() } });
+            }
             return;
         }
-        let Some(g) = self.game.as_ref() else { return };
+        let Some(g) = self.game.as_mut() else { return };
         self.groups[n].retain(|&h| g.world.unit(h).is_some_and(|u| !u.dead));
         if self.groups[n].is_empty() {
             return;
         }
+        let player = g.world.local_player;
+        g.apply(w3_game::replay::Command::SyncSelection { player, op: SelOp::SelectGroup { group, mode: 3 } });
         let again = self.last_group.is_some_and(|(k, t)| k == n && self.time - t < 0.5);
         self.last_group = Some((n, self.time));
         self.selection = self.groups[n].clone();
@@ -4246,6 +4256,7 @@ impl Scene {
         // A network game: the commands go out, and the host's frames play as they come.
         if let (Some(g), Some(s)) = (self.game.as_mut(), self.net.as_mut()) {
             let local = g.world.local_player;
+            s.word = crate::net::leave_word(&g.world);
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
             // Chat lines, sent and come, show as the game's (`Request::Chat`).
             let mut said = s.send_commands(&g.world, local, out);

@@ -58,6 +58,8 @@ pub struct Lan {
     chat_first: Option<usize>,
     /// Wheel movement short of a notch.
     wheel_lines: f32,
+    /// Since the lobby's chat line took the focus: its cursor blinks from then.
+    cursor_clock: std::time::Instant,
     pub line: String,
     /// The lobby's frames need rebuilding (the setup changed).
     pub rebuild: bool,
@@ -93,6 +95,7 @@ impl Lan {
             chat: Vec::new(),
             chat_first: None,
             wheel_lines: 0.0,
+            cursor_clock: std::time::Instant::now(),
             line: String::new(),
             rebuild: false,
             summary_due: None,
@@ -295,6 +298,7 @@ impl Lan {
         self.me = HOST_PID;
         self.chat.clear();
         self.chat_first = None;
+        self.cursor_clock = std::time::Instant::now();
         self.rebuild = true;
         Ok(())
     }
@@ -396,6 +400,7 @@ impl Lan {
         self.client = Some(Box::new(c));
         self.chat.clear();
         self.chat_first = None;
+        self.cursor_clock = std::time::Instant::now();
         Ok(())
     }
 
@@ -1027,13 +1032,24 @@ impl Lan {
         }
         crate::skirmish::color_draws(tree, self.setup.slots.iter().map(|s| s.color), out);
         // Edit boxes without a text frame of their own: their text in MasterFont, inside
-        // EditBorderSize, with the cursor.
+        // EditBorderSize, with the cursor.  The cursor is a "|" of its own (CEditBox's
+        // +0x258, FUN_6f101ff0) just past the text, short of the text's end by 0.0019 at
+        // 1272x686 as measured from the original's lobby, taken to be 0.0026 of text
+        // shrunk by the screen's stretch (provisional at other sizes), shown and hidden
+        // in turn each 0.5 s from the box's focus (FUN_6f103940), the typing leaving its
+        // rhythm alone.
+        let cursor = self.cursor_clock.elapsed().as_secs_f32() % 1.0 < 0.5;
+        let back = 0.0026 * if db.text_scale.get() > 0.0 { db.text_scale.get() } else { 1.0 };
         for (frame, text, size) in [("PlayerNameEditBox", &self.name, 0.012), ("ChatEditBox", &self.line, 0.015)] {
             let Some(i) = tree.get(frame).filter(|&i| tree.is_visible(i)) else { continue };
             let Some(r) = tree.frames[i].rect else { continue };
             let inset = tree.frames[i].def.num("EditBorderSize").unwrap_or(0.009);
             let rect = Rect { x0: r.x0 + inset, x1: r.x1 - inset, ..r };
-            out.push(Draw::Text { font: font.clone(), size, rect, text: format!("{text}|"), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+            out.push(Draw::Text { font: font.clone(), size, rect, text: text.clone(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+            if cursor {
+                let x0 = (rect.x0 + db.text_width(&font, size, text) - back).max(rect.x0);
+                out.push(Draw::Text { font: font.clone(), size, rect: Rect { x0, ..rect }, text: "|".to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+            }
         }
     }
 }

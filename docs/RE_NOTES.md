@@ -400,7 +400,23 @@ original images.
 - `CSpriteFrame` (`FUN_6f1add30`): orthographic over the frame, depth −500 to 500
   with z flipped, model origin at the frame's lower left; a frame without a size
   takes the model's bounds (`FUN_6f0f7080`, `FUN_6f0f6fc0`).
-- The menu background camera's field of view spans the 4:3 diagonal, as in game.
+- The menu background is a `CSpriteFrame` over the whole glue frame (`FUN_6f0f6980`,
+  set up at `0x6f2e09ad`); with a model camera its projection is `FUN_6f1adf40`, which
+  calls `FUN_6f126e30(fov, aspect, near, far)` with the frame's aspect.  That shares the
+  angle, not its tangent, along the diagonal: the vertical half angle is
+  `fov / 2 / sqrt(1 + aspect²)` (3/5 of half the field of view at 4:3), and x is scaled
+  by `1 / aspect` of y.  MainMenu3D_exp's Camera02good has a field of view of 1.04656,
+  so 35.98° vertically (the tangent's share would give 38.18° and show the water's edge
+  at the bottom).  Fitted against captures: at 1592 × 1195 the scene matches 4:3 exactly;
+  in a 1272 × 686 window on a 1280 × 720 display it keeps that vertical extent and spans
+  exactly 16:9 across, so the scene is not stretched with the glue but sees more to the
+  sides (16:9 is likely the size it renders at, scaled into the window; where x is
+  widened was not traced).
+- The main menu's version (`0x6f2dc0c4`): "%d.%d.%d.%d" of the constants 1, 27, 1, 7085
+  in a `CTextFrame` made by code (`FUN_6f0fd2c0`), right justified (`FUN_6f0fdd20(2)`),
+  its BOTTOMRIGHT on the menu's at (−0.013, 0) (`0x6f2dc144`).  Captured, its digits'
+  baseline is 0.0025 above the screen's bottom and they are 0.0105 tall (FRIZQT about
+  0.014 high, set tighter than the font's advances); its right edge 0.013 in.
 - A glue button plays `GlueScreenClick` (`FUN_6f358c30`) and fades the screen's controls
   for `UI\MiscData.txt [Glue] ControlFadeDuration` (0.25); the timer it starts
   (`FUN_6f33fd40`, duration from `FUN_6f047680`) then changes screens, and only then do

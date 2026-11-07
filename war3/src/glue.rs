@@ -1520,11 +1520,15 @@ impl Glue {
             let fwd = (target - eye).normalize_or_zero();
             let up = Quat::from_axis_angle(fwd, roll) * Vec3::Z;
             let view = Mat4::look_at_rh(eye, target, up);
-            // The field of view spans the diagonal of the 4:3 interface, which is
-            // stretched over the window like the rest of the glue.
-            let _ = aspect;
-            let fov_y = 2.0 * ((fov / 2.0).tan() * 0.6).atan();
-            let proj = Mat4::perspective_rh(fov_y, 4.0 / 3.0, near.max(1.0), far.max(100.0));
+            // CSpriteFrame's projection through a model camera (FUN_6f1adf40,
+            // FUN_6f126e30) shares the field of view out along the diagonal of its 4:3
+            // frame: the vertical half angle is half the field of view times 3/5 (the
+            // angle, not its tangent, which would show more above and below).  The scene
+            // is not stretched with the glue: a wider screen sees more to the sides (the
+            // original in a 1272 by 686 window on a 1280 by 720 display showed exactly
+            // 16:9 across, its vertical extent as at 4:3).
+            let fov_y = fov * 0.6;
+            let proj = Mat4::perspective_rh(fov_y, aspect, near.max(1.0), far.max(100.0));
             let mut g = default_globals(proj * view, eye);
             g.light_dir = [0.3, 0.3, -1.0, 0.0];
             let (fs, fe, fc) = self.fog;
@@ -1801,20 +1805,22 @@ impl Glue {
         }
     }
 
-    /// The version at the lower right, 0.013 in from the right edge: the port's name and
-    /// the original's build it is compatible with, where CMainMenu writes that build
-    /// ("%d.%d.%d.%d" of the constants 1, 27, 1, and 7085, as Game.dll's version resource
-    /// has it).
+    /// The version at the lower right: the port's name and version (the workspace's, which
+    /// the war3 package takes) and the original's build it is compatible with, where
+    /// CMainMenu writes that build ("%d.%d.%d.%d" of the constants 1, 27, 1, and 7085, as
+    /// Game.dll's version resource has it).  Its text frame, as tall as its text, has its
+    /// lower right corner on the glue's, 0.013 in (SetPoint BOTTOMRIGHT at 0x6f2dc144),
+    /// so the text's descent rests on the screen's bottom edge.
     fn version_text(&self, assets: &Assets) -> Draw {
         let w = self.tree.width;
         Draw::Text {
             font: assets.frames.decorate("MasterFont"),
             size: 0.011,
-            rect: w3_ui::Rect { x0: w - 0.3, x1: w - 0.013, y0: 0.0, y1: 0.02 },
-            text: "rustcraft3, compatible with 1.27.1.7085".into(),
+            rect: w3_ui::Rect { x0: w - 0.3, x1: w - 0.013, y0: 0.0, y1: 0.011 },
+            text: concat!("rustcraft3 ", env!("CARGO_PKG_VERSION"), ", compatible with 1.27.1.7085").into(),
             color: [1.0; 4],
             justify_h: w3_ui::Justify::End,
-            justify_v: w3_ui::Justify::Start,
+            justify_v: w3_ui::Justify::End,
             shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001)),
         }
     }

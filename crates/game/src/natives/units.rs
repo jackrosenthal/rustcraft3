@@ -736,8 +736,18 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // `FUN_6f67b8a0`), and a player state event on that fires then (Mafarazzo TD's round
     // ends on its creeps' food used 0 as the last creep dies, before its death's triggers).
     w.check_player_states(vm);
+    // (Its bounces' marks, `BTAR`, go before it, the newest first: traced, the
+    // towers-vs-waves game's creep killed by a Cutter's missile at turn 551, its three
+    // after its death's run, before its `` `rtl ``.  Provisional: its other buffs.)
     // (Its regeneration's listener goes with its death, `FUN_6f6744d0`; traced.)
     if course.is_some() {
+        let marks: Vec<(u32, u32)> = w.unit(h).map(|u| u.extra.object_slots[2].iter().copied().filter(|&(s, b)| w.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::BOUNCE_TARGET && e.1 == b)).collect()).unwrap_or_default();
+        if let Some(u) = w.unit_mut(h) {
+            u.extra.object_slots[2].retain(|o| !marks.contains(o));
+        }
+        for (s, _) in marks {
+            w.tags.doom(s);
+        }
         let listeners = w.unit_mut(h).map(|u| std::mem::take(&mut u.extra.object_slots[1])).unwrap_or_default();
         for (s, b) in listeners {
             if w.tags.live.get(&s).is_some_and(|e| e.1 == b) {

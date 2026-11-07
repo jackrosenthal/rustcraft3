@@ -2334,7 +2334,13 @@ these are the findings behind them.
   objects before the step's trigger's `+tex`).  The upgrade game's trace
   (`abtest/mafv5.*`) now agrees to turn 529 (from 511), and its keepalives for all
   536 turns (from 512), with the tower's blocked count drawn at its walk's first step
-  (below).
+  (below).  Open: at turn 530 the original frees 40 slots made with the map, 1142 to
+  1181, in blocks of four (each's third, fourth, second, first), after a region
+  trigger's frees; the port's have the chat triggers' objects there and never free
+  them.  Measured (the free of 1144 and 1149 at 53.059055): from a relation dispatch
+  request (`FUN_6f04f7e0` → `FUN_6f054190` → `FUN_6f054370`), a position object's
+  event (`FUN_6f15e500`) destroying itself, its list of children from the last
+  (`FUN_6f146690`), each freeing its slot (`FUN_6f14dae0` → `FUN_6f1cbfb0`).
 - An aimed missile lands in the behavior dispatch of the first main tick at or past
   its flight's due, so before a later main tick's step (`World::aimed_landings_before`,
   after that step's damage points, which land those due before them): traced, that
@@ -2348,6 +2354,46 @@ these are the findings behind them.
   at turn 344's start, its nine tasks' slots the step's order's; the port's had
   waited for the units' logic at the turn's end).  The third flyer game now agrees for
   all 358 turns of its keepalives (from 344), its trace to 352.
+- What a landing among the steps lets go goes as its main tick ends, before the next
+  step (`World::aimed_landings_before`; traced, the towers-vs-waves game,
+  `abtest/maftr5.*`: a creep killed by a Cutter's missile landing at 55.012981 in turn
+  551, its death's frees before the next step's region triggers).  A missile's removal
+  (BulletDeathTime on, `FUN_6f6d4e30` from the agent queue) lets its objects go with
+  its main tick's end frees, in the order let go: one due before the step's region
+  triggers before what they let go, one due after, after (`World::step_tick_frees`).
+  Measured, each slot's free with the agent queue's clock ([[DAT_6fd3c82c] + 0x40] +
+  0x40): the second flyer game's Arrow Tower's missile, removed at 33.746176 before
+  the step's trigger at 33.749268, its five freed first as the tick ended (the queue at
+  33.749668), then the trigger's; the third flyer game's, removed at 35.220928 (the
+  queue's clock at its destroy; its landing at 30.220928, that tick's), after the
+  step's two triggers at 35.219208, its five freed after theirs as the tick ended
+  (35.223858).  The third flyer game's trace now agrees to turn 357 (from 352).
+- A bounce (CMissileBounce vf47 `FUN_6f6cfbc0`) goes on to the nearest unit within
+  Farea it may hit (its search `FUN_6f6d0de0`, through `FUN_6f67e790`, which leaves out
+  the one it lands on), not one it has bounced to: with AllowMultiBounce 0 (Misc, read
+  by `FUN_6f047710`), vf51 (`FUN_6f6ce3a0`) leaves out a unit whose `BTAR` names the
+  missile (CBuffTarget vf214 `FUN_6f52d590`); its first target's mark, made as it was
+  sent, does not.  Traced: the towers-vs-waves game's Cutter at turn 551, its missile
+  landing on creep 377, on to 378 (`BTAR` 8772) and back to 377 (`BTAR` 7978), killing
+  it, then on to a third (`BTAR` 5153).  A flight shorter across the ground than a tenth
+  of its speed takes no time (`FUN_6f1737d0`: none when the distance's square is less
+  than the speed's times 0.01, `DAT_6fd544e0`, set to 1/100 by `FUN_6f004f00`), so a
+  leg between creeps 21 apart at 800 lands at once, in the same pass (provisional: a
+  missile sent that near, which the port still aims, `World::bullet_aimed`).  A unit's
+  death lets its bounces' marks go, the newest first, after its death's run and before
+  its `` `rtl `` (traced: 377's three).
+- A structure giving its target up in its backswing (past its damage point) pops its
+  attack's three tasks; the rest wait from 0xd016a (the backswing's, `FUN_6f49e6b0`)
+  down and go, top first, as it takes up its next, after that one's last block as the
+  main tick ends (traced: the second Cutter at turn 551, three freed at 377's death,
+  six after its next take-up; the Arrow Tower and the first Cutter all nine).  One
+  whose target died among the steps looks again among them, `LOOK_AFTER_DROP` on
+  (traced: the two Cutters taking up creeps in the main tick after the next step);
+  one whose target died after them, as the turn ends (`World::looks_after_deaths`).
+  Open: the Arrow Tower, its damage point still to come (called off, `FUN_6f497e20`),
+  took up its next only after the step after that (a reading is asked for); the port
+  has it look with the Cutters.  The towers-vs-waves game's trace now agrees to turn
+  551's 183rd object (from its first).
 - An attack's swing begins as its cooldown runs out (`FUN_6f49a4f0`): read, the Arrow
   tower (cooldown 0.7, damage point 0.3, missile at 1800 to a target 384 away)
   sending one in turns 17, 24, 31, and so every seven, its objects freed 52 turns on.

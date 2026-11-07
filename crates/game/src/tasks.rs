@@ -101,14 +101,24 @@ impl World {
             // region trigger's `+tex`.  One that can move tries its attack at once,
             // `World::reach_tried`.)
             let (top, _) = tasks.pop().unwrap();
+            // (What a backswing held as it gave its last target up goes after, top
+            // first: traced, the towers-vs-waves game's Cutter at turn 551, its six
+            // freed after its new tasks' last block as that main tick ended.)
+            let held = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.held_tasks)).unwrap_or_default();
             if self.moves_to_attack(h) {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.attack_tasks = tasks;
                 }
                 self.reach_tried(h, at, top);
+                for &(s, _) in held.iter().rev() {
+                    self.free_as_tick_ends(s, at);
+                }
                 return;
             }
             self.free_as_tick_ends(top, at);
+            for &(s, _) in held.iter().rev() {
+                self.free_as_tick_ends(s, at);
+            }
         } else {
             self.pop_attack(&mut tasks);
             tasks.push((self.tags.take(codes::class::TASK_T), MOVE_TO));
@@ -273,6 +283,12 @@ impl World {
     /// and the look for a target again `LOOK_AFTER_DROP` on.  Traced: the Plague Tower's
     /// nine tasks freed in the turn of its last attack, its runner fled.
     pub(crate) fn attack_given_up(&mut self, h: u32, at: f64) {
+        self.attack_given_up_held(h, at, false);
+    }
+
+    /// As `attack_given_up`; in a backswing (`hold`), the rest wait, from task 0xd016a
+    /// (`FUN_6f49e6b0`) down, kept for its next take-up (`World::attack_taken_up`).
+    fn attack_given_up_held(&mut self, h: u32, at: f64, hold: bool) {
         // (A walk into range under way: its path and cluster go with the turn's
         // releases; provisional.)
         if let Some(ReachWalk::Walk { path, .. }) = self.unit_mut(h).and_then(|u| u.extra.reach_walk.take()) {
@@ -283,6 +299,11 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let mut tasks = u.extra.attack_tasks.clone();
         self.pop_attack(&mut tasks);
+        if hold && tasks.last().is_some_and(|t| t.1 == BACKSWING) {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.held_tasks = std::mem::take(&mut tasks);
+            }
+        }
         for &(s, _) in tasks.iter().rev() {
             self.tags.doom(s);
         }
@@ -357,8 +378,13 @@ impl World {
         let mut attackers: Vec<u32> = self.unit_order.iter().copied().filter(|&a| self.attacks_in_place(a) && self.unit(a).is_some_and(|u| u.extra.acquired == h && !u.extra.attack_tasks.is_empty() && u.extra.reach_walk.is_none())).collect();
         let taken = |w: &World, a: u32| w.unit(a).and_then(|u| u.extra.attack_tasks.first()).and_then(|t| w.tags.live.get(&t.0)).map_or(u32::MAX, |e| e.1);
         attackers.sort_by_key(|&a| taken(self, a));
+        let after = self.after_steps;
         for a in attackers {
-            self.attack_given_up(a, at);
+            // (In its backswing, past its damage point, the rest of its tasks wait:
+            // traced, the towers-vs-waves game's Cutter at turn 551, three freed at its
+            // creep's death, six at its next take-up; the Arrow Tower's all nine.)
+            let backswing = self.unit(a).and_then(|u| u.swing.as_ref()).is_some_and(|s| s.done || s.landed);
+            self.attack_given_up_held(a, at, backswing);
             let due = (at + LOOK_AFTER_DROP as f64) as f32;
             let now = self.time_exact;
             if let Some(u) = self.unit_mut(a) {
@@ -368,7 +394,11 @@ impl World {
                 if u.swing.take().is_some_and(|s| !s.done && !s.landed) {
                     u.cooldown = 0.0;
                 }
-                u.extra.look_after_death = true;
+                // (One whose target died among the steps looks again among them, as
+                // its timer falls due: traced, the towers-vs-waves game's two at turn
+                // 551, taking up creeps after the next step; one after the steps, as
+                // the turn ends, `World::looks_after_deaths`.)
+                u.extra.look_after_death = after;
                 if let Some(l) = u.extra.look_timer.as_mut() {
                     l.1 = due;
                 }

@@ -1873,7 +1873,8 @@ impl World {
             self.structure_events_before(self.kept_abs(due));
         }
         let after = self.after_step_events(vm, &late, 0, trigger);
-        self.step_tick_frees(0);
+        let before = trigger.filter(|t| t.1).map(|t| self.kept_abs(t.0));
+        self.step_tick_frees(0, before);
         // Orders given at this step's tick free their objects after it, before its walk
         // ends' (read: a wanderer's order's eight, given before a turn's first step,
         // freed before the trees of two walks that arrived in it; Twisted Meadows' turn
@@ -1883,19 +1884,29 @@ impl World {
         self.make_pending_pairs();
         self.tags.issued.extend(after);
         self.tags.flush_issued();
+        if before.is_some() {
+            self.step_tick_frees(0, None);
+        }
         self.later_region_triggers(vm, trigger);
     }
 
-    /// The timed releases falling due in step `k`'s main tick go after its events, before
-    /// its end's frees: each is an event on the agent queue, run in the main tick that
-    /// reaches it (a missile's removal, `FUN_6f6d4e30` from 0x6f060d12).  Traced: the
-    /// second flyer game's Arrow Tower's missile, removed in turn 338 after the step's
-    /// region trigger's objects and before its walk ends' frees.
-    fn step_tick_frees(&mut self, k: usize) {
+    /// The timed releases falling due in step `k`'s main tick go after its events, with
+    /// its end's frees, in the order they were let go: each is an event on the agent
+    /// queue, run in the main tick that reaches it (a missile's removal, `FUN_6f6d4e30`
+    /// from 0x6f060d12), its objects freed as that tick ends with those let go before
+    /// and after it.  So one due before the step's region triggers (`before`) goes
+    /// before what they let go, and one due after, after.  Measured (the slots' frees
+    /// with the agent queue's clock): the second flyer game's Arrow Tower's missile,
+    /// removed at 33.746176, before the step's trigger at 33.749268, its five freed
+    /// first as the tick ended (33.749668), then the trigger's; the third flyer game's,
+    /// removed at 35.220928, after the step's triggers at 35.219208, its five freed
+    /// after theirs as the tick ended (35.223858).
+    fn step_tick_frees(&mut self, k: usize, before: Option<f64>) {
         let Some(&t) = self.step_ticks.get(k) else { return };
         let Ok(i) = usize::try_from(t - self.tick_clocks.0 + 1) else { return };
         if let Some(c) = self.tick_abs(i) {
-            self.tags.free_timed(self.steps_free_until.map_or(c, |f| c.min(f)));
+            let c = self.steps_free_until.map_or(c, |f| c.min(f));
+            self.tags.free_timed(before.map_or(c, |b| c.min(b)));
         }
     }
 
@@ -2087,11 +2098,15 @@ impl World {
                 self.structure_events_before(self.kept_abs(due));
             }
             let after = self.after_step_events(vm, &late, k, trigger);
-            self.step_tick_frees(k);
+            let before = trigger.filter(|t| t.1).map(|t| self.kept_abs(t.0));
+            self.step_tick_frees(k, before);
             self.tags.end_step();
             self.make_pending_pairs();
             self.tags.issued.extend(after);
             self.tags.flush_issued();
+            if before.is_some() {
+                self.step_tick_frees(k, None);
+            }
             self.later_region_triggers(vm, trigger);
         }
         self.wrap_clocks(&mut due);
@@ -3073,7 +3088,17 @@ impl World {
                 b.at = ticks.iter().copied().find(|&c| c >= d - 1e-7).unwrap_or(d) - off + 2e-7;
             }
         }
+        // What they let go goes as their main tick ends, before the step (traced: the
+        // towers-vs-waves game's creep killed by a Cutter's missile landing at 55.012981
+        // in turn 551, its death's frees before the next step's region triggers).
+        let doomed = self.tags.doomed.len();
         self.missiles_land(vm, hits);
+        if !self.after_steps {
+            let n = self.tags.doomed.len();
+            for s in self.tags.doomed.split_off(doomed.min(n)) {
+                self.tags.release(s);
+            }
+        }
     }
 
     /// A structure's first try on a target it took up, as it falls due among the steps
@@ -6503,7 +6528,8 @@ impl World {
 
     /// Missiles reaching their targets: a spell's takes hold, an attack's strikes.
     fn missiles_land(&mut self, vm: &mut Vm, hits: Vec<Missile>) {
-        for mut m in hits {
+        let mut hits: std::collections::VecDeque<Missile> = hits.into();
+        while let Some(mut m) = hits.pop_front() {
             let mut bullet = m.bullet.take();
             match m.spell {
                 Some((a, lvl, _, _)) if crate::ability::spell_flies(&self.ability_code(a)) => {
@@ -6588,8 +6614,14 @@ impl World {
                         if let (true, Some(b)) = (splash, bullet.as_ref()) {
                             self.splash_revealed(m.source, m.target, b.at);
                         }
-                        // A bounce goes on to the nearest unit within Farea it may hit that it
-                        // has not (AllowMultiBounce 0), losing damageLoss (CMissileBounce).
+                        // A bounce goes on to the nearest unit within Farea it may hit,
+                        // losing damageLoss (CMissileBounce vf47 `FUN_6f6cfbc0`, its search
+                        // `FUN_6f6d0de0`): not the one it lands on, nor one it has bounced
+                        // to, whose `BTAR` names it (vf51 `FUN_6f6ce3a0`, with
+                        // AllowMultiBounce 0: CBuffTarget vf214 `FUN_6f52d590`); its first
+                        // target's mark, made as it was sent, does not (traced: the
+                        // towers-vs-waves game's Cutter at turn 551, its missile landing on
+                        // creep 377, on to 378 and back to 377, then on to a third).
                         if m.bounces > 0 {
                             let mut hit = m.hit.clone();
                             hit.push(m.target);
@@ -6598,7 +6630,7 @@ impl World {
                                 .unit_order
                                 .iter()
                                 .copied()
-                                .filter(|u| !hit.contains(u))
+                                .filter(|&u| u != m.target && !hit[1..].contains(&u))
                                 .filter(|&u| self.unit(u).is_some_and(|t| (t.x - at.0).hypot(t.y - at.1) <= wp.full_area && self.splash_allows(m.source, &wp.splash_targets, t) && self.unit_visible_to(u, owner)))
                                 .min_by(|&p, &q| {
                                     let d = |u: u32| self.unit(u).map_or(f32::MAX, |t| (t.x - at.0).hypot(t.y - at.1));
@@ -6612,7 +6644,19 @@ impl World {
                                     self.bounce_marked(n);
                                 }
                                 let bullet = bullet.take().map(|b| crate::bullets::Bullet { seen: self.unit(n).map(|t| (t.x, t.y)), ..b });
-                                self.missiles.push(Missile { id: 0, target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, bullet, ..m.clone() });
+                                let leg = Missile { id: 0, target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, bullet, ..m.clone() };
+                                // A flight shorter across the ground than a tenth of its speed
+                                // takes no time (`FUN_6f1737d0`: none when the distance's
+                                // square is below the speed's times 0.01, `DAT_6fd544e0`): the
+                                // leg lands at once (traced: the Cutter's two legs between the
+                                // creeps 21 apart, at 800, and the second's kill, before the
+                                // next step's region triggers).  (Provisional: a missile sent
+                                // so near, which the port still aims, `World::bullet_aimed`.)
+                                if self.unit(n).is_some_and(|t| (t.x - at.0).hypot(t.y - at.1) < m.speed * 0.1) {
+                                    hits.push_front(leg);
+                                } else {
+                                    self.missiles.push(leg);
+                                }
                             }
                         }
                     }

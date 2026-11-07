@@ -735,6 +735,11 @@ pub struct UnitExtra {
     /// the bottom first: each slot with its task's event (0 for a block).
     #[serde(default)]
     pub attack_tasks: Vec<(u32, u32)>,
+    /// A structure's tasks left as it gave its target up in a backswing (task 0xd016a
+    /// waits for it), the bottom first: freed, top first, as it takes up its next
+    /// (`World::attack_taken_up`).
+    #[serde(default)]
+    pub held_tasks: Vec<(u32, u32)>,
     /// When the first attack on a target a structure took up may begin, on the main
     /// clock (`crate::tasks`).
     #[serde(default)]
@@ -1186,6 +1191,7 @@ impl Default for UnitExtra {
             attack_timer: None,
             look_timer: None,
             attack_tasks: Vec::new(),
+            held_tasks: Vec::new(),
             first_swing_at: None,
             death_tasks: Vec::new(),
             look_after_death: false,

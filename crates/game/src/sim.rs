@@ -1791,6 +1791,7 @@ impl World {
         // The detectors' looks due before the step (`World::plan_detection_looks`), and
         // the structures' damage points (`World::points_before`).
         self.looks_before(self.step_abs(0).map(|s| s.0));
+        self.aura_scans_before(0);
         if let Some((main, due)) = self.step_abs(0) {
             self.structure_events_before(due);
             self.points_before(vm, Some(due));
@@ -1993,6 +1994,7 @@ impl World {
             // in a turn's second step, before an order due after it).
             self.tags.mark_step(k);
             self.looks_before(self.step_abs(k).map(|s| s.0));
+            self.aura_scans_before(k);
             if let Some((main, due)) = self.step_abs(k) {
                 self.structure_events_before(due);
                 self.points_before(vm, Some(due));

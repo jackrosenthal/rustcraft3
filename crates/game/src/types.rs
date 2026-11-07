@@ -419,6 +419,13 @@ pub struct UnitExtra {
     /// half second of this and drop their lapsed buffs every two seconds of it.
     #[serde(default)]
     pub aura_clock: Option<f32>,
+    /// The same in whole milliseconds, with the length of the tick it began in
+    /// (`World::plan_aura_scans`), and the half second on it whose scan was taken a tick
+    /// ahead of its crossing.
+    #[serde(default)]
+    pub aura_ms: Option<(u32, u32)>,
+    #[serde(default)]
+    pub aura_ahead: Option<u32>,
     /// Damage a structure took while under construction (CAbilityBuildInProgress
     /// +0x10c), which reduces the refund if it is cancelled.
     #[serde(default)]
@@ -1043,6 +1050,8 @@ impl Default for UnitExtra {
             meld_acting: false,
             meld_fade_until: None,
             aura_clock: None,
+            aura_ms: None,
+            aura_ahead: None,
             payout: None,
             mine_holder: None,
             chop_swinging: false,

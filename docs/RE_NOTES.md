@@ -564,10 +564,18 @@ these are the findings behind them.
   plays the original's replays of games played alone (turns of 0 to 110 ms) with their
   keepalives agreeing to turn 6, two of them to turns 497 and 546, where they parted at
   turns 3 to 5 by the time alone.  The speed is in the steps, not the turns: at the
-  normal speed a turn of 100 ms moves the game 80.  Left (provisional): the port's
-  half-second aura scans run at the end of the port's tick, a turn's; at turn 7 of
-  those replays (a tick from 475 to 600 ms) the original's six aura buffs were made
-  before the frees of the step due 0.54, the port's after them.
+  normal speed a turn of 100 ms moves the game 80.
+- An aura's scan (its in-range listener's half-second check) runs at its due among the
+  tick's steps, before the first step due after it, with the detectors' looks that
+  share its queue (`World::plan_aura_scans`), not at the end of the port's tick (a
+  turn's): at turn 7 of the original's replays of games played alone the first scan's
+  six buffs (0.5 seconds) came before the frees of the step due 0.54, in ticks from 475
+  to 600 ms and from 500 to 600 ms alike, and in one from 450 to 550 ms within it.  No
+  100 ms capture tells the two apart (no object is made or freed between a turn's first
+  step and its scan's buffs in any of their traces).  Next (provisional): objects a
+  script's timer makes and lets go at about 1.0 seconds (a hero, its items, their tasks
+  and timers), let go at the port's tick's end where the original's keepalive at 1.075
+  still has them.
 - The player's 0x13 closes the connection with reason 0x0E, 0x1C with its word, and
   0x1B (the answer to its LEAVEGAME) closes it.  Its 0x14 and 0x16 to 0x1A are its
   states 9 and 10 (a host's handoff, as its strings name it), 0x3E, 0x40, 0x44, and 0x45

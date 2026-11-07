@@ -430,6 +430,15 @@ pub struct World {
     /// with the next turn's (`World::plan_detection_looks`).
     #[serde(skip)]
     pub looks_carried: Vec<(f64, u32, u32)>,
+    /// The aura scans this tick takes (`World::plan_aura_scans`): the bearer, the half
+    /// second of its clock, and the step it comes before (the tick's step count for its
+    /// end).
+    #[serde(skip)]
+    pub aura_plan: Vec<(u32, u32, usize)>,
+    /// The detectors' looks of this tick where aura bearers share their queue, not yet
+    /// taken (`World::plan_aura_scans`), each with its in-range object's birth.
+    #[serde(skip)]
+    pub aura_looks: Option<Vec<(u32, u32)>>,
     /// The main clock a missile landing now lands at (`World::missiles_land`).
     #[serde(skip)]
     pub landing_clock: Option<f64>,
@@ -1111,6 +1120,8 @@ impl World {
             after_steps: false,
             looks_due: None,
             looks_carried: Vec::new(),
+            aura_plan: Vec::new(),
+            aura_looks: None,
             landing_clock: None,
             steps_free_until: None,
             net_sum: 0,
@@ -2548,6 +2559,7 @@ impl World {
         self.train_before_steps(vm, dt);
         self.update_wander(true);
         self.plan_detection_looks(dt);
+        self.plan_aura_scans(dt);
         self.first_steps(vm);
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(false));

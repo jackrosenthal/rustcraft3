@@ -914,7 +914,6 @@ impl World {
     }
 
     pub(crate) fn update_auras(&mut self, dt: f32) {
-        let mut grants = Vec::new();
         let mut sweeps = Vec::new();
         let bearers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.aura_bearer(h)).collect();
         let mut scanning = crate::collections::HashSet::default();
@@ -923,22 +922,106 @@ impl World {
         // with its 0.95 by intelligence; those near it from the first scan, 13.79 for a
         // Sorceress).
         let mut fresh = crate::collections::HashSet::default();
+        // The scans due this tick (`plan_aura_scans`): those planned for its end now.
+        let plan = std::mem::take(&mut self.aura_plan);
+        let n = self.step_clocks.len();
+        let dt_ms = (dt as f64 * 1000.0).round() as u32;
         for h in bearers {
             let u = self.unit_mut(h).unwrap();
             let prev = u.extra.aura_clock;
             let now = prev.map_or(0.0, |c| c + dt);
             u.extra.aura_clock = Some(now);
+            u.extra.aura_ms = Some(match (u.extra.aura_ms, prev) {
+                (Some((first, ms)), _) => (first, ms + dt_ms),
+                (None, Some(c)) => (100, (c * 1000.0).round() as u32 + dt_ms),
+                (None, None) => (dt_ms, 0),
+            });
             let Some(prev) = prev else {
                 fresh.insert(h);
                 continue;
             };
-            if (now / 0.5).floor() > (prev / 0.5).floor() {
+            let half = (now / 0.5).floor();
+            if half > (prev / 0.5).floor() && u.extra.aura_ahead == Some(half as u32) {
+                u.extra.aura_ahead = None;
+            }
+            if plan.iter().any(|p| p.0 == h && p.2 >= n) {
                 scanning.insert(h);
             }
             if (now / 2.0).floor() > (prev / 2.0).floor() {
                 sweeps.push(h);
             }
         }
+        // The detectors' looks share the scans' queue (`aura_grants`): the tick's not yet
+        // taken with its scans (`plan_aura_scans`).
+        self.looks_due = None;
+        let looks = self.aura_looks.take().unwrap_or_default();
+        self.aura_grants(&scanning, &fresh, looks);
+        self.aura_lapses(&sweeps);
+    }
+
+    /// Plans this tick's aura scans: each bearer's at the half seconds of its clock (from
+    /// the start of the tick it began to bear one in), in the tick whose end is past its
+    /// due, a tick ahead of its clock's crossing when the turns run off the tenths;
+    /// before the first step of the tick due after it, as the original's in-range
+    /// listener's check runs at its due among the agent queue's events (read: the
+    /// original's replays of games played alone, turns of 75 to 125 ms, whose first
+    /// scan's six buffs at 0.5 seconds come before the frees of the step due 0.54, in a
+    /// tick from 500 to 600 ms too).  The detectors' looks there share the scans' queue
+    /// (`aura_grants`): this tick's go with its first scans, else at its end.
+    pub(crate) fn plan_aura_scans(&mut self, dt: f32) {
+        self.aura_plan.clear();
+        self.aura_looks = None;
+        if self.looks_due.is_none() && self.unit_order.iter().any(|&h| self.aura_bearer(h)) {
+            self.aura_looks = Some(self.detection_looks(dt, None).into_iter().map(|(h, k, _)| (k, h)).collect());
+        }
+        let n = self.step_clocks.len();
+        let end = self.game_ms as i64;
+        let dt_ms = (dt as f64 * 1000.0).round() as i64;
+        let bearers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.aura_bearer(h)).collect();
+        for h in bearers {
+            let Some(u) = self.unit(h) else { continue };
+            let Some(prev) = u.extra.aura_clock else { continue };
+            let (first, ms) = u.extra.aura_ms.unwrap_or((100, (prev * 1000.0).round() as u32));
+            let now = prev + dt;
+            let now_ms = ms as i64 + dt_ms;
+            let half = (now / 0.5).floor() as u32;
+            let due = |k: u32| end - now_ms + k as i64 * 500 - first as i64;
+            let (k_half, ahead) = if half > (prev / 0.5).floor() as u32 {
+                if u.extra.aura_ahead == Some(half) {
+                    continue;
+                }
+                (half, false)
+            } else if u.extra.aura_ahead != Some(half + 1) && due(half + 1) < end {
+                (half + 1, true)
+            } else {
+                continue;
+            };
+            let at = due(k_half);
+            let k = (0..n).find(|&k| self.step_ticks.get(k).is_some_and(|&t| t * 5 >= at)).unwrap_or(n);
+            self.aura_plan.push((h, k_half, k));
+            if ahead {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.aura_ahead = Some(k_half);
+                }
+            }
+        }
+    }
+
+    /// The aura scans planned before step `k` (`plan_aura_scans`), with the tick's looks.
+    pub(crate) fn aura_scans_before(&mut self, k: usize) {
+        let now: crate::collections::HashSet<u32> = self.aura_plan.iter().filter(|p| p.2 == k).map(|p| p.0).collect();
+        if now.is_empty() {
+            return;
+        }
+        self.aura_plan.retain(|p| p.2 != k);
+        let looks = self.aura_looks.take().unwrap_or_default();
+        self.aura_grants(&now, &Default::default(), looks);
+    }
+
+    /// The auras of the bearers scanning (and of the fresh, on themselves alone) given to
+    /// those in range, with the detectors' `looks` (each with its in-range object's birth).
+    fn aura_grants(&mut self, scanning: &crate::collections::HashSet<u32>, fresh: &crate::collections::HashSet<u32>, looks: Vec<(u32, u32)>) {
+        let mut grants = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
             if u.dead {
@@ -1049,9 +1132,7 @@ impl World {
             .into_iter()
             .map(|(src, owner, x, y, area, b, reach, code)| (self.unit(src).map_or(0, |u| u.extra.oid.1), Due::Grant(src, owner, x, y, area, Box::new(b), reach, code)))
             .collect();
-        if self.looks_due.take().is_none() {
-            due.extend(self.detection_looks(dt, None).into_iter().map(|(h, k, _)| (k, Due::Look(h))));
-        }
+        due.extend(looks.into_iter().map(|(k, h)| (k, Due::Look(h))));
         due.sort_by_key(|d| d.0);
         for (_, d) in due {
             let (src, owner, x, y, area, b, reach, code) = match d {
@@ -1085,8 +1166,11 @@ impl World {
                 self.apply_buff_tagged(t, b.clone(), t != src || area > 0.0 && false);
             }
         }
-        // (The buffs a sweep keeps start their timers again in `restart_aura_buff_timers`.)
-        // The sweeps, and the buffs of bearers that are gone once lapsed.
+    }
+
+    /// The sweeps, and the buffs of bearers that are gone once lapsed.  (The buffs a
+    /// sweep keeps start their timers again in `restart_aura_buff_timers`.)
+    fn aura_lapses(&mut self, sweeps: &[u32]) {
         let lapsed: Vec<(u32, u32)> = self
             .unit_order
             .iter()

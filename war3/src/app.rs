@@ -43,6 +43,9 @@ struct Running {
     last: Instant,
     keys: HashSet<KeyCode>,
     cursor: PhysicalPosition<f64>,
+    /// Whether the pointer has been over the window: until then where it is isn't known,
+    /// and the screen's edges don't scroll.
+    cursor_known: bool,
     /// Whether the system cursor is hidden for the game's own.
     cursor_hidden: bool,
     /// Screen captures (Print Screen).
@@ -166,6 +169,7 @@ impl App {
             last: Instant::now(),
             keys: HashSet::new(),
             cursor: PhysicalPosition::new(0.0, 0.0),
+            cursor_known: false,
             cursor_hidden: false, capture: Default::default(),
             fit,
         });
@@ -369,6 +373,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 r.cursor = position;
+                r.cursor_known = true;
                 if let Some(glue) = r.glue.as_mut() {
                     glue.pointer_move(position.x as f32, position.y as f32, (r.gpu.config.width, r.gpu.config.height));
                 }
@@ -446,12 +451,13 @@ impl ApplicationHandler for App {
                 r.last = now;
                 if let Some(scene) = r.scene.as_mut() {
                     // Keyboard and screen-edge scrolling (UI\MiscData.txt [CameraRates]), at
-                    // the rates the options set; the options can turn edge scrolling off.
+                    // the rates the options set; the options can turn edge scrolling off, and
+                    // a pointer not yet seen over the window isn't at an edge.
                     scene.alt_held = r.keys.contains(&KeyCode::AltLeft) || r.keys.contains(&KeyCode::AltRight);
                     scene.shift_held = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
                     scene.ctrl_held = r.keys.contains(&KeyCode::ControlLeft) || r.keys.contains(&KeyCode::ControlRight);
                     let (keys, mouse) = scene.options.scroll_factors();
-                    let edges = !scene.options.mousescrolldisable;
+                    let edges = !scene.options.mousescrolldisable && r.cursor_known;
                     let (w, h) = (r.gpu.config.width as f64, r.gpu.config.height as f64);
                     let edge = 2.0;
                     let (mut k, mut m) = (glam::Vec2::ZERO, glam::Vec2::ZERO);

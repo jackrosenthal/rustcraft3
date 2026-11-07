@@ -265,21 +265,22 @@ pub struct Session {
     /// come, and the players found out of step.
     checks: std::collections::BTreeMap<u32, Vec<(u8, u32)>>,
     pub desynced: Vec<u8>,
-    /// The word this computer leaves with (`leave_word`).
+    /// The word this computer leaves with (`leave_word`), and whether the script ended
+    /// the game for its player (EndGame: the victory or defeat dialog).
     pub word: u32,
+    pub over: bool,
 }
 
 /// The word a player leaves the game with (LEAVEGAME), as the original's game gives it
-/// (`FUN_6f32c130`'s first argument): LOST leaving a game under way through the menu
-/// (`FUN_6f29f430` and the menu's others), and OBSERVER once the player's game is over
-/// or as an observer (`FUN_6f1de050`; measured after a defeat and after a victory, left
-/// by their dialogs, as the original's replays' closing leave record has it; after a tie
-/// and as an observer provisional).
-pub fn leave_word(w: &World) -> u32 {
+/// (`FUN_6f32c130`'s first argument): LOST through the game menu (`FUN_6f29f430` and
+/// the menu's others), even after a victory or a defeat, and OBSERVER through the
+/// victory or defeat dialog (the script's EndGame: `over`) or as an observer
+/// (`FUN_6f1de050`).  Measured: both, after a victory and after a defeat, as the
+/// original's replays' closing leave record has them; as an observer provisional.
+pub fn leave_word(w: &World, over: bool) -> u32 {
     use w3_game::types::player_state;
-    let me = w.local_player;
-    let observer = w.players.get(me as usize).is_some_and(|p| p.get_state(player_state::OBSERVER) != 0);
-    if observer || w.player_results.contains_key(&me) { leave::OBSERVER } else { leave::LOST }
+    let observer = w.players.get(w.local_player as usize).is_some_and(|p| p.get_state(player_state::OBSERVER) != 0);
+    if over || observer { leave::OBSERVER } else { leave::LOST }
 }
 
 /// The host makes a turn each 100 ms (the LAN provider's, `FUN_6f974710`; 250 over
@@ -319,6 +320,7 @@ impl Session {
             checks: Default::default(),
             desynced: Vec::new(),
             word: leave::LOST,
+            over: false,
         }
     }
 
@@ -528,8 +530,9 @@ impl Session {
     /// Compares each turn's keepalives once every person still in the game has sent
     /// theirs.  Games that have parted are grouped by their checksum, as the original's
     /// router does (`FUN_6f999b50`): each player is told (DESYNC) the others in their
-    /// group, themselves first in the largest (the host's, when two are as large:
-    /// provisional), and the other groups' players go (`DESYNC_DROP`).
+    /// group, themselves first in the host's (the group of the router's first player,
+    /// however small: measured, two of the port's players agreeing were told apart from
+    /// the original host), and the other groups' players go (`DESYNC_DROP`).
     fn compare_checks(&mut self) {
         // (Each turn that differs is told, until those out of step are gone: measured,
         // the original's 0x0E for turns 1 and 2 to a player answering checksum 0.)
@@ -547,8 +550,7 @@ impl Session {
                     None => groups.push((sum, vec![pid])),
                 }
             }
-            let size = groups.iter().map(|g| g.1.len()).max().unwrap_or(0);
-            let main = groups.iter().position(|g| g.1.len() == size && g.1.contains(&HOST_PID)).or_else(|| groups.iter().position(|g| g.1.len() == size)).unwrap_or(0);
+            let main = groups.iter().position(|g| g.1.contains(&HOST_PID)).unwrap_or(0);
             log::warn!("net: the games are out of step at turn {n}: {groups:x?}");
             if let Link::Host(h) = &mut self.role.link {
                 for (k, (sum, members)) in groups.iter().enumerate() {

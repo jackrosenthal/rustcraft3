@@ -1284,8 +1284,13 @@ impl Scene {
                 }
                 w3_game::world::Request::EndGame { score } => {
                     self.ended = true;
-                    // (Left by the script's end, the victory or defeat dialog's button.)
+                    // (Left by the script's end, the victory or defeat dialog's button: a
+                    // network game's LEAVEGAME says so too.)
                     self.left_by_script = true;
+                    if let Some(s) = self.net.as_mut() {
+                        s.over = true;
+                        s.word = w3_net::packet::leave::OBSERVER;
+                    }
                     if score {
                         self.final_score = self.score_data();
                     }
@@ -4256,7 +4261,7 @@ impl Scene {
         // A network game: the commands go out, and the host's frames play as they come.
         if let (Some(g), Some(s)) = (self.game.as_mut(), self.net.as_mut()) {
             let local = g.world.local_player;
-            s.word = crate::net::leave_word(&g.world);
+            s.word = crate::net::leave_word(&g.world, s.over);
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
             // Chat lines, sent and come, show as the game's (`Request::Chat`).
             let mut said = s.send_commands(&g.world, local, out);

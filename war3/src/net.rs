@@ -284,10 +284,12 @@ pub fn leave_word(w: &World, over: bool) -> u32 {
 }
 
 /// The host makes a turn each 100 ms (the LAN provider's, `FUN_6f974710`; 250 over
-/// Battle.net), each as long as the time since the last, at least 1 ms and at most four
-/// turns' (`FUN_6f99e310`: the tick count since the last turn).
+/// Battle.net).  The original's each say the time since the last (`FUN_6f99e310`: the
+/// tick count, 1 to 400 ms; measured 100, 99, 95, 86), but its game takes game time in
+/// whole 25 ms ticks, the rest kept for the next turn (measured: its keepalives' time,
+/// 175 after turns of 100 and 99, and 100, 200, 300 where the port's host sent 113, 203,
+/// 314), which the port's does not yet, so the port's turns are 100 ms each.
 pub const TURN: f32 = 0.1;
-const TURN_MAX: u16 = 400;
 /// The players a desync leaves out go as anything more comes from them, or after 2 s
 /// (`FUN_6f998880`, `Host::drop_after`).
 const DESYNC_DROP: Duration = Duration::from_millis(2000);
@@ -438,9 +440,8 @@ impl Session {
         chat
     }
 
-    /// The host's turns: one each TURN of game time, as long as the time since the last,
-    /// unless it waits on players not yet loaded or fallen behind (the host's lag
-    /// screen, `Host::lagging`).
+    /// The host's turns: one each TURN of game time, unless it waits on players not yet
+    /// loaded or fallen behind (the host's lag screen, `Host::lagging`).
     fn host_turns(&mut self, dt: f32) {
         let Link::Host(h) = &mut self.role.link else { return };
         self.waiting = !h.all_loaded() || !h.lagging().is_empty();
@@ -449,9 +450,9 @@ impl Session {
         }
         self.clock += dt;
         if self.clock >= TURN {
-            let ms = ((self.clock * 1000.0).round() as u16).clamp(1, TURN_MAX);
-            // (Time past the longest turn is not made up.)
-            self.clock = if ms == TURN_MAX { 0.0 } else { (self.clock - ms as f32 / 1000.0).max(0.0) };
+            let ms = (TURN * 1000.0) as u16;
+            // (Time past a turn more is not made up.)
+            self.clock = (self.clock - TURN).min(TURN);
             // Each person's actions as one block.
             let mut blocks: Vec<(u8, Vec<u8>)> = Vec::new();
             for (pid, data) in std::mem::take(&mut self.pending) {

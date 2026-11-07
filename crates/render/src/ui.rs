@@ -243,8 +243,10 @@ impl UiRenderer {
                         let Some(t) = textures.get(device, queue, texture) else { continue };
                         t
                     };
-                    let key = Arc::as_ptr(&t) as usize;
                     let tiled = uv.iter().any(|v| *v > 1.0 || *v < 0.0);
+                    // A texture drawn both tiled and not (a backdrop edge's corners and
+                    // sides) has a bind of each sampler: the low bit of its key says which.
+                    let key = Arc::as_ptr(&t) as usize | tiled as usize;
                     if !self.binds.contains_key(&key) {
                         let s = if tiled { &self.wrap_sampler } else { &self.sampler };
                         let bg = texture_bind_group(device, &self.layout, &t.view, s);

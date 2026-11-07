@@ -1636,25 +1636,11 @@ impl FrameTree {
         // bottom, upper-left, upper-right, lower-left, lower-right.
         let piece = |i: f32| [i / 8.0, 0.0, (i + 1.0) / 8.0, 1.0];
         let mut push = |rect: Rect, uv: [f32; 4], rotated: bool| out.push(Draw::Image { texture: edge.clone(), rect, uv, color, blend: Blend::Alpha, rotated });
-        let (vx, vy) = ((r.h() - 2.0 * c) / c, (r.w() - 2.0 * c) / c);
-        if has("L") {
-            let u = piece(0.0);
-            push(Rect { x0: r.x0, x1: r.x0 + c, y0: r.y0 + c, y1: r.y1 - c }, [u[0], 0.0, u[2], vx], false);
-        }
-        if has("R") {
-            let u = piece(1.0);
-            push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0 + c, y1: r.y1 - c }, [u[0], 0.0, u[2], vx], false);
-        }
-        // Top and bottom pieces are stored rotated a quarter turn, their outer side at the
-        // piece's left for the top edge and its right for the bottom edge.
-        if has("T") {
-            let u = piece(2.0);
-            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y1 - c, y1: r.y1 }, [u[2], 0.0, u[0], vy], true);
-        }
-        if has("B") {
-            let u = piece(3.0);
-            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y0, y1: r.y0 + c }, [u[2], 0.0, u[0], vy], true);
-        }
+        // As CBackdropFrame::OnUpdateModels (FUN_6f0f8a30) builds them: the corners, then
+        // the sides over them.  A side repeats its piece once a corner size, the count
+        // never below 0; the left and right sides reach 0.95 of a corner size into the
+        // corners, their pieces running down from the top, and the top and bottom
+        // sides run between the corners, their pieces running leftward from the right.
         if has("UL") {
             push(Rect { x0: r.x0, x1: r.x0 + c, y0: r.y1 - c, y1: r.y1 }, piece(4.0), false);
         }
@@ -1666,6 +1652,26 @@ impl FrameTree {
         }
         if has("BR") {
             push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0, y1: r.y0 + c }, piece(7.0), false);
+        }
+        let (vx, vy) = ((r.h() / c - 2.0).max(0.0), (r.w() / c - 2.0).max(0.0));
+        let side = 0.95 * c;
+        if has("L") {
+            let u = piece(0.0);
+            push(Rect { x0: r.x0, x1: r.x0 + c, y0: r.y0 + side, y1: r.y1 - side }, [u[0], 0.0, u[2], vx], false);
+        }
+        if has("R") {
+            let u = piece(1.0);
+            push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0 + side, y1: r.y1 - side }, [u[0], 0.0, u[2], vx], false);
+        }
+        // Top and bottom pieces are stored rotated a quarter turn, their outer side at the
+        // piece's left for the top edge and its right for the bottom edge.
+        if has("T") {
+            let u = piece(2.0);
+            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y1 - c, y1: r.y1 }, [u[2], vy, u[0], 0.0], true);
+        }
+        if has("B") {
+            let u = piece(3.0);
+            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y0, y1: r.y0 + c }, [u[2], vy, u[0], 0.0], true);
         }
     }
 }

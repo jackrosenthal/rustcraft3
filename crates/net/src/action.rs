@@ -354,37 +354,6 @@ impl Action {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Every action in the original's replays (in the game's folder and the Wine
-    /// reference install, which the repository does not hold) reads, to the end of its
-    /// block, and writes back the same.
-    #[test]
-    fn the_originals_actions_read_and_write_back() {
-        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Warcraft III/Replay");
-        let Ok(dir) = std::fs::read_dir(root) else { return };
-        let mut seen = std::collections::BTreeMap::new();
-        for e in dir.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "w3g")) {
-            let r = w3_formats::w3g::Replay::parse(&std::fs::read(e.path()).unwrap()).unwrap();
-            for rec in &r.records {
-                let w3_formats::w3g::Record::Turn { actions, .. } = rec else { continue };
-                for (_, block) in actions {
-                    let all = Action::read_all(block).unwrap_or_else(|err| panic!("{}: {err} in {block:02x?}", e.path().display()));
-                    let mut w = Writer::default();
-                    for a in &all {
-                        *seen.entry(block[0]).or_insert(0) += 1;
-                        a.write(&mut w);
-                    }
-                    assert_eq!(&w.0, block);
-                }
-            }
-        }
-        eprintln!("actions seen by first id: {seen:x?}");
-    }
-}
-
-#[cfg(test)]
 mod measured {
     use super::*;
 

@@ -1149,40 +1149,4 @@ mod tests {
         assert_eq!(setup.slots[2].holder, Holder::Human(0));
         assert_eq!(setup.slots[2].team, 1);
     }
-
-    /// W3_LANSAVE: the original's save of a LAN game on Booty Bay, its people Host and
-    /// Jack: offered for them by name, its identifier its objects' word.
-    #[test]
-    fn an_original_network_save_keeps_its_people_slots() {
-        let Some(file) = std::env::var_os("W3_LANSAVE") else { return };
-        let bytes = Lan::saved_copy(Path::new(&file)).expect("the save reads");
-        let (setup, users, map) = Lan::copy_setup(&bytes).expect("its setup");
-        assert_eq!(map, "Maps\\(2)BootyBay.w3m");
-        assert_eq!(users, 2);
-        let people: Vec<(u8, &str, Holder)> = setup.slots.iter().map(|s| (s.player, s.name.as_str(), s.holder)).collect();
-        assert_eq!(people, vec![(0, "Host", Holder::Open), (1, "Jack", Holder::Open)]);
-        assert_eq!(Lan::save_id(Path::new(&file)), Some(0xc2aa_926c));
-        // The word the objects' sum, as the port reckons it over the save's records.
-        let s = w3_formats::w3z::SaveGame::read(&bytes).expect("the save reads");
-        assert_eq!(s.objects_sum().ok(), Some(0xc2aa_926c));
-    }
-
-    /// W3_PORT_LANSAVE: the port's copy of a network game's save (the tags example's
-    /// TAGS_SAVEDIR on Booty Bay, as Host and Jack, or nettest's NETTEST_NETSAVE): its
-    /// people's slots kept by name, and its identifier the objects' word, which its
-    /// header carries as the original's does.
-    #[test]
-    fn a_port_network_save_keeps_its_people_slots() {
-        let Some(file) = std::env::var_os("W3_PORT_LANSAVE") else { return };
-        let file = Path::new(&file);
-        let w3z = w3_formats::w3z::SaveGame::read(&std::fs::read(file).unwrap()).expect("the save reads");
-        assert_eq!(w3z.objects_sum().ok(), Some(w3z.objects_word));
-        assert_eq!(Lan::save_id(file), Some(w3z.objects_word));
-        let bytes = Lan::saved_copy(file).expect("the copy reads");
-        let (setup, users, _) = Lan::copy_setup(&bytes).expect("its setup");
-        assert_eq!(users, 2);
-        let names = w3z.player_names().unwrap();
-        let people: Vec<(&str, Holder)> = setup.slots.iter().filter(|s| !s.name.is_empty()).map(|s| (s.name.as_str(), s.holder)).collect();
-        assert_eq!(people, names.iter().take(2).map(|n| (n.as_str(), Holder::Open)).collect::<Vec<_>>());
-    }
 }

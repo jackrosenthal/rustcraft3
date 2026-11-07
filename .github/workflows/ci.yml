@@ -58,9 +58,6 @@ jobs:
       - name: Build
         run: cargo build --release --workspace --locked
 
-      # The tests that read the game's own files (a replay in "Warcraft III/Replay" beside
-      # the repository, or a save named by W3_LANSAVE or W3_PORT_LANSAVE) pass without
-      # checking anything when those are missing, as they are here.
       - name: Test
         run: cargo test --workspace --locked
 

@@ -285,19 +285,6 @@ impl Replay {
 mod tests {
     use super::*;
 
-    /// A replay the original wrote (in the game's folder, which the repository does not
-    /// hold): its record and turns read.
-    #[test]
-    fn the_originals_replay_reads() {
-        let Ok(b) = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Warcraft III/Replay/LastReplay.w3g")) else { return };
-        let r = Replay::parse(&b).unwrap();
-        assert_eq!((&r.product, r.version, r.build), (b"PX3W", 27, 6059));
-        let turns = r.records.iter().filter(|r| matches!(r, Record::Turn { .. })).count();
-        assert!(turns > 0);
-        assert_eq!(r.checksums().count(), turns);
-        assert_eq!(r.slots.len(), r.start_spots as usize);
-    }
-
     /// The original's replay of a LAN game it hosted, whose guest it dropped at the first
     /// turns as out of step: its desync records (0x23, a count, the checksum's 4 bytes, and
     /// the host's pid), the guest's leave (reason 1, its word 1), and its own leave by

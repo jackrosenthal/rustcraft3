@@ -118,6 +118,9 @@ fn main() -> anyhow::Result<()> {
         Some((t, ours, want)) => println!("checksums agree to turn {}; turn {t}: ours {:08x?}, the replay's {want:08x}", t.saturating_sub(1), ours),
         None => println!("checksums agree for all {checked} of {turn} turns"),
     }
+    if std::env::var("W3G_DEBUG").is_ok() {
+        println!("players removed, with their results: {:?}", g.world.player_results);
+    }
     if let (Some(path), Some(r)) = (write, g.recorder.take()) {
         std::fs::write(path, r.replay.to_bytes()?)?;
     }

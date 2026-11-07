@@ -3354,9 +3354,11 @@ impl Scene {
         let g = self.game.as_mut()?;
         let mut r = g.recorder.take()?.replay;
         // The local player leaves with 7 while still playing, 11 once their game is over
-        // (read: after a defeat; provisional: after a victory), which the program's
-        // games count once more.
-        if g.world.player_results.contains_key(&g.world.local_player) {
+        // (read: after a defeat and after a victory), which the program's games count
+        // once more, or as an observer (`FUN_6f1de050`; provisional).
+        let local = g.world.local_player;
+        let observer = g.world.players.get(local as usize).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
+        if g.world.player_results.contains_key(&local) || observer {
             r.left = w3_game::replay::LEFT_OVER;
             crate::replays::game_over();
         }

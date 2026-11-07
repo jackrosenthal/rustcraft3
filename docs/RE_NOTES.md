@@ -1752,9 +1752,10 @@ these are the findings behind them.
     0x20 (the sender, flags 0x20, its recipients, 0 for all in a game played alone,
     and the line) before the turn after it, a leave as 0x17, and the local player's
     leaving at its end: reason 12, its LEAVEGAME word (7 left by the menu while
-    playing, 11 by the defeat dialog's Quit Game), and the program's games so far (one
-    more as each begins and once more at a game over: 1, 2, 4, 5 for a quit, a quit, a
-    defeat, and a quit in one run, 2 for a defeat in a fresh one).  As the local player
+    playing, 11 by the defeat dialog's Quit Game or the victory dialog's Continue), and
+    the program's games so far (one more as each begins and once more at a game over:
+    1, 2, 4, 5 for a quit, a quit, a defeat, and a quit in one run; 2 for a defeat or a
+    victory in a fresh one, 3 for the game after that victory, 4 for a second victory).  As the local player
     leaves, `FUN_6f985030` writes one for each player still in the game; another's
     leave (`FUN_6f98c680`, after the host's PLAYERLEFT) has reason 1 and its word.
     Settings: a map loaded directly MAP_LOCK_RANDOM_SEED alone (0x800002), a Custom

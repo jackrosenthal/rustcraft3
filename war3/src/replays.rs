@@ -17,7 +17,8 @@ pub fn game_begun() -> u32 {
     GAMES.fetch_add(1, Ordering::Relaxed) + 1
 }
 
-/// The local player's game is over (a defeat or a victory).
+/// The local player's game is over (a defeat or a victory: read, the original's next
+/// game counted 3 after a first game's victory).
 pub fn game_over() {
     GAMES.fetch_add(1, Ordering::Relaxed);
 }

@@ -252,7 +252,8 @@ impl Skirmish {
                     }
                 } else if ext == "w3m" || ext == "w3x" && self.expansion {
                     // Maps list under their own names, by player count.
-                    let Some(s) = summarize(&p, false) else { continue };
+                    // (The list needs no signature checked.)
+                    let Some(s) = w3_mpq::Archive::open(&p).ok().and_then(|ar| summarize_archive(&ar, false)) else { continue };
                     let title = s.text(&s.info.name);
                     maps.push(Entry { name: if title.is_empty() { name } else { title }, path: p, kind: EntryKind::Map, players: s.user_slots(), melee: s.info.flags & 0x4 != 0 });
                 }
@@ -991,12 +992,17 @@ fn summarize(path: &Path, preview: bool) -> Option<MapSummary> {
     Some(s)
 }
 
-/// Whether a file ends in a strong signature block: 'NGIS' and 256 bytes.
+/// Whether a map file is Blizzard's: it ends in a strong signature block ('NGIS' and 256
+/// bytes) that holds for it under its own name (`w3_net::map::blizzard_signed`).
 pub fn strongly_signed(path: &Path) -> bool {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = std::fs::File::open(path) else { return false };
     let mut tag = [0u8; 4];
-    f.seek(SeekFrom::End(-260)).is_ok() && f.read_exact(&mut tag).is_ok() && &tag == b"NGIS"
+    if !(f.seek(SeekFrom::End(-260)).is_ok() && f.read_exact(&mut tag).is_ok() && &tag == b"NGIS") {
+        return false;
+    }
+    let (Ok(bytes), Some(name)) = (std::fs::read(path), path.file_name()) else { return false };
+    w3_net::map::blizzard_signed(&bytes, &name.to_string_lossy())
 }
 
 fn summarize_archive(ar: &w3_mpq::Archive, preview: bool) -> Option<MapSummary> {

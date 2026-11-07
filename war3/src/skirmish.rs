@@ -888,6 +888,11 @@ impl Skirmish {
             let row = Rect { x0: inner.x0, x1: inner.x1, y0: y1 - row_h, y1 };
             if self.selected == Some(k) {
                 out.push(Draw::Image { texture: String::new(), rect: row, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.8, 0.8], blend: w3_ui::Blend::Alpha, rotated: false });
+            } else if row.contains(tree.pointer.0, tree.pointer.1) {
+                // The row under the pointer is lit (the original's band adds about
+                // (15, 16, 30) to the list's dark rows; provisional: its texture was not
+                // traced).
+                out.push(Draw::Image { texture: String::new(), rect: row, uv: [0.0, 0.0, 1.0, 1.0], color: [0.06, 0.063, 0.118, 1.0], blend: w3_ui::Blend::Add, rotated: false });
             }
             let icon = match e.kind {
                 EntryKind::Up => "ui\\widgets\\glues\\icon-folder-up.blp",

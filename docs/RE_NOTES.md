@@ -6282,10 +6282,35 @@ Formats the port made its own, to be replaced by the original's:
   walk from 15.1 for the cluster's point (169.5, 175.5) toward (172, 170), the
   port's place 3 (the wisp then begun on the Moon Well from (163, 185) at 17.8).
   The port had counted on once, sending it at 15.1 to (148, 198), place 2, the well
-  begun at 16.4 (`World::tag_unit`; provisional: which of its two harvests takes
-  which call's tree).  The keepalives agree to turn 178, from 155.  Next (turn 178):
-  the original makes a `` `pil `` with the well's beginning, after the builder's order
-  and before the structure's `pucs`, which the port does not.
+  begun at 16.4 (`World::tag_unit`).  The keepalives agree to turn 178, from 155.
+  Next (turn 178): the original makes a `` `pil `` with the well's beginning, after
+  the builder's order and before the structure's `pucs`, which the port does not.
+  Read since: the wisp walks to the second call's tree, and the places are in an
+  order of their own (below).
+- A town's tree costs lift the tree's region for their plans, its rect's cells
+  opened, as a coarse plan lifts its target's (`FUN_6f059590`'s `FUN_6f15d360`).
+  Read (each tree's cost after `FUN_6f9c5950`'s `FUN_6f059590`, 0x6f9c5a91, and the
+  enumeration's order at `FUN_6f9cd0b0`, Twisted Meadows' night elf computer's first
+  fill at 0.1; a tree's id is 7 times its place in the map's destructables and 666):
+  the 90 trees about its Tree of Life in the port's order (256-unit blocks row by
+  row, the map's later first in a block), 35 with a cost, all within 1180 of the
+  Tree of Life and none from 1202 out, where the port's had taken trees to 1600 (so
+  some farther in its fill); the port, taking out only the tree's own cells, had
+  (180, 170) 25 where the original's is 27, (196, 178) 29 for 31, and no way within
+  32 pops from three costing 30, 34, and 41; with the tree's region lifted
+  (`World::lift_region`), all 90 as the original's, and with the trees taken within
+  1200 (`World::TOWN_TREE_RANGE`, provisional) its places are the original's: (152,
+  206), (148, 198), (150, 202), (172, 170), (176, 170), (146, 194), (168, 170), and
+  (164, 170), costing 21, 22, 22, 24, 24, 24, 24, and 24, where the port's had (150,
+  202) and (148, 198), and (168, 170) and (146, 194), the other way about.  With
+  them every trained wisp's walk is the second call's tree (`FUN_6f9c70a0`'s
+  counter, read at 14.1, 30.1, and the passes): at 14.1 place 2, (150, 202); at
+  30.1 place 5, (146, 194), the wisp walking north-west; at the pass at 31.1, place
+  6, (168, 170), for (166.5, 173.5) (`World::tag_unit`, `World::ai_town_trees`).
+  Not modeled: `FUN_6f163440`'s legs counting 2, a node's +0x23 set by
+  `FUN_6f165220`, a relax from `FUN_6f1643d0`'s `FUN_6f1653a0` by the cell node's
+  +0x20 into the table at the search's +0x3c (provisional: what fills it; the 90
+  costs agree without it).  The keepalives agree to turn 347, from 304.
 - A computer's Moon Well's Replenish makes its listener as the well is made, and a
   structure begun lets go as the turn ends its regeneration's modifier, its spells'
   timers, and those listeners.  Read (the tag allocator's take of a `` `pil `` with its

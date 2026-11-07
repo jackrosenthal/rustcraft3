@@ -1186,7 +1186,7 @@ impl World {
     /// (the tree's cells left in, the way ends short of it, its point 10 on (185.5,
     /// 179.5)); its farm peasant at 60.1, from (171.04, 187.47) to its tree at (190,
     /// 174), for (189.5, 179.5).  (Provisional: the region the tree's cells' bounds.)
-    fn lift_region(&self, pyr: &mut crate::accel::Pyramid, d: u32) {
+    pub(crate) fn lift_region(&self, pyr: &mut crate::accel::Pyramid, d: u32) {
         let Some(crate::types::Obj::Destructable(d)) = self.handles.get(d) else { return };
         let Some(x0) = d.pathing_cells.iter().map(|c| c.0).min() else { return };
         let x1 = d.pathing_cells.iter().map(|c| c.0).max().unwrap_or(x0) + 1;

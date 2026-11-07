@@ -1364,6 +1364,10 @@ impl World {
         best.map(|b| b.1)
     }
 
+    /// How far from its drop-off a town's trees are enumerated (provisional: 1200, the
+    /// original's farthest read 1180, its nearest left out 1202).
+    const TOWN_TREE_RANGE: f32 = 1200.0;
+
     /// The trees a computer's town sends its wood workers to (`FUN_6f9c55d0`, each tree
     /// about a drop-off judged by `FUN_6f9c5950`), by the accelerator plan's cost from
     /// the tree to the drop-off (`FUN_6f059590` given the tree's place first), both
@@ -1375,8 +1379,11 @@ impl World {
     /// Its AI keeps eight places (`kept`, as they were, those gone none): a tree not
     /// among them takes the first empty place, else the first dearest when it costs less
     /// (`FUN_6f9c60a0`, `FUN_6f9c7a20`); then each place in turn takes the first
-    /// cheapest after it, by a swap (`FUN_6f9c55d0`).  Provisional: the area
-    /// enumerated, and its order.
+    /// cheapest after it, by a swap (`FUN_6f9c55d0`).  The trees are enumerated within
+    /// `TOWN_TREE_RANGE` of the drop-off, in 256-unit blocks row by row and within a
+    /// block the map's later first (`FUN_6f651170` handing `FUN_6f9cd0b0` each; read:
+    /// Twisted Meadows' night elf computer's 90 about its Tree of Life at 0.1, so, the
+    /// farthest 1180 off, none from 1202 out).
     pub(crate) fn ai_town_trees(&self, hall: u32, worker: u32, kept: &[Option<(u32, u32)>]) -> Vec<Option<(u32, u32)>> {
         let mut places: [Option<(u32, u32)>; 8] = [None; 8];
         for (i, q) in kept.iter().take(8).enumerate() {
@@ -1390,7 +1397,7 @@ impl World {
             .iter()
             .enumerate()
             .filter(|&(_, &d)| self.is_tree_pub(d) && !self.footprint(d).is_empty() && self.can_harvest(worker, d))
-            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= 1600.0).map(|(x, y)| (i, d, block(x, y))))
+            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= Self::TOWN_TREE_RANGE).map(|(x, y)| (i, d, block(x, y))))
             .collect();
         trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
         let acc = |w: f32, o: f32| (w - o) / 64.0;
@@ -1399,7 +1406,14 @@ impl World {
                 continue;
             }
             let Some((x, y)) = self.widget_pos(d) else { continue };
-            let Some(pyr) = self.accel_pyramid_lifting(Some(hall), &[d]) else { continue };
+            // The tree's region lifted for the plan, its rect's cells opened
+            // (`FUN_6f059590`'s `FUN_6f15d360`, as a coarse plan lifts its target's:
+            // `World::lift_region`; read, the cost of each of the 90 trees about Twisted
+            // Meadows' night elf computer's Tree of Life as it first fills its places at
+            // 0.1, all as the port's so, where taking out only the tree's own cells gave
+            // (180, 170) 25 for 27, (196, 178) 29 for 31, and no way from three).
+            let Some(mut pyr) = self.accel_pyramid_with(Some(hall)) else { continue };
+            self.lift_region(&mut pyr, d);
             let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(x, p.origin[0]), acc(y, p.origin[1])), (acc(fx, p.origin[0]), acc(fy, p.origin[1])), 0x20) else { continue };
             log::trace!("town tree from {hall}: ({x}, {y}) cost {cost}");
             let k = places.iter().position(|q| q.is_none()).unwrap_or_else(|| {

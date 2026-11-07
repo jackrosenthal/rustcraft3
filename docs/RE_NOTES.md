@@ -451,6 +451,48 @@ these are the findings behind them.
   and the map's game files, and their SHA-1 (verified against the original's values).
 - 1.27b will not join a game at its own address on its own game port.
 - Save actions: `06 <name>\0` saves, `07 01000000` says the save is done.
+- Leaves: the router keeps LEAVEGAME's word at the player's +0x44 and answers LEFTGAME
+  (0x1B, empty: `FUN_6f99cdc0`, `FUN_6f994500`), which the leaving player waits up to
+  5 s for (`Net::NetClient::vf7_6f986990`); then (`FUN_6f99dbb0`) STOP_LAG if the game
+  waited on them, and PLAYERLEFT with their id and that word to the others.  Each net
+  client makes PLAYERLEFT a message of kind 0x17 (`FUN_6f98c680`, `FUN_6f98b9d0`,
+  `FUN_6f97a290`: reason 1, the id, the word, its own +0xc), which the keepalive's net
+  module hashes as the kind plus the byte hashes of its first three fields
+  (`FUN_6f328550`), and the game takes as CNetEventPlayerLeave (`FUN_6f32daf0`: a save
+  under way counts the player done, `FUN_6f32c7b0` with 0).  The net messages' kinds
+  are the replay's record ids (`FUN_6f327040` records 0x17, 0x1E, 0x1F, 0x20, 0x21,
+  0x23, and 0x2F as they come); of those hashed, 0x21 is never posted and 0x2F only
+  from W3GS 0x50, under the client's flag 0x100000 (Battle.net).  The word a player
+  leaves with is `FUN_6f32c130`'s argument: 7 from the game menu's quits, 11 once its
+  game is over (measured after a defeat).
+- Chat goes only to the recipients the sender lists (`FUN_6f36ee10`, `FUN_6f32ca60`):
+  for all, every other person; for allies, the players playing (slot state +0x270 1)
+  whom the speaker is allied with by IsPlayerAlly's alliance; for observers, the
+  observers (IsPlayerObserver's +0xf0); for a player (3 + its number), that one;
+  computers are left out.  The speaker's own line is recorded when it is not among them.
+- The router's lag screen (`FUN_6f997a30`, `FUN_6f99a170`, `FUN_6f999a60`, read): with
+  no one waited on, those behind the last turn who have been silent 4 s are (START_LAG,
+  each with the time it has been waited on, +0x88, at most 45 s, less 45 ms for each
+  290 ms past 10 s since its last wait); one caught up gets STOP_LAG with its wait added.
+  DROPREQ (0x29, empty) votes; once more than half of those not waited on have voted,
+  those whose 45 s less their time waited have passed are dropped, and after 60 s of
+  waiting all are.
+- A desync (`FUN_6f999b50`, as each keepalive comes): the players grouped by their
+  keepalives for the turn; each told by 0x0E (the turn, its group's keepalive data, and
+  the others of its group, itself first in the largest group); the others' connections
+  close after 2 s (`FUN_6f998880`).
+- Turns: the LAN provider's turn is 100 ms (`FUN_6f974710`; Battle.net's 250,
+  `FUN_6f970fa0`), each turn as long as the tick count since the last, at least 1 and
+  at most four turns' (`FUN_6f99e310`).
+- Discovery: a host answers SEARCHGAME with GAMEINFO (`FUN_6f974ed0`), for the game its
+  third word names by host counter, or all for 0, and otherwise says REFRESHGAME (host
+  counter, people, slots for people: `FUN_6f9742f0`); a browser answers CREATEGAME, and
+  REFRESHGAME from a game it does not know, with a search for that game (`FUN_6f974e40`,
+  `FUN_6f975020`).
+- The player's 0x13 closes the connection with reason 0x0E, 0x1C with its word, and
+  0x1B (the answer to its LEAVEGAME) closes it.  Its 0x14 and 0x16 to 0x1A are its
+  states 9 and 10 (a host's handoff, as its strings name it), 0x3E, 0x40, 0x44, and 0x45
+  a map from another player, and 0x47, 0x50, and 0x51 only under flag 0x100000.
 - The keepalive's checksum (`FUN_6f330830`, sent by `FUN_6f32e3f0` through
   `FUN_6f96a4e0`): `c = t ^ rol(m ^ 0x17ab, 3)`, `c = rol(c, 3) ^ presence`,
   `c = rol(c, 3) ^ birth`, sent `rol(c, 6)`.  `m` combines the game state's (TLS slot

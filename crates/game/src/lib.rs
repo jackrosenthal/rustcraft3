@@ -126,6 +126,8 @@ pub struct Game {
     /// computer made, for the program to keep.
     save_due: Option<(u8, String)>,
     pub saves: Vec<NetSaveMade>,
+    /// The last keepalive a turn made (`turn_keepalive`).
+    last_keepalive: u32,
 }
 
 /// A network game's save as this computer made it (`Game::after_keepalive`): its name
@@ -322,7 +324,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default(), local_codec: Default::default(), save_due: None, saves: Vec::new() })
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default(), local_codec: Default::default(), save_due: None, saves: Vec::new(), last_keepalive: 0 })
     }
 
     /// Runs the map's `config` function, which declares players and start locations,
@@ -547,6 +549,7 @@ impl Game {
     /// The generators start from the game's seed (FUN_6f29e300): the main one seeded with
     /// it, and the other 45 from it.
     fn seed_generators(&mut self) {
+        self.last_keepalive = 0;
         let seed = rng::Rng::game_seed(self.world.seed, self.world.map_flags);
         self.world.rng = rng::Rng::new(seed);
         self.world.rand_data = rng::RandData::new(seed);
@@ -564,24 +567,35 @@ impl Game {
         // team placed, the largest first (`FUN_6f1e9e60` from `FUN_6f1e9fd0`, for i from
         // 1: a draw each).  Traced under -loadfile, the main generator's alone: the quiet
         // test map's 12 and 1, Forestwalk's 11 (its third slot open) and 3, before the
-        // wanderers' waits; with them the undead computer's hero picks agree.
+        // wanderers' waits; with them the undead computer's hero picks agree.  A map with
+        // fixed player settings draws neither: its races are its own (a preference not
+        // random, RACE_PREF_RANDOM 0x20, or none set), and its placement keeps the
+        // locations it set (MAP_PLACEMENT_FIXED and USE_MAP_SETTINGS, 1 and 2), the
+        // locations it forced taken first (read: the original's Mafarazzo TD begun so, its
+        // main generator undrawn at its first keepalive, where the port had drawn 23).
         if self.world.fixed_starts {
-            for f in fills.iter().take(12) {
-                if !matches!(f, Some(SlotFill::Empty)) {
+            let fixed = self.info.flags & 0x20 != 0;
+            for (p, f) in self.world.players.iter().zip(&fills).take(12) {
+                let random = f.is_none() || !fixed || p.race_preference & 0x20 != 0;
+                if !matches!(f, Some(SlotFill::Empty)) && random {
                     self.world.rng.next_u32();
                 }
             }
             let mut teams: Vec<(i32, usize)> = Vec::new();
             for (p, f) in self.world.players.iter().zip(&fills) {
-                if matches!(f, Some(SlotFill::Local | SlotFill::Remote | SlotFill::Computer)) {
+                if matches!(f, Some(SlotFill::Local | SlotFill::Remote | SlotFill::Computer)) && !p.start_forced {
                     match teams.iter_mut().find(|t| t.0 == p.team) {
                         Some(t) => t.1 += 1,
                         None => teams.push((p.team, 1)),
                     }
                 }
             }
+            if matches!(self.world.placement, 1 | 2) {
+                teams.clear();
+            }
             teams.sort_by(|a, b| b.1.cmp(&a.1));
-            let mut free = self.world.start_locations.len();
+            let forced = self.world.players.iter().take(types::PLAYER_NEUTRAL_AGGRESSIVE as usize).filter(|p| p.start_forced).count();
+            let mut free = self.world.start_locations.len().saturating_sub(forced);
             for (_, size) in teams {
                 for _ in 1..free {
                     self.world.rng.next_u32();
@@ -968,13 +982,24 @@ impl Game {
     /// Advances the simulation: a turn of `dt` seconds (`advance`).
     pub fn tick(&mut self, dt: f32) {
         if self.recorder.is_some() {
-            let checksum = self.world.keepalive();
+            let checksum = self.turn_keepalive(dt);
             if let Some(r) = self.recorder.as_mut() {
                 r.step(dt, None, checksum);
             }
         }
         self.advance(dt);
         self.send_net_out();
+    }
+
+    /// The keepalive a turn of `dt` seconds makes: none for a turn of no time, which
+    /// keeps the last (`FUN_6f32e3f0` takes a turn of 0 ms as one not to answer: no
+    /// keepalive made or sent; read: the original's -loadfile Mafarazzo TD replay, its
+    /// checksum after a turn of 0 ms carrying a 0x62 the one before it).
+    fn turn_keepalive(&mut self, dt: f32) -> u32 {
+        if (dt * 1000.0).round() as u32 > 0 {
+            self.last_keepalive = self.world.keepalive();
+        }
+        self.last_keepalive
     }
 
     /// A turn's time passes as the original's turn loop (`FUN_6f32d670`) runs it: in
@@ -986,13 +1011,21 @@ impl Game {
     /// (Read: the original's LAN host's turns of 100 and 99 ms left the keepalive's game
     /// time at 175, and the port's of 113, 203, and 314 ms in all at 100, 200, and 300.)
     /// While a network game's save is under way (`world::SaveWait`), only the save's
-    /// own turn's first tick moves the game (state 5's, then 6), and the rest pass.
+    /// own turn's first tick moves the game (state 5's, then 6), and the rest pass; a
+    /// paused game's likewise (`World::pause_first`; read: a game played alone paused by
+    /// its menu in a turn of 0 ms, the keepalive two turns on 25 ms past it).
     fn advance(&mut self, dt: f32) {
         let left = self.world.turn_left + (dt * 1000.0).round() as u32;
         let mut ticks = left / TICK_MS;
         self.world.turn_left = left % TICK_MS;
         if let Some(w) = self.world.net_save.as_mut() {
             if ticks == 0 || !std::mem::take(&mut w.first) {
+                return;
+            }
+            ticks = 1;
+        }
+        if self.world.net_paused.is_some() {
+            if ticks == 0 || !std::mem::take(&mut self.world.pause_first) {
                 return;
             }
             ticks = 1;
@@ -1036,7 +1069,7 @@ impl Game {
         }
         let out = self.play_commands(f);
         self.save_turn(f.turn.as_ref().map_or((f.dt * 1000.0).round() as u16, |t| t.0));
-        let keepalive = self.world.keepalive();
+        let keepalive = self.turn_keepalive(f.dt);
         log::debug!(target: "keepalive", "{keepalive:08x}: {}", self.world.keepalive_inputs());
         self.after_keepalive();
         self.play_step(f);
@@ -1132,15 +1165,14 @@ impl Game {
     /// A frame's step: its time passes.
     pub fn play_step(&mut self, f: &replay::Frame) {
         if self.recorder.is_some() {
-            let checksum = self.world.keepalive();
+            let checksum = self.turn_keepalive(f.dt);
             if let Some(r) = self.recorder.as_mut() {
                 r.step(f.dt, Some(f), checksum);
             }
         }
-        // A paused game takes commands (a resume among them) but no time passes.
-        if self.world.net_paused.is_none() {
-            self.advance(f.dt);
-        }
+        // A paused game takes commands (a resume among them), its turns' time passing
+        // without moving it (`advance`).
+        self.advance(f.dt);
         self.send_net_out();
     }
 
@@ -1191,7 +1223,7 @@ impl Game {
     /// time (the menu's pause as the game is quit through it).
     pub fn close_record(&mut self) {
         if self.recorder.as_ref().is_some_and(|r| r.pending()) {
-            let checksum = self.world.keepalive();
+            let checksum = self.turn_keepalive(0.0);
             if let Some(r) = self.recorder.as_mut() {
                 r.step(0.0, None, checksum);
             }
@@ -1412,6 +1444,7 @@ impl Game {
                 }
                 // A game played alone's pause is its game menu's, uncounted and unannounced.
                 if !w.net_sleeps() {
+                    w.pause_first = on && (w.pause_first || w.net_paused.is_none());
                     w.net_paused = on.then_some(p);
                     return O::Done;
                 }
@@ -1425,6 +1458,7 @@ impl Game {
                             w.pauses_used[p as usize % 16] += 1;
                         }
                         w.net_paused = Some(p);
+                        w.pause_first = true;
                         let left = (!free).then(|| 3 - w.pauses_used[p as usize % 16] as i32);
                         w.requests.push(world::Request::PauseNotice { player: p, on: true, left });
                     }
@@ -1579,5 +1613,94 @@ impl Game {
             }
             C::Chat { player, text, to } => O::Flag(self.chat(player, &text, to)),
         }
+    }
+}
+
+#[cfg(test)]
+mod turn_tests {
+    use super::*;
+
+    fn game() -> Game {
+        let chain = Arc::new(Chain::new());
+        let world = World::new(chain, ObjectDb::default());
+        let module = w3_jass::compile([("test.j", "function main takes nothing returns nothing\nendfunction\n")]).unwrap();
+        Game {
+            vm: Vm::new(module), world, info: MapInfo::default(), recorder: None,
+            locked: false, outbox: None, sent_selection: None, codec: Default::default(),
+            local_codec: Default::default(), save_due: None, saves: Vec::new(), last_keepalive: 0,
+        }
+    }
+
+    #[test]
+    fn zero_time_turns_keep_the_preceding_checksum_including_the_recorded_close() {
+        let mut g = game();
+        g.recorder = Some(replay::Recorder::default());
+        let (_, previous) = g.play_turn(&replay::Frame { dt: 0.025, ..Default::default() });
+        let at = g.world.game_ms;
+        let (_, zero) = g.play_turn(&replay::Frame { dt: 0.0, turn: Some((0, vec![])), ..Default::default() });
+        assert_eq!(zero, previous);
+        assert_eq!(g.world.game_ms, at);
+        assert_ne!(g.world.keepalive(), previous, "the live state changed after the preceding turn");
+        g.note(replay::Command::Pause { player: 0, on: true });
+        g.close_record();
+        let frames = &g.recorder.as_ref().unwrap().replay.frames;
+        assert_eq!(frames.len(), 3);
+        assert!(frames.iter().all(|f| f.checksum == Some(previous)));
+        assert_eq!(frames.last().unwrap().dt, 0.0);
+        g.seed_generators();
+        assert_eq!(g.turn_keepalive(0.0), 0, "a new game cannot reuse the previous game's checksum");
+    }
+
+    #[test]
+    fn pause_in_a_zero_time_turn_runs_one_tick_then_holds_until_resumed() {
+        let mut g = game();
+        let frame = |dt, commands| replay::Frame { dt, commands, ..Default::default() };
+        g.play_frame(&frame(0.0, vec![(0, replay::Command::Pause { player: 0, on: true })]));
+        assert_eq!(g.world.game_ms, 0);
+        g.play_frame(&frame(0.0, vec![(0, replay::Command::Pause { player: 0, on: true })]));
+        g.play_frame(&frame(0.110, vec![]));
+        let tick = [15, 20, 25][g.world.game_speed.clamp(0, 2) as usize];
+        assert_eq!(g.world.game_ms, tick);
+        g.play_frame(&frame(0.110, vec![]));
+        assert_eq!(g.world.game_ms, tick);
+        g.play_frame(&frame(0.005, vec![(0, replay::Command::Pause { player: 0, on: false })]));
+        assert_eq!(g.world.game_ms, 2 * tick, "paused turn remainders still carry into the resumed turn");
+    }
+
+    #[test]
+    fn fixed_map_start_only_draws_for_random_race_preferences() {
+        for random in [false, true] {
+            let mut g = game();
+            g.info.flags = 0x20;
+            g.world.fixed_starts = true;
+            g.world.placement = 2;
+            for p in g.world.players.iter_mut().take(12) {
+                p.controller = map_control::USER;
+                p.start_forced = true;
+                p.race_preference = 1;
+            }
+            if random { g.world.players[0].race_preference = 0x20; }
+            let mut expected = rng::Rng::new(g.world.seed);
+            if random { expected.next_u32(); }
+            g.start(|id, _| if id == 0 { SlotFill::Local } else { SlotFill::Empty }).unwrap();
+            assert_eq!(g.world.rng, expected);
+        }
+    }
+
+    #[test]
+    fn melee_direct_start_keeps_race_and_free_start_shuffle_draws() {
+        let mut g = game();
+        g.world.fixed_starts = true;
+        g.world.placement = 0;
+        g.world.start_locations = vec![Default::default(); 2];
+        for (i, p) in g.world.players.iter_mut().enumerate().take(12) {
+            p.controller = if i < 2 { map_control::USER } else { map_control::NONE };
+            p.team = i as i32;
+        }
+        let mut expected = rng::Rng::new(g.world.seed);
+        // All 12 race draws, and one shuffle draw for two free start locations.
+        for _ in 0..13 { expected.next_u32(); }
+        g.start(|id, _| if id == 0 { SlotFill::Local } else { SlotFill::Computer }).unwrap();
+        assert_eq!(g.world.rng, expected);
     }
 }

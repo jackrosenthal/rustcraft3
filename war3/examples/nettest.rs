@@ -211,8 +211,8 @@ fn main() -> anyhow::Result<()> {
             let first = s.played - frames.len() as u32;
             for (k, f) in frames.iter().enumerate() {
                 let saving = g.world.net_save.is_some();
-                g.play_frame(f);
-                s.check(first + k as u32 + 1, g.world.checksum());
+                let (_, keepalive) = g.play_turn(f);
+                s.check(first + k as u32 + 1, f.dt, keepalive as u64);
                 if saving != g.world.net_save.is_some() {
                     println!("player {p}: frame {}: a save {} at game time {:.3}", first + k as u32 + 1, if saving { "is over" } else { "begins" }, g.world.time);
                 }

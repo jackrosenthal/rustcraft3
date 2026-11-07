@@ -5445,6 +5445,14 @@ Formats the port made its own, to be replaced by the original's:
   in a game being recorded), its client keeps it in Save\Multiplayer under the
   action's name, and says its save is done (0x07 with
   1, `Command::SaveDone`).  Its interface's Save now sends the name with the extension.
+- A turn of zero milliseconds makes and sends no keepalive (`FUN_6f32e3f0`);
+  its replay checksum repeats the preceding turn's.  A pause permits its first
+  simulation tick, then holds subsequent ticks while turn-time remainders still
+  carry forward.  The port keeps the last checksum for zero-time replay frames,
+  including the closing pause, and skips the live wire check for zero-time turns.
+  Checked against the original's replays: alone_chat agrees for all 1052 turns,
+  alone_quit all 813, alone_after_victory all 57, and m2 LAN all 1799; before these
+  fixes the first three agreed through turns 1019, 546, and 11 respectively.
 - A network game's save under way (the net session, `FUN_6f32c6a0`): +0x2dd the
   saver, +0x2e0 8000, +0x2e4 set, and the session's state 5 (`FUN_6f32feb0`).  The
   turn loop (`FUN_6f32d670`) runs turn time in chunks of 25 ms, each ticking the game
@@ -6548,6 +6556,10 @@ Formats the port made its own, to be replaced by the original's:
   PickMeleeHero) and all 944 of its AI script's globals agree with the original's at
   Forestwalk's start (the map's seed locked, 'war3').  A setup screen's game, with its
   per-team placement shuffles, already agreed (the Forestwalk network capture).
+  Fixed player settings (w3i flag 0x20) instead honor the map's race preferences,
+  fixed/use-map placement, and forced starts without those extra draws.  With this,
+  `maf_loadfile_orig.w3g` agrees through turn 368 begun directly or from its recorded
+  lobby; the remaining turn-369 movement-order difference is outside initialization.
 - Forestwalk's saves (the test map saving at 0 and at 5 seconds, `fws.w3x`,
   `fws5.w3x`, `-loadfile`; `abtest/savemap.sh`): every record of both is read and
   written back whole.  The classes' layouts are each class's save functions, found by

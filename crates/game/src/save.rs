@@ -84,6 +84,7 @@ impl Game {
     /// (`tags::RestorePlan`), and the allocator is then the save's, as the original's
     /// loaded game has its object table.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
+        self.last_keepalive = 0;
         use crate::natives::units::{create_unit_exact, remove_unit};
         self.world.regions_reloaded = true;
         let units = s.units()?;

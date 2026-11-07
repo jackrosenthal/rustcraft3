@@ -621,6 +621,9 @@ pub struct World {
     /// +0x284, `Game::advance`); the net session's, so not saved.
     #[serde(skip)]
     pub turn_left: u32,
+    /// A pause has begun whose first tick is still to run (`Game::advance`).
+    #[serde(skip)]
+    pub pause_first: bool,
     /// The save's event data (`` `gsed ``, its tag and birth) while a network game's save
     /// is made: made as the triggers are told of it, before the save is written, and let
     /// go by its 0.0001 s timer, before the next keepalive.
@@ -1183,6 +1186,7 @@ impl World {
             net_save: None,
             saves_made: [0; 16],
             turn_left: 0,
+            pause_first: false,
             save_event: None,
             save_copies: 0,
             local_text_tags: Vec::new(),

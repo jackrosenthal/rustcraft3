@@ -515,8 +515,11 @@ impl Session {
 
     /// Notes this computer's game checksum after turn `frame` (counted from 1): a player
     /// sends it to the host (its keepalive); the host keeps it with the players' to
-    /// compare.
-    pub fn check(&mut self, frame: u32, sum: u64) {
+    /// compare. A turn of zero milliseconds has no keepalive on the wire.
+    pub fn check(&mut self, frame: u32, dt: f32, sum: u64) {
+        if (dt * 1000.0).round() as u32 == 0 {
+            return;
+        }
         let sum = (sum ^ sum >> 32) as u32;
         log::debug!("net: keepalive {frame} {sum:08x}");
         match &mut self.role.link {
@@ -597,4 +600,51 @@ impl Drop for Session {
 /// The game port from the options.
 pub fn port(options: &crate::options::Options) -> u16 {
     u16::try_from(options.netgameport).ok().filter(|&p| p > 0).unwrap_or(DEFAULT_PORT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_time_turns_send_no_keepalive() {
+        use w3_net::{GameInfo, GameStat, Packet, client::Client, conn::Conn};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let info = GameInfo {
+            product: *b"PX3W", version: 27, host_counter: 0, entry_key: 0,
+            name: "test".into(),
+            stat: GameStat { settings: 0, map_width: 0, map_height: 0, map_xoro: 0,
+                map_path: String::new(), host: String::new(), map_sha1: [0; 20] },
+            slots_total: 2, game_type: 1, players: 1, player_slots: 2, uptime: 0, port: addr.port(),
+        };
+        let client = Client::join(addr, &info, "test", 0).unwrap();
+        let mut server = Conn::new(listener.accept().unwrap().0).unwrap();
+        let mut session = Session::new(Role { link: Link::Client(Box::new(client)),
+            players: Vec::new(), seed: 0, game: "test".into(), record: Default::default() });
+        session.check(1, 0.0, 0xdead);
+        session.check(2, 0.1, 0x1234);
+        session.check(3, 0.0, 0xbeef);
+        session.check(4, 0.1, 0x5678);
+        // A packet after the checks delimits the wire observation without a sleep
+        // or an assertion based on the absence of traffic within a short timeout.
+        if let Link::Client(c) = &mut session.role.link {
+            c.send_actions(vec![0x02]);
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut sums = Vec::new();
+        let mut finished = false;
+        while !finished && Instant::now() < deadline {
+            for packet in server.poll_wait(deadline.saturating_duration_since(Instant::now())) {
+                match packet {
+                    Packet::OutgoingKeepalive { leftover, checksum } => sums.push((leftover, checksum)),
+                    Packet::OutgoingAction(_) => finished = true,
+                    _ => {}
+                }
+            }
+        }
+        server.close();
+        assert!(finished, "the final packet did not arrive");
+        assert_eq!(sums, [(0, 0x1234), (4, 0x5678)]);
+    }
 }

@@ -67,6 +67,8 @@ pub struct Client {
     /// A turn's actions so far, while its parts come (0x48).
     partial: Vec<(u8, Vec<u8>)>,
     closed: bool,
+    /// Keepalives sent.
+    keepalives: u32,
 }
 
 impl Client {
@@ -78,7 +80,7 @@ impl Client {
             _ => SockAddr::default(),
         };
         conn.send(&Packet::ReqJoin { host_counter: game.host_counter, entry_key: game.entry_key, listen_port, peer_key: SESSION, name: name.to_string(), internal });
-        Ok(Client { conn, pid: 0, slots: SlotTable { slots: Vec::new(), seed: 0, layout: 0, player_slots: 0 }, players: Vec::new(), map_size: 0, map_crc32: 0, download: None, received: 0, partial: Vec::new(), closed: false })
+        Ok(Client { conn, pid: 0, slots: SlotTable { slots: Vec::new(), seed: 0, layout: 0, player_slots: 0 }, players: Vec::new(), map_size: 0, map_crc32: 0, download: None, received: 0, partial: Vec::new(), closed: false, keepalives: 0 })
     }
 
     pub fn poll(&mut self) -> Vec<Event> {
@@ -212,9 +214,12 @@ impl Client {
         self.conn.send(&Packet::OutgoingAction(data));
     }
 
-    /// A turn played, and the game's checksum after it.
+    /// A turn played, and the game's checksum after it (its byte before as the
+    /// original's stack leaves it: 0 in the first, 4 after).
     pub fn keepalive(&mut self, checksum: u32) {
-        self.conn.send(&Packet::OutgoingKeepalive { checksum });
+        let leftover = if self.keepalives == 0 { 0 } else { 4 };
+        self.keepalives += 1;
+        self.conn.send(&Packet::OutgoingKeepalive { leftover, checksum });
     }
 
     /// Leaves the game with `reason`: LEAVEGAME, then (as `Net::NetClient::vf7_6f986990`)

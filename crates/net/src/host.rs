@@ -63,8 +63,9 @@ struct Player {
     sent: Option<u32>,
     acked: u32,
     loaded: bool,
-    /// When the host lets the player go (`drop_after`).
-    drop_at: Option<Instant>,
+    /// When the host lets the player go, and the word their PLAYERLEFT carries
+    /// (`drop_after`, `kick`).
+    drop_at: Option<(Instant, u32)>,
     /// Keepalives come (turns played), and when the last came.
     played: u32,
     heard: Instant,
@@ -190,7 +191,10 @@ impl Host {
             }
             // (The word a dropped connection's PLAYERLEFT carries is the port's choice:
             // provisional.)
-            if going || !self.players[k].conn.alive || self.players[k].drop_at.is_some_and(|t| Instant::now() >= t) {
+            let due = self.players[k].drop_at.filter(|d| going || Instant::now() >= d.0);
+            if let Some((_, word)) = due {
+                gone.push((self.players[k].pid, word));
+            } else if !self.players[k].conn.alive {
                 gone.push((self.players[k].pid, leave::DISCONNECT));
             }
             self.send_map_parts(k);
@@ -341,7 +345,7 @@ impl Host {
                 events.push(Event::Loaded { pid });
             }
             Packet::OutgoingAction(data) => events.push(Event::Actions { pid, data }),
-            Packet::OutgoingKeepalive { checksum } => {
+            Packet::OutgoingKeepalive { checksum, .. } => {
                 let pl = &mut self.players[k];
                 pl.played += 1;
                 pl.heard = Instant::now();
@@ -395,10 +399,22 @@ impl Host {
 
     /// Lets a player go after `wait`, or as anything more comes from them (as
     /// `FUN_6f998880` does the players a desync leaves out, with 2000 ms): then they
-    /// leave as dropped.
+    /// leave as dropped (PLAYERLEFT's word 1, measured).
     pub fn drop_after(&mut self, pid: u8, wait: Duration) {
         if let Some(q) = self.players.iter_mut().find(|q| q.pid == pid) {
-            q.drop_at.get_or_insert(Instant::now() + wait);
+            q.drop_at.get_or_insert((Instant::now() + wait, leave::DISCONNECT));
+        }
+    }
+
+    /// Turns a player out with `reason` (as the original's host does through its
+    /// router, `Net::NetClient::vf14_6f985a40` and `FUN_6f99c3e0`): KICK (0x1C) tells
+    /// them, and they go 2 s later, or as anything more comes from them, PLAYERLEFT
+    /// carrying the reason.  The original's lobby turns a person out with 0x0D when the
+    /// host makes their slot open, closed, or a computer (`FUN_6f2a40d0`).
+    pub fn kick(&mut self, pid: u8, reason: u32) {
+        if let Some(q) = self.players.iter_mut().find(|q| q.pid == pid) {
+            q.conn.send(&Packet::Kick { reason });
+            q.drop_at.get_or_insert((Instant::now() + Duration::from_millis(2000), reason));
         }
     }
 

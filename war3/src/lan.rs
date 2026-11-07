@@ -67,6 +67,8 @@ pub struct Lan {
     countdown: Option<f32>,
     /// Sound labels for the glue to play.
     pub sounds: Vec<String>,
+    /// The people the host turned out, by id and name, until they are gone.
+    kicked: Vec<(u8, String)>,
 }
 
 impl Lan {
@@ -92,6 +94,7 @@ impl Lan {
             save: None,
             countdown: None,
             sounds: Vec::new(),
+            kicked: Vec::new(),
         }
     }
 
@@ -455,7 +458,8 @@ impl Lan {
                     changed = true;
                 }
                 host::Event::Left { pid, .. } => {
-                    let name = self.setup.slot_of(pid).map(|s| s.name.clone()).unwrap_or_default();
+                    let kicked = self.kicked.iter().position(|k| k.0 == pid).map(|k| self.kicked.remove(k).1);
+                    let name = self.setup.slot_of(pid).map(|s| s.name.clone()).or(kicked).unwrap_or_default();
                     self.notice(db, "NETMESSAGE_PLAYERLEFT", &name);
                     changed = true;
                 }
@@ -812,6 +816,14 @@ impl Lan {
             let name_menu = format!("NameMenu{scope}");
             let observer = s.team == OBSERVERS;
             match s.holder {
+                // The host may make another person's slot open, closed, or a computer,
+                // turning them out (`FUN_6f2a40d0`).
+                Holder::Human(pid) if host && pid != HOST_PID && !self.setup.saved && !s.locked => {
+                    let keys: &[&str] = if observer { &["OPEN", "CLOSED"] } else { &["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"] };
+                    let items = std::iter::once(s.name.clone()).chain(keys.iter().map(|k| db.string(k))).collect();
+                    tree.set_items(&name_menu, items, 0);
+                    tree.set_enabled(&name_menu, true);
+                }
                 Holder::Human(_) => {
                     tree.set_items(&name_menu, vec![s.name.clone()], 0);
                     tree.set_enabled(&name_menu, false);
@@ -901,12 +913,25 @@ impl Lan {
         let saved = self.setup.saved;
         let Some(s) = self.setup.slots.get_mut(k) else { return };
         let mine = !s.locked && (s.holder == Holder::Human(me) || (host && matches!(s.holder, Holder::Computer(_))));
+        let mut kick = None;
         match part {
             "NameMenu" if host && !saved && !s.locked && !matches!(s.holder, Holder::Human(_)) => {
                 s.holder = match chosen {
                     0 => Holder::Open,
                     1 => Holder::Closed,
                     d => Holder::Computer(d as i32 - 2),
+                };
+            }
+            // Another person's slot made open, closed, or a computer (its menu's first
+            // entry is their name): they are turned out with 0x0D (`FUN_6f2a40d0`).
+            "NameMenu" if host && !saved && !s.locked && matches!(s.holder, Holder::Human(pid) if pid != HOST_PID) && chosen > 0 => {
+                if let Holder::Human(pid) = s.holder {
+                    kick = Some((pid, std::mem::take(&mut s.name)));
+                }
+                s.holder = match chosen {
+                    1 => Holder::Open,
+                    2 => Holder::Closed,
+                    d => Holder::Computer(d as i32 - 3),
                 };
             }
             "RaceMenu" if mine && !fixed => {
@@ -935,6 +960,10 @@ impl Lan {
         }
         if let Some((holder, team)) = move_to {
             choose_team(&mut self.setup, holder, team);
+        }
+        if let (Some((pid, name)), Some(h)) = (kick, self.host.as_mut()) {
+            h.kick(pid, leave::LOBBY);
+            self.kicked.push((pid, name));
         }
         if host {
             self.send_setup();

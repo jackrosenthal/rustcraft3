@@ -132,8 +132,11 @@ pub enum Packet {
     GameLoadedSelf,
     /// 0x26: the player's actions for the next turn.
     OutgoingAction(Vec<u8>),
-    /// 0x27: after each turn, the player's game checksum.
-    OutgoingKeepalive { checksum: u32 },
+    /// 0x27: after each turn, the player's game checksum.  The byte before it is never
+    /// written by the original (its sync store reserves a 5-byte header, `FUN_6f96a2b0`,
+    /// over which `Net::NetClient::vf17_6f98d9a0` builds the packet): what the stack
+    /// held, 0 in a game's first and 4 in the others in every capture.
+    OutgoingKeepalive { leftover: u8, checksum: u32 },
     /// 0x28
     ChatToHost { to: Vec<u8>, from: u8, chat: Chat },
     /// 0x29: a vote on the lag screen to drop the players waited on, empty
@@ -326,8 +329,8 @@ impl Packet {
             P::OutgoingAction(data) => {
                 w.u32(crc32fast::hash(data)).bytes(data);
             }
-            P::OutgoingKeepalive { checksum } => {
-                w.u8(0).u32(*checksum);
+            P::OutgoingKeepalive { leftover, checksum } => {
+                w.u8(*leftover).u32(*checksum);
             }
             P::MapSize { flag, size } => {
                 w.u32(1).u8(*flag).u32(*size);
@@ -460,10 +463,7 @@ impl Packet {
                 r.u32()?;
                 P::OutgoingAction(r.rest().to_vec())
             }
-            0x27 => {
-                r.u8()?;
-                P::OutgoingKeepalive { checksum: r.u32()? }
-            }
+            0x27 => P::OutgoingKeepalive { leftover: r.u8()?, checksum: r.u32()? },
             0x28 => {
                 let (to, from, chat) = read_chat(&mut r)?;
                 P::ChatToHost { to, from, chat }

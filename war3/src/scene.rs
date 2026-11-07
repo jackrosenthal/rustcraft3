@@ -2290,21 +2290,36 @@ impl Scene {
             return;
         }
         let local = g.world.local_player;
+        let w = &g.world;
+        // The original's tests (CSelectMode, FUN_6f396cf0 and FUN_6f391390): whether a
+        // unit's owner shares control with the player, as each player does with itself
+        // (FUN_6f1ea970, the owner's +0x98), and whether it is a structure or a ward,
+        // which goes only with its own kind (FUN_6f3978e0).
+        let shared = |h: u32| {
+            const SHARED_CONTROL: usize = 6;
+            w.unit(h).is_some_and(|u| u.owner == local || w.players.get(u.owner as usize).is_some_and(|o| o.alliances[local as usize % w3_game::types::PLAYER_COUNT][SHARED_CONTROL]))
+        };
+        let fixed = |h: u32| w.unit(h).is_some_and(|u| u.is_building || w.objects.units.get(u.type_id).is_some_and(|o| o.str("type").to_ascii_lowercase().split(',').any(|c| c.trim() == "ward")));
+        let controls = |h: u32| w3_game::natives::players::controls(w, local, h);
+        let lead = self.selection.first().copied();
         let mut picked: Vec<u32> = Vec::new();
+        // A click on one unit (not its kind on the screen).
+        let mut single = None;
         if (a.0 - b.0).abs() < 4.0 && (a.1 - b.1).abs() < 4.0 {
             if let Some(h) = self.pick_unit(b.0, b.1, size) {
                 picked.push(h);
+                single = Some(h);
                 // Ctrl or a second click on the same unit: the player's units of its
                 // type on the screen.
                 let double = self.last_pick.is_some_and(|(p, t)| p == h && self.time - t < 0.4);
                 self.last_pick = Some((h, self.time));
-                let w = &g.world;
-                if let Some(t) = w.unit(h).filter(|_| w3_game::natives::players::controls(w, local, h) && (self.ctrl_held || double)).map(|u| u.type_id) {
+                if let Some(t) = w.unit(h).filter(|_| controls(h) && (self.ctrl_held || double)).map(|u| u.type_id) {
+                    single = None;
                     for &o in &w.unit_order {
                         if o == h || picked.len() >= 12 {
                             continue;
                         }
-                        let Some(u) = w.unit(o).filter(|u| w3_game::natives::players::controls(w, local, o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
+                        let Some(u) = w.unit(o).filter(|u| controls(o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
                         let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
                         if self.project(Vec3::new(u.x, u.y, z), size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
                             picked.push(o);
@@ -2313,12 +2328,12 @@ impl Scene {
                 }
             }
         } else {
+            // A box: the units in it (FUN_6f39a1b0), then as FUN_6f391390 keeps them.
             let (x0, x1) = (a.0.min(b.0), a.0.max(b.0));
             let (y0, y1) = (a.1.min(b.1), a.1.max(b.1));
-            let w = &g.world;
             for &h in &w.unit_order {
                 let Some(u) = w.unit(h) else { continue };
-                if !w3_game::natives::players::controls(w, local, h) || u.dead || u.hidden || w.is_locust(u) {
+                if u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
                 let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
@@ -2328,11 +2343,6 @@ impl Scene {
                     }
                 }
             }
-            // Box selection prefers units over structures.
-            if picked.iter().any(|&h| w.unit(h).is_some_and(|u| !u.is_building)) {
-                picked.retain(|&h| w.unit(h).is_some_and(|u| !u.is_building));
-            }
-            picked.truncate(12);
         }
         // A click on no unit may choose a ground item or a selectable destructable.
         let widget = if picked.is_empty() && !dragged && !add {
@@ -2345,18 +2355,63 @@ impl Scene {
         } else {
             None
         };
-        if add {
+        if picked.is_empty() {
+            // A click or a box on no unit leaves the selection as it was (FUN_6f390e20
+            // goes on only with a unit, or a widget to choose).
+            if widget.is_some() {
+                self.selection.clear();
+                self.selected_widget = widget;
+            }
+            return;
+        }
+        // Whether the units join the selection (Shift) or take its place.
+        let mut join = false;
+        if let Some(h) = single {
+            // One unit clicked (FUN_6f396cf0): with Shift, one selected leaves it; one
+            // the player shares control of joins a lead they share control of and of
+            // its kind (structures and wards with their own); any other takes the
+            // selection's place, as without Shift.
+            if add && self.selection.contains(&h) {
+                self.selection.retain(|&s| s != h);
+                return;
+            }
+            join = add && shared(h) && lead.is_some_and(|l| shared(l) && fixed(l) == fixed(h));
+        } else {
+            // A box or a kind on the screen (FUN_6f391390): none the player shares
+            // control of gives the first alone; all of them structures or wards give the
+            // first (or, joining, the lead) with those of its type the player commands;
+            // else the player's own units, then those shared, not structures or wards.
+            // They join only a lead the player commands and not a structure or a ward,
+            // or a structure or a ward for structures and wards.
+            let mine: Vec<u32> = picked.iter().copied().filter(|&h| shared(h)).collect();
+            if mine.is_empty() {
+                picked.truncate(1);
+            } else if mine.iter().all(|&h| fixed(h)) {
+                join = add && lead.is_some_and(|l| fixed(l));
+                let first = if join { lead.unwrap_or(picked[0]) } else { picked[0] };
+                let kind = w.unit(first).map(|u| u.type_id);
+                let mut kept = vec![first];
+                kept.extend(picked.iter().copied().filter(|&h| h != first && controls(h) && fixed(h) && w.unit(h).map(|u| u.type_id) == kind));
+                picked = kept;
+            } else {
+                join = add && lead.is_some_and(|l| controls(l) && !fixed(l));
+                let own: Vec<u32> = picked.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| u.owner == local) && !fixed(h)).collect();
+                let others: Vec<u32> = picked.iter().copied().filter(|&h| !own.contains(&h) && controls(h) && !fixed(h)).collect();
+                picked = own.into_iter().chain(others).collect();
+            }
+        }
+        if join {
+            // The selection holds at most 12 (FUN_6f28dbe0).
             for h in picked {
                 if !self.selection.contains(&h) && self.selection.len() < 12 {
                     self.selection.push(h);
                 }
             }
-        } else if !picked.is_empty() || (a.0 - b.0).abs() >= 4.0 {
-            self.selection = picked;
         } else {
-            self.selection.clear();
+            picked.truncate(12);
+            self.selection = picked;
         }
-        self.selected_widget = if self.selection.is_empty() { widget } else { None };
+        self.selected_widget = None;
         if let Some(&h) = self.selection.first() {
             self.select_ack(h);
         }

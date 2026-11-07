@@ -5094,7 +5094,25 @@ Formats the port made its own, to be replaced by the original's:
   Nothing rides in the save besides: the original refuses one with bytes after its
   record (back to the menu) or after its container ("The save file is unavailable or
   corrupted").  Measured: a save at 60 seconds of the hero map loads in the original
-  and plays.
+  and plays.  What the fresh writer still leaves out, freeing their slots (its
+  W3Z_COVERAGE=list names each): the objects of kinds it has no records for, the
+  hashtables (`ghth`; the hashtables part written empty), multiboards (`+mdb`),
+  quests and their items (`+que`, `+qui`), defeat conditions (`+dfc`), and fog
+  modifiers (`+fgm`), whose handles the natives give no agent in the handle table; a
+  unit's order of a kind not modeled (an attack, an AI's move: its `ordt`, tasks, and
+  walk); and the objects of units already removed that the port keeps (7 units' on
+  the hero map at 300 seconds).  The load leaves out the hashtables, multiboards,
+  quests, dialogs, and the fog.
+- The port's own copy of a LAN save loads as the original's copy does once the
+  object manager's main clock is the engine's at its last tick (53.783657 in
+  Mafarazzo TD's save at 53.8 seconds, which every timer's due is reckoned against)
+  and a walker's own path holds its way as the port keeps it: its local way from its
+  local goal to the node it steers for (by that node's index), then where it stands,
+  and its own coarse way (`move_coarse`, limit 400), its walk's path the order's
+  (`coarse`, limit 5000), its cluster's local goal the cluster's point.  Then the
+  port's copy of the turn-539 save agrees as far as the original's against the
+  mafload captures.  A `^clu`'s word 0x20000 is not its walker's pathing: 78 of the
+  save's 180 have it, every creep's pathing off (its unit's first word without 0x40).
 - A network game's save (the original's of a LAN game on Booty Bay, read): its
   second name empty, its description the game's GAMEINFO (its name, no password,
   the stat with the lobby's options, `0x648 << 8 | 2`, and the host's name, and the

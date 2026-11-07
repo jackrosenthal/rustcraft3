@@ -446,7 +446,7 @@ impl Lan {
     }
 
     fn say(&mut self, text: &str) {
-        let line = format!("{}: {text}", self.name);
+        let line = chat_line(&self.name, text);
         let to = self.others();
         if let Some(h) = self.host.as_mut() {
             h.chat(&to, Chat::Lobby(text.to_string()));
@@ -492,7 +492,7 @@ impl Lan {
                 }
                 host::Event::Chat { from, chat: Chat::Lobby(text) } => {
                     let name = self.people().into_iter().find(|p| p.0 == from).map(|p| p.1).unwrap_or_default();
-                    self.chat.push(format!("{name}: {text}"));
+                    self.chat.push(chat_line(&name, &text));
                 }
                 host::Event::Choice { pid, chat } => {
                     self.choice(pid, chat);
@@ -569,7 +569,7 @@ impl Lan {
                 }
                 client::Event::Chat { from, chat: Chat::Lobby(text) } => {
                     let name = self.people().into_iter().find(|p| p.0 == from).map(|p| p.1).unwrap_or_default();
-                    self.chat.push(format!("{name}: {text}"));
+                    self.chat.push(chat_line(&name, &text));
                 }
                 client::Event::MapCheck { path, size, crc32, .. } => {
                     self.setup.map = path.clone();
@@ -1008,6 +1008,13 @@ impl Lan {
             out.push(Draw::Text { font: font.clone(), size, rect, text: format!("{text}|"), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
     }
+}
+
+/// A lobby chat line: the name and its colon in gold, then the text in white
+/// ("|CFFFED312%s:|R %s", as CGameChatroom shows the player's own line, FUN_6f2f9b50;
+/// another player's line likewise, provisional: not captured).
+fn chat_line(name: &str, text: &str) -> String {
+    format!("|CFFFED312{name}:|R {text}")
 }
 
 /// The speed's GlobalStrings name.

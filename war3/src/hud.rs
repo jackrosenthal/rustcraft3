@@ -6,7 +6,8 @@ use w3_game::types::player_state;
 use w3_ui::{Draw, FrameDb, FramePoint, FrameTree, Point};
 
 /// CCommandBar (game.dll 0x6f39d410): a 0.1745 x 0.129 grid of 4 x 3 buttons of 0.038,
-/// anchored to the console's bottom right at (-0.007375, 0.002).
+/// anchored to the console's bottom right at (-0.007375, 0.002).  CSimpleGrid
+/// (FUN_6f10e490, FUN_6f10e760) puts each button's top left at its cell's top left.
 const CARD_W: f32 = 0.1745;
 const CARD_H: f32 = 0.129;
 const CARD_RIGHT: f32 = 0.007375;
@@ -1742,9 +1743,8 @@ impl Hud {
         let (x1, y0) = (root.x1 - CARD_RIGHT, root.y0 + CARD_BOTTOM);
         let (x0, y1) = (x1 - CARD_W, y0 + CARD_H);
         let (cw, ch) = (CARD_W / 4.0, CARD_H / 3.0);
-        let cx = x0 + cw * (x as f32 + 0.5);
-        let cy = y1 - ch * (y as f32 + 0.5);
-        w3_ui::Rect { x0: cx - BUTTON / 2.0, x1: cx + BUTTON / 2.0, y0: cy - BUTTON / 2.0, y1: cy + BUTTON / 2.0 }
+        let (left, top) = (x0 + cw * x as f32, y1 - ch * y as f32);
+        w3_ui::Rect { x0: left, x1: left + BUTTON, y0: top - BUTTON, y1: top }
     }
 
     /// The replay panel, in the command card's place.

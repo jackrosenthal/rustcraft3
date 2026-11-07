@@ -153,12 +153,6 @@ impl Replay {
                 0x1A..=0x1C => Record::Other { id, body: r.bytes(4)?.to_vec() },
                 0x23 => Record::Other { id, body: r.bytes(10)?.to_vec() },
                 0x2F => Record::Other { id, body: r.bytes(8)?.to_vec() },
-                // A record of another program's (the remastered game's setup): its length,
-                // then its bytes.
-                0x7E => {
-                    let n = r.u32()?;
-                    Record::Other { id, body: [&n.to_le_bytes()[..], r.bytes(n as usize)?].concat() }
-                }
                 _ => return Err(Error::Format("unknown replay record")),
             })) };
             match read(&mut r) {

@@ -992,7 +992,7 @@ fn summarize(path: &Path, preview: bool) -> Option<MapSummary> {
 }
 
 /// Whether a file ends in a strong signature block: 'NGIS' and 256 bytes.
-fn strongly_signed(path: &Path) -> bool {
+pub fn strongly_signed(path: &Path) -> bool {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = std::fs::File::open(path) else { return false };
     let mut tag = [0u8; 4];

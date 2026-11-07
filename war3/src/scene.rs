@@ -369,6 +369,8 @@ pub struct Scene {
     menu_drag: bool,
     /// The replay being watched, if any.
     pub playback: Option<w3_game::replay::Playback>,
+    /// Game time not yet stepped in a game played alone, under a millisecond.
+    step_owed: f32,
     /// The network game this is, if any.
     pub net: Option<crate::net::Session>,
     /// The players the host waits on, and whether the host is silent.
@@ -776,12 +778,7 @@ impl Scene {
         // map's player kinds (1 a user, 2 a computer), which its config script follows.
         let start = match lobby {
             Some(slots) => w3_game::Start::of(slots),
-            None => {
-                let kinds: Vec<u32> = data.chain.read("war3map.w3i").ok().and_then(|b| w3_formats::map::MapInfo::parse(&b).ok()).map(|i| i.players.iter().map(|p| p.kind).collect()).unwrap_or_default();
-                let (users, computers) = (kinds.iter().filter(|&&k| k == 1).count(), kinds.iter().filter(|&&k| k == 2).count());
-                let extra = if campaign { users.saturating_sub(1) } else { (computers == 0 && users >= 2) as usize };
-                w3_game::Start { computers: computers + extra }
-            }
+            None => w3_game::Start::without_setup(&info, campaign),
         };
         // The script's saved games' folder: the map's own, unless it is one of the game's
         // (read from the archives with no custom campaign open).  A custom campaign is
@@ -796,12 +793,13 @@ impl Scene {
                 g.world.preload.dir = crate::data::custom_map_data_dir();
                 g.world.keepalive_modules = crate::net::data_modules(&data.chain);
                 // The profile comes in before the script runs (InitGameCache reads saved
-                // caches); campaign games take its difficulty.
-                g.world.persist = replay.as_ref().map_or_else(|| data.persist.borrow().clone(), |r| r.persist.clone());
+                // caches); campaign games take its difficulty.  A replay plays with the
+                // profile as it is, the original's record holding none of it (a campaign
+                // mission, which reads it most, has no replay: `replays::keep`).
+                g.world.persist = data.persist.borrow().clone();
                 if !campaign {
                     g.world.persist.custom_campaign = None;
                 }
-                let persist_at_start = g.world.persist.clone();
                 // A custom campaign's missions take the difficulty its own file keeps
                 // (FUN_6f2de600).
                 let difficulty = g.world.persist.custom_campaign.as_ref().and_then(|c| c.difficulty).unwrap_or(g.world.persist.difficulty);
@@ -811,41 +809,10 @@ impl Scene {
                 if let Err(e) = g.config() {
                     log::error!("config: {e:#}");
                 }
-                let mut users = 0;
                 g.world.seed = seed;
                 let res = match lobby {
                     Some(slots) => g.start_lobby(slots, setup_flags),
-                    // Without a setup screen: a campaign's local player in the first user
-                    // slot and computers in the rest; another map, as the original's
-                    // -loadfile, the local player in the first user slot and a computer in
-                    // the second, each at the start location of its number, and the other
-                    // user slots empty (measured: Player(1) a computer at start 1, Player(2)
-                    // and Player(3) empty).
-                    None => {
-                        g.world.fixed_starts = !campaign;
-                        // A map loaded directly runs with its random seed locked ('war3',
-                        // MAP_LOCK_RANDOM_SEED; measured: a test map's structures' alarm
-                        // waits are the locked seed's draws, whatever the setup's seed).
-                        if !campaign {
-                            g.world.map_flags |= 0x8000;
-                        }
-                        // A map with a computer slot of its own gets no other (measured: a
-                        // test map whose Player(1) is a computer slot leaves its user slots
-                        // Player(2) and Player(3) empty).
-                        let has_computer = g.world.players.iter().any(|p| p.controller == w3_game::types::map_control::COMPUTER);
-                        g.start(|_, controller| {
-                            if controller != w3_game::types::map_control::USER {
-                                return w3_game::SlotFill::Computer;
-                            }
-                            users += 1;
-                            match users {
-                                1 => w3_game::SlotFill::Local,
-                                2 if campaign || !has_computer => w3_game::SlotFill::Computer,
-                                _ if campaign => w3_game::SlotFill::Computer,
-                                _ => w3_game::SlotFill::Empty,
-                            }
-                        })
-                    }
+                    None => g.start_without_setup(campaign),
                 };
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
@@ -882,19 +849,25 @@ impl Scene {
                 if replay.is_some() {
                     g.locked = true;
                 } else {
+                    // A game begun without a setup screen is recorded as the original's
+                    // record has it: the slots and options the game began with.
+                    let signed = crate::skirmish::strongly_signed(&map_path);
+                    let net = lobby.is_none().then(|| g.loaded_record(signed));
                     g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay {
                         map: map_path.to_string_lossy().to_string(),
                         lobby: lobby.map(|l| l.to_vec()),
-                        persist: persist_at_start,
                         campaign,
                         version: data.version as i32,
-                        flags: setup_flags,
+                        flags: if lobby.is_some() { setup_flags } else { g.world.map_flags as u32 },
                         local_name,
                         frames: Vec::new(),
                         seed,
                         map_stat: crate::replays::map_stat(&data, &map_path),
                         game_name: None,
-                        net: None,
+                        net,
+                        signed,
+                        left: 0,
+                        games: crate::replays::game_begun(),
                     }));
                 }
                 Some(g)
@@ -960,7 +933,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), step_owed: 0.0, net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1318,7 +1291,7 @@ impl Scene {
                 w3_game::world::Request::LoadGame(name) => {
                     self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
                 }
-                // (Not while a replay plays: its profile is the recorder's.)
+                // (Not while a replay plays, which leaves the profile's files as they are.)
                 w3_game::world::Request::SaveCustomCampaign if self.playback.is_none() => {
                     if let Some(c) = self.game.as_ref().and_then(|g| g.world.persist.custom_campaign.as_ref()) {
                         crate::data::save_custom_campaign(c);
@@ -2416,17 +2389,17 @@ impl Scene {
         if matches!(action, A::Buy(_) | A::Hire(_) | A::Awaken(_)) {
             match action {
                 A::Buy(id) => {
-                    if let Err(e) = g.apply(w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
+                    if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
                         self.error(e);
                     }
                 }
                 A::Hire(id) => {
-                    if let Err(e) = g.apply(w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
+                    if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
                         self.error(e);
                     }
                 }
                 A::Awaken(hero) => {
-                    if let Err(e) = g.apply(w3_game::replay::Command::Awaken { player: local, tavern: first_any, hero }).ok() {
+                    if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Awaken { player: local, tavern: first_any, hero }).ok() {
                         self.error(e);
                     }
                 }
@@ -2449,7 +2422,7 @@ impl Scene {
             }
             A::Order { .. } => {}
             A::Train(id) => {
-                if let Err(e) = g.apply(w3_game::replay::Command::Train { building: first, id }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Train { building: first, id }).ok() {
                     self.error(e);
                 }
             }
@@ -2471,7 +2444,7 @@ impl Scene {
                 g.apply(w3_game::replay::Command::Submenu { player: local, build: false });
             }
             A::Learn(id) => {
-                g.apply(w3_game::replay::Command::LearnSkill { hero: first, id });
+                selected_command(g, &self.selection, w3_game::replay::Command::LearnSkill { hero: first, id });
                 if let Some(h) = self.hud.as_mut() {
                     if g.world.unit(first).is_none_or(|u| u.skill_points <= 0) {
                         h.page = crate::card::Page::Main;
@@ -2493,34 +2466,34 @@ impl Scene {
                 }
             }
             A::CancelTrain => {
-                g.apply(w3_game::replay::Command::CancelLast { building: first });
+                selected_command(g, &self.selection, w3_game::replay::Command::CancelLast { building: first });
             }
             A::Buy(id) => {
                 let local = g.world.local_player;
-                if let Err(e) = g.apply(w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
                     self.error(e);
                 }
             }
             A::Hire(id) => {
                 let local = g.world.local_player;
-                if let Err(e) = g.apply(w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
                     self.error(e);
                 }
             }
             A::Revive(hero) => {
-                if let Err(e) = g.apply(w3_game::replay::Command::StartRevive { altar: first, hero }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::StartRevive { altar: first, hero }).ok() {
                     self.error(e);
                 }
             }
             // Taken with the shop actions above.
             A::Awaken(_) => {}
             A::Research(id) => {
-                if let Err(e) = g.apply(w3_game::replay::Command::Research { building: first, id }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Research { building: first, id }).ok() {
                     self.error(e);
                 }
             }
             A::Upgrade(id) => {
-                if let Err(e) = g.apply(w3_game::replay::Command::Upgrade { building: first, id }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Upgrade { building: first, id }).ok() {
                     self.error(e);
                 }
             }
@@ -2726,7 +2699,7 @@ impl Scene {
         // A cargo slot unloads the unit in it.
         if let Some(c) = self.hud.as_ref().and_then(|h| h.cargo_at(ux, uy)) {
             if let (Some(&t), Some(g)) = (self.selection.first(), self.game.as_mut()) {
-                g.apply(w3_game::replay::Command::Order { unit: t, order: w3_game::natives::basic::order_id("unload"), x: 0.0, y: 0.0, target: c });
+                selected_command(g, &self.selection, w3_game::replay::Command::Order { unit: t, order: w3_game::natives::basic::order_id("unload"), x: 0.0, y: 0.0, target: c });
             }
             return true;
         }
@@ -2738,7 +2711,7 @@ impl Scene {
         // A queue icon cancels its item (Tip10).
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.queue_slot_at(ux, uy)) {
             if let (Some(&b), Some(g)) = (self.selection.first(), self.game.as_mut()) {
-                g.apply(w3_game::replay::Command::CancelQueue { building: b, slot });
+                selected_command(g, &self.selection, w3_game::replay::Command::CancelQueue { building: b, slot });
             }
             return true;
         }
@@ -2770,7 +2743,7 @@ impl Scene {
             if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
                 self.held_item = None;
                 if let Some(g) = self.game.as_mut() {
-                    g.apply(w3_game::replay::Command::MoveItem { unit: u, from, to: slot });
+                    selected_command(g, &self.selection, w3_game::replay::Command::MoveItem { unit: u, from, to: slot });
                 }
                 return true;
             }
@@ -2813,10 +2786,10 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 match (target, point) {
                     (Some(t), _) => {
-                        g.apply(w3_game::replay::Command::GiveItemTo { unit: u, slot, target: t });
+                        selected_command(g, &self.selection, w3_game::replay::Command::GiveItemTo { unit: u, slot, target: t });
                     }
                     (None, Some((x, y))) => {
-                        g.apply(w3_game::replay::Command::DropItemAt { unit: u, slot, x, y });
+                        selected_command(g, &self.selection, w3_game::replay::Command::DropItemAt { unit: u, slot, x, y });
                     }
                     _ => {}
                 }
@@ -2829,7 +2802,7 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 let point_only = g.world.item_targeting(u, slot) == w3_game::ability::Targeting::Point;
                 let (t, (x, y)) = if point_only { (0, point.unwrap_or_default()) } else { (target.unwrap_or(0), point.unwrap_or_default()) };
-                g.apply(w3_game::replay::Command::UseItemAt { unit: u, slot, target: t, x, y });
+                selected_command(g, &self.selection, w3_game::replay::Command::UseItemAt { unit: u, slot, target: t, x, y });
             }
             return true;
         }
@@ -2879,7 +2852,7 @@ impl Scene {
             // check, vf0x244, its error shown and the mode left).
             self.placing = None;
             if let Some(&worker) = self.selection.first() {
-                if let Err(e) = g.apply(w3_game::replay::Command::Build { worker, id, x, y }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Build { worker, id, x, y }).ok() {
                     self.error(e);
                 }
             }
@@ -3378,8 +3351,16 @@ impl Scene {
 
     /// The replay of the game played, to keep when it ends.
     pub fn take_replay(&mut self) -> Option<w3_game::replay::Replay> {
-        let r = self.game.as_mut()?.recorder.take()?;
-        (!r.replay.frames.is_empty()).then_some(r.replay)
+        let g = self.game.as_mut()?;
+        let mut r = g.recorder.take()?.replay;
+        // The local player leaves with 7 while still playing, 11 once their game is over
+        // (read: after a defeat; provisional: after a victory), which the program's
+        // games count once more.
+        if g.world.player_results.contains_key(&g.world.local_player) {
+            r.left = w3_game::replay::LEFT_OVER;
+            crate::replays::game_over();
+        }
+        (!r.frames.is_empty()).then_some(r)
     }
 
     /// A line the player typed: a cheat, or chat shown as game.dll formats it
@@ -4299,6 +4280,11 @@ impl Scene {
                             break;
                         }
                         p.owed -= f.dt;
+                        // Its chat lines show as they came, before its turn.
+                        for (pid, to, text) in &f.chat {
+                            let player = p.replay.net.as_ref().and_then(|n| n.slots.iter().position(|s| s.pid == *pid)).map_or(pid.saturating_sub(1), |k| k as u8);
+                            g.world.requests.push(w3_game::world::Request::Chat { player, text: text.clone(), to: *to as u8 });
+                        }
                         g.play_frame(f);
                         p.next += 1;
                     }
@@ -4312,7 +4298,16 @@ impl Scene {
                         }
                     }
                 }
-                None => g.tick(gdt),
+                // A game played alone steps in whole milliseconds, as its replay's turns
+                // are (the original's are too: about 100 a turn, and 0 while paused).
+                None => {
+                    self.step_owed += gdt * 1000.0;
+                    let ms = self.step_owed.floor();
+                    if ms >= 1.0 || gdt == 0.0 {
+                        self.step_owed -= ms;
+                        g.tick(ms / 1000.0);
+                    }
+                }
             }
         }
         // A game played alone and paused by PauseGame: its sleeping threads still wake in
@@ -4779,7 +4774,7 @@ impl Scene {
                 }
                 // An item used on a unit or a point waits for the click on it.
                 if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
-                    g.apply(w3_game::replay::Command::UseItem { unit: u, slot });
+                    selected_command(g, &self.selection, w3_game::replay::Command::UseItem { unit: u, slot });
                 } else {
                     self.item_target = Some((u, slot));
                 }
@@ -5474,6 +5469,15 @@ impl LightGrid {
         }
         out
     }
+}
+
+/// A command to one of the player's units as the interface gives it: after the player's
+/// selection, as the original's actions carry it first (the subgroup's unit the one
+/// commanded, `actions::Codec`).
+fn selected_command(g: &mut w3_game::Game, selection: &[u32], c: w3_game::replay::Command) -> w3_game::replay::Outcome {
+    let player = g.world.local_player;
+    g.apply(w3_game::replay::Command::Select { player, units: selection.to_vec() });
+    g.apply(c)
 }
 
 /// An order to the selection, as the original sends one: the selection goes first, so

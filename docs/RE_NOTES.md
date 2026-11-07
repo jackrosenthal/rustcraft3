@@ -1742,16 +1742,35 @@ these are the findings behind them.
     computer player, 58 more objects were born by then than the port makes (13014,
     presence 13007): the computer's AI makes engine objects the port's does not yet.  The original's record: for a network game flags
     0x8000, game type 9, its players' count, its host's record and name; for a game
-    played alone flags 0, game type 1, 12 players, "Local Game", the profile's name;
-    then the start records 0x1A to 0x1C (each 1), each turn followed by its checksum,
-    and the local player's leaving (reason 12, result 7, 1) at its end.  The game's
+    played alone flags 0, 12 players, "Local Game", the profile's name, and game type 1,
+    9 for a map Blizzard signed (Glacial Thaw, Booty Bay; a signed copy renamed in
+    Maps\Test, bbw4.w3x, is 1, as game.dll's map check, `FUN_6f78b640`, signs the
+    SHA-1 of the file to its signature and its name alone in capitals: provisional,
+    the check's use for the type not read); the word after the type 0x26fb68 in every
+    replay read; then the start
+    records 0x1A to 0x1C (each 1), each turn followed by its checksum, a chat line as
+    0x20 (the sender, flags 0x20, its recipients, 0 for all in a game played alone,
+    and the line) before the turn after it, a leave as 0x17, and the local player's
+    leaving at its end: reason 12, its LEAVEGAME word (7 left by the menu while
+    playing, 11 by the defeat dialog's Quit Game), and the program's games so far (one
+    more as each begins and once more at a game over: 1, 2, 4, 5 for a quit, a quit, a
+    defeat, and a quit in one run, 2 for a defeat in a fresh one).  As the local player
+    leaves, `FUN_6f985030` writes one for each player still in the game; another's
+    leave (`FUN_6f98c680`, after the host's PLAYERLEFT) has reason 1 and its word.
+    Settings: a map loaded directly MAP_LOCK_RANDOM_SEED alone (0x800002), a Custom
+    Game the setup's options (0x64802 by default).  Turns of a game played alone are of
+    96 to 101 ms of game time (0 while paused).  A campaign mission is recorded nowhere
+    (Sentinels chapter one quit through the menu: LastReplay.w3g untouched, no
+    TempReplay.w3g, no Save Replay on its score screen), and a record the original does
+    not know ends its reading: it would not load the port's replay holding 0x7E ("The
+    replay file could not be loaded"; `FUN_6f329230`'s default case).  The game's
     description is coded once (it holds no NUL), with the map's path from the game's
     folder, playable size, and checksums.  The port writes its replays so
-    (`Replay::to_bytes`), privately only a campaign mission's setup and a frame not
-    of whole milliseconds; its replay of the quiet game played from the original's
-    turns is the original's record for record (31252 records, all its turns and
-    checksums), but for the language word, which the original fills from memory, and the
-    leaving record the port adds; the original plays the port's replay back (read: at
+    (`Replay::to_bytes`), all in the original's records: a map loaded directly with
+    the slots the original's -loadfile makes (`Game::loaded_record`), steps of whole
+    milliseconds, its chat and leaves; its replay of the quiet game played from the
+    original's turns is the original's record for record (31252 records, all its turns
+    and checksums); the original plays the port's replay back (read: at
     1x on the hidden display, its replay panel showing the game's time).  A replay can
     also carry a recorded game's actions in another's record (`w3gsplice`), for tracing
     the original as it plays one back: no keepalives then, but its objects and steps.
@@ -6423,10 +6442,8 @@ Formats the port made its own, to be replaced by the original's:
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame and its checksum, the commands as the original's actions,
-  `actions::Codec`), and the original plays them back; only a command with no action
-  of the original's goes in a private action (0x7F), a turn not of whole milliseconds
-  in another (0x7D, from player 0), and a campaign mission's setup in a private record
-  (0x7E); older `W3RRPLY` files still play.  The original's own encodings measured so far
+  `actions::Codec`), and the original plays them back; a command with no action of the
+  original's is not recorded (the interface gives none).  The original's own encodings measured so far
   (`docs/reference/bootybay_orders.w3g`): a selection change is `Select` (remove the
   old, add the new), `PreSubselection`, and `SelectSubgroup` by the first unit's type;
   a right-click is `OrderTarget` with order 851971 (smart), flags 0 on the ground with
@@ -6525,8 +6542,7 @@ Formats the port made its own, to be replaced by the original's:
   (OrderTarget, flags 2, unload 852047, the passenger as target; its point, 8640, 1664
   then 8576, 1664 for a Zeppelin's peon, multiples of 64 near where it boarded, not yet
   understood), and a dead hero awakened at a tavern (OrderTarget, flags 0x46, the
-  unnamed order 852462, the hero where it lies).  The rest are still the
-  port's own commands in a private action (0x7F) until each is measured; the objects' ids come from the
+  unnamed order 852462, the hero where it lies).  The objects' ids come from the
   port's tags, which match the original's at a game's start but not yet once objects
   are freed (see the event queue above).
 

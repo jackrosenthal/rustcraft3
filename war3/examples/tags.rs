@@ -273,7 +273,7 @@ fn main() -> anyhow::Result<()> {
             // Carried out as the message comes in, before the keepalive.
             g.world.net_turn_actions(100, &acts);
             let actions = acts.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
-            g.play_commands(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions), turn: None, checksum: None });
+            g.play_commands(&w3_game::replay::Frame { dt, actions: Some(actions), ..Default::default() });
             if std::env::var("TAGS_MODULE").is_ok() {
                 println!("turn {n}: game module {:08x}", g.world.game_module());
             }

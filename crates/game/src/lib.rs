@@ -114,6 +114,9 @@ pub struct Game {
     sent_selection: Option<Vec<u32>>,
     /// Each player's selection as the actions played so far left it.
     codec: actions::Codec,
+    /// The local player's selection changes in a game played alone as actions, and as
+    /// those actions read back (`apply`).
+    local_codec: (actions::Codec, actions::Codec),
     /// A network game's save its turn's actions called for, by a player under a name,
     /// made after the turn's keepalive (`after_keepalive`); and the copies this
     /// computer made, for the program to keep.
@@ -152,6 +155,16 @@ impl Start {
     /// As a lobby starts its game.
     pub fn of(lobby: &[LobbySlot]) -> Start {
         Start { computers: lobby.iter().filter(|s| matches!(s.fill, SlotFill::Computer)).count() }
+    }
+
+    /// As a game begun without a setup screen starts (`Game::start_without_setup`):
+    /// the map's computers, with a campaign's other users, or a second user of a map
+    /// with no computer of its own, made computers.
+    pub fn without_setup(info: &MapInfo, campaign: bool) -> Start {
+        let kinds: Vec<u32> = info.players.iter().map(|p| p.kind).collect();
+        let (users, computers) = (kinds.iter().filter(|&&k| k == 1).count(), kinds.iter().filter(|&&k| k == 2).count());
+        let extra = if campaign { users.saturating_sub(1) } else { (computers == 0 && users >= 2) as usize };
+        Start { computers: computers + extra }
     }
 }
 
@@ -305,7 +318,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default(), save_due: None, saves: Vec::new() })
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default(), local_codec: Default::default(), save_due: None, saves: Vec::new() })
     }
 
     /// Runs the map's `config` function, which declares players and start locations,
@@ -445,6 +458,82 @@ impl Game {
         }
         let fills: HashMap<u8, SlotFill> = slots.iter().map(|s| (s.player, s.fill.clone())).collect();
         self.start(|id, _| fills.get(&id).cloned().unwrap_or(SlotFill::Empty))
+    }
+
+    /// Starts a game begun without a setup screen: a campaign's local player in the
+    /// first user slot and computers in the rest; another map, as the original's
+    /// -loadfile, the local player in the first user slot and a computer in the second,
+    /// each at the start location of its number, and the other user slots empty
+    /// (measured: Player(1) a computer at start 1, Player(2) and Player(3) empty).
+    pub fn start_without_setup(&mut self, campaign: bool) -> anyhow::Result<()> {
+        self.world.fixed_starts = !campaign;
+        // A map loaded directly runs with its random seed locked ('war3',
+        // MAP_LOCK_RANDOM_SEED; measured: a test map's structures' alarm waits are the
+        // locked seed's draws, whatever the setup's seed).
+        if !campaign {
+            self.world.map_flags |= 0x8000;
+        }
+        // A map with a computer slot of its own gets no other (measured: a test map
+        // whose Player(1) is a computer slot leaves its user slots Player(2) and
+        // Player(3) empty).
+        let has_computer = self.world.players.iter().any(|p| p.controller == map_control::COMPUTER);
+        let mut users = 0;
+        self.start(|_, controller| {
+            if controller != map_control::USER {
+                return SlotFill::Computer;
+            }
+            users += 1;
+            match users {
+                1 => SlotFill::Local,
+                2 if campaign || !has_computer => SlotFill::Computer,
+                _ if campaign => SlotFill::Computer,
+                _ => SlotFill::Empty,
+            }
+        })
+    }
+
+    /// The original's record of a map loaded directly (as -loadfile makes it; read: its
+    /// replays of Glacial Thaw, a test map, and Mafarazzo TD): a slot for each of the
+    /// map's users and computers in order, the local player's with network id 1, a
+    /// computer's in a user slot and the user's with the map downloaded (100), the map's
+    /// own computers' and the empty slots' unknown (255); each its player's team (0 for
+    /// one not playing) and color; races random and selectable, or with fixed player
+    /// settings the map's alone; normal computers, no handicap.  The select mode is 3
+    /// with fixed player settings, 0 for a melee map; the type 1, with 8 for a map
+    /// Blizzard signed (`signed`; read: Glacial Thaw's 9).
+    pub fn loaded_record(&self, signed: bool) -> replay::NetRecord {
+        use w3_net::slot::{DOWNLOAD_UNKNOWN, layout, race, status};
+        const RACES: [u8; 5] = [race::RANDOM, race::HUMAN, race::ORC, race::UNDEAD, race::NIGHT_ELF];
+        let fixed = self.info.flags & 0x20 != 0;
+        let mut players: Vec<_> = self.info.players.iter().filter(|p| p.kind == 1 || p.kind == 2).collect();
+        players.sort_by_key(|p| p.id);
+        let slots = players
+            .iter()
+            .filter_map(|i| {
+                let p = self.world.players.get(i.id as usize)?;
+                let playing = p.slot_state == slot_state::PLAYING;
+                let computer = playing && p.controller == map_control::COMPUTER;
+                let local = playing && p.id == self.world.local_player && !computer;
+                Some(replay::NetRecordSlot {
+                    pid: local as u8,
+                    download: if playing && i.kind == 1 { 100 } else { DOWNLOAD_UNKNOWN },
+                    status: if playing { status::OCCUPIED } else { status::OPEN },
+                    computer,
+                    team: if playing { p.team.max(0) as u8 } else { 0 },
+                    color: p.color as u8,
+                    race: if fixed { RACES[(i.race as usize).min(4)] } else { race::RANDOM | race::SELECTABLE },
+                    ai: 1,
+                    handicap: 100,
+                })
+            })
+            .collect::<Vec<_>>();
+        let forces = self.info.flags & 0x40 != 0;
+        let layout = match (forces, fixed) {
+            (false, _) => layout::MELEE,
+            (true, true) => layout::FIXED_PLAYER_SETTINGS,
+            (true, false) => layout::CUSTOM_FORCES,
+        };
+        replay::NetRecord { game_type: 1 | if signed { 8 } else { 0 }, layout, start_spots: slots.len() as u8, slots, stat: Vec::new() }
     }
 
     /// Fills player slots as the lobby would, then runs the map's `main`.
@@ -999,7 +1088,7 @@ impl Game {
         if self.recorder.is_some() {
             let checksum = self.world.keepalive();
             if let Some(r) = self.recorder.as_mut() {
-                r.step(f.dt, f.turn.clone(), checksum);
+                r.step(f.dt, Some(f), checksum);
             }
         }
         // A paused game takes commands (a resume among them) but no time passes.
@@ -1057,6 +1146,17 @@ impl Game {
             }
             out.push(c);
             return replay::Outcome::Done;
+        }
+        // A selection's change goes as the original's actions in a game played alone too,
+        // which keep the synchronized selection (`selection`) as they do in a network
+        // game's turns and in this game's replay.
+        if let replay::Command::Select { .. } = &c {
+            let bytes = self.local_codec.0.encode(&self.world, local, &c);
+            for c in self.local_codec.1.decode(&self.world, local, &bytes).unwrap_or_default() {
+                if let replay::Command::SyncSelection { op, .. } = c {
+                    self.world.sync_selection(local, op);
+                }
+            }
         }
         self.execute(local, c)
     }

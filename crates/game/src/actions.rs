@@ -6,16 +6,16 @@
 //! (`docs/reference/bootybay_orders.w3g`, `bootybay_commands.w3g`): orders at a point
 //! go as OrderTarget with no object, a build as OrderPoint with flags 4, training as
 //! Order with flags 0x42, a cancel as Dequeue by place and type, and a queued order with
-//! flag 1.  A command with no action of the original's yet travels as a private action
-//! holding it (0x7F).  Both sides keep each player's selection as the actions left it.
+//! flag 1.  A command with no action of the original's goes as none (and is logged):
+//! the interface gives none such (orders to one unit, `Order`, `Issue`, and
+//! `Formation`, are the tools' and the tests'; a unit's command goes after the selection
+//! that makes it the subgroup's, `Scene::sync_selection`).  Both sides keep each
+//! player's selection as the actions left it.
 
 use crate::collections::HashMap;
 use crate::replay::Command;
 use crate::world::World;
 use w3_net::action::{Action, ObjectId, Target};
-
-/// The private action carrying a command (postcard), until it has the original's.
-pub const COMMAND_ACTION: u8 = 0x7F;
 
 #[derive(Clone, Debug, Default)]
 pub struct Codec {
@@ -251,22 +251,16 @@ impl Codec {
                 let item = w.unit(*unit).and_then(|u| u.inventory.get(*slot).copied()).unwrap_or(0);
                 acts.push(Action::OrderItem { flags: 0x44, ability: 852001, a: u32::MAX, b: u32::MAX, target: Target { x: *x, y: *y, object: ObjectId::NONE }, item: w.oid(item) });
             }
-            _ => return self.encode_private(c),
+            other => {
+                log::warn!("a command with no action of the original's, not recorded: {other:?}");
+                return Vec::new();
+            }
         }
         let mut wr = w3_net::wire::Writer::default();
         for a in &acts {
             a.write(&mut wr);
         }
         wr.0
-    }
-
-    /// A command as the private action holding it.
-    pub fn encode_private(&self, c: &Command) -> Vec<u8> {
-        let body = postcard::to_allocvec(c).unwrap_or_default();
-        let mut out = vec![COMMAND_ACTION];
-        out.extend((body.len() as u16).to_le_bytes());
-        out.extend(body);
-        out
     }
 
     /// A player's block of actions as commands.
@@ -280,14 +274,6 @@ impl Codec {
             }
         };
         while !r.is_empty() {
-            if bytes.get(bytes.len() - r.rest_len()) == Some(&COMMAND_ACTION) {
-                let sel = self.selection.get(&player).cloned().unwrap_or_default();
-                flush(&mut changed, &sel, &mut out);
-                r.u8().map_err(anyhow::Error::msg)?;
-                let n = r.u16().map_err(anyhow::Error::msg)? as usize;
-                out.push(postcard::from_bytes(r.bytes(n).map_err(anyhow::Error::msg)?)?);
-                continue;
-            }
             let act = Action::read(&mut r).map_err(anyhow::Error::msg)?;
             let handles = |objects: &[ObjectId]| objects.iter().filter_map(|&o| w.by_oid(o)).collect::<Vec<u32>>();
             use crate::selection::SelOp;

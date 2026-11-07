@@ -198,7 +198,7 @@ pub fn data_modules(chain: &w3_mpq::Chain) -> std::collections::BTreeMap<u8, u32
 /// reads as it plays the frame.
 fn frame(players: &[(u8, u8)], ms: u16, blocks: &[(u8, Vec<u8>)]) -> Frame {
     let actions = blocks.iter().filter_map(|(pid, data)| players.iter().find(|p| p.0 == *pid).map(|p| (p.1, data.clone()))).collect();
-    Frame { dt: ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: Some((ms, blocks.to_vec())), checksum: None }
+    Frame { dt: ms as f32 / 1000.0, actions: Some(actions), turn: Some((ms, blocks.to_vec())), ..Default::default() }
 }
 
 /// A network game under way.
@@ -401,13 +401,6 @@ impl Session {
         self.clock += dt;
         while self.clock >= TURN {
             self.clock -= TURN;
-            // Those who left: the host says so in their name.
-            for p in self.left.drain(..).collect::<Vec<_>>() {
-                if let Some(pid) = self.role.players.iter().find(|x| x.1 == p).map(|x| x.0) {
-                    let data = w3_game::actions::Codec::default().encode_private(&Command::PlayerLeft { player: p });
-                    self.pending.push((pid, data));
-                }
-            }
             // Each person's actions as one block.
             let mut blocks: Vec<(u8, Vec<u8>)> = Vec::new();
             for (pid, data) in std::mem::take(&mut self.pending) {

@@ -150,29 +150,43 @@ pub enum Outcome {
     Flag(bool),
 }
 
+/// A player who left a network game, as the host's PLAYERLEFT (0x07) said: the
+/// network's id for them, their player, and the word it carried (the leaver's own
+/// LEAVEGAME reason, unchanged: `FUN_6f99cdc0`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Leave {
+    pub pid: u8,
+    pub player: u8,
+    pub word: u32,
+}
+
 /// One step of the game: its length and the commands given before it, each with the
 /// player who gave it.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct Frame {
     pub dt: f32,
     pub commands: Vec<(u8, Command)>,
     /// The commands as the original's actions, each player's block (`actions::Codec`),
     /// when they were recorded so; a replay read from a file plays from them.
-    #[serde(default)]
     pub actions: Option<Vec<(u8, Vec<u8>)>>,
     /// A network game's turn message as the host sent it: its time in milliseconds and
     /// each player's block by network id, as the keepalive's net module hashes it.
-    #[serde(default)]
     pub turn: Option<(u16, Vec<(u8, Vec<u8>)>)>,
     /// The game's checksum for the frame, as the keepalive has it (the state its
     /// actions left, before its time): the replay's checksum record after it.
-    #[serde(default)]
     pub checksum: Option<u32>,
+    /// The players who left before the frame's turn (a network game's PLAYERLEFT, a
+    /// replay's leave records).
+    pub leaves: Vec<Leave>,
+    /// The chat lines that came before the frame's turn: the sender's network id, the
+    /// line's recipients as W3GS chat carries them (0 all, 1 allies, 2 observers, 3 on a
+    /// player), and the line.
+    pub chat: Vec<(u8, u32, String)>,
 }
 
 /// The map as the original's record names and checks it (its game description's
 /// path, playable size, and checksums: w3-net's `stat`).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MapStat {
     pub path: String,
     pub width: u16,
@@ -182,14 +196,13 @@ pub struct MapStat {
 }
 
 /// A replay: the game it was, and its frames.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct Replay {
     /// The map, as a file or a path in the game's archives.
     pub map: String,
-    /// The setup screen's choices (none for a campaign mission).
+    /// The setup screen's choices (none for a game begun without one: a campaign
+    /// mission, or a map loaded directly).
     pub lobby: Option<Vec<crate::LobbySlot>>,
-    /// The profile's progress when the game began (campaign caches and difficulty).
-    pub persist: crate::persist::Persist,
     pub campaign: bool,
     /// 0 for Reign of Chaos, 1 for The Frozen Throne.
     pub version: i32,
@@ -201,14 +214,24 @@ pub struct Replay {
     /// The seed the game's generators started from (a network game's slot table's).
     pub seed: u32,
     /// The map as the original's record has it, when known.
-    #[serde(default)]
     pub map_stat: Option<MapStat>,
     /// A network game's name, as its record has it.
-    #[serde(default)]
     pub game_name: Option<String>,
-    /// A network game's setup, as its record copies it.
-    #[serde(default)]
+    /// The game's setup as the original's record copies it: a network game's, or a map
+    /// loaded directly's (`Game::loaded_record`).
     pub net: Option<NetRecord>,
+    /// Whether the map is strongly signed (Blizzard's): a game played alone from a setup
+    /// screen is of type 9 then, else 1 (read: the original's of Glacial Thaw, 9).
+    pub signed: bool,
+    /// The word the local player left with, as the record's closing leave has it (the
+    /// LEAVEGAME reason; 0 for the one of a game left while still playing).
+    pub left: u32,
+    /// The games the program had begun when this one began, this one among them, as the
+    /// leave records' last word counts them (the original's net layer's +0xc, which a
+    /// game over for the local player counts once more; read: 1, 2, 4, and 5 for a quit,
+    /// a quit, a defeat, and a quit in one run of the original, 2 for a defeat in a
+    /// fresh one); 0 as 1.
+    pub games: u32,
 }
 
 /// A network game's setup as the original's record copies it (read: its replay of a
@@ -219,15 +242,14 @@ pub struct Replay {
 /// fixed races with no selectable flag, and empty slots' download unknown (255).
 /// The game's description as GAMEINFO offered it (`stat`, coded: a joined game's its
 /// host's, with the host's name and the size it gave) and the slot table's start spots
-/// go into its saves.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+/// go into its saves.  A map loaded directly has one too, as the original's -loadfile
+/// makes it (`Game::loaded_record`), with no description.
+#[derive(Clone, Debug, Default)]
 pub struct NetRecord {
     pub game_type: u32,
     pub layout: u8,
     pub slots: Vec<NetRecordSlot>,
-    #[serde(default)]
     pub stat: Vec<u8>,
-    #[serde(default)]
     pub start_spots: u8,
 }
 
@@ -251,7 +273,7 @@ pub struct NetworkHead {
 }
 
 /// A slot of the slot table, as W3GS has it.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NetRecordSlot {
     pub pid: u8,
     pub download: u8,
@@ -264,46 +286,22 @@ pub struct NetRecordSlot {
     pub handicap: u8,
 }
 
-/// The first bytes of replays this game recorded in its own format before it wrote the
-/// original's (.w3g); they still play.
-const MAGIC_5: &[u8; 8] = b"W3RRPLY5";
-/// Replays recorded before the seed was kept, which played from seed 0.
-const MAGIC_4: &[u8; 8] = b"W3RRPLY4";
-
-/// A replay as format 4 laid it out: all but the seed.
-#[derive(Deserialize)]
-struct Replay4 {
-    map: String,
-    lobby: Option<Vec<crate::LobbySlot>>,
-    persist: crate::persist::Persist,
-    campaign: bool,
-    version: i32,
-    flags: u32,
-    local_name: Option<String>,
-    frames: Vec<Frame>,
-}
-
-/// The private record (after the start records) holding what the original's record has
-/// no place for: the setup as this game keeps it and the campaign's progress.
-const SETUP_RECORD: u8 = 0x7E;
-/// The private action carrying one of this game's commands, until each has its
-/// original action (`Command` in postcard).
-const COMMAND_ACTION: u8 = crate::actions::COMMAND_ACTION;
-/// The private action giving a turn's exact length (an f32), from player 0, as this
-/// game's steps need not be whole milliseconds.
-const STEP_ACTION: u8 = 0x7D;
-
-/// The setup kept in the private record.
-#[derive(Serialize, Deserialize)]
-struct Setup {
-    map: String,
-    lobby: Option<Vec<crate::LobbySlot>>,
-    persist: crate::persist::Persist,
-    campaign: bool,
-    version: i32,
-    flags: u32,
-    local_name: Option<String>,
-}
+/// The record's word after the player counts, as every replay the original wrote has
+/// it (its "language"; the original fills it from memory, but each of its replays read
+/// holds this).
+const LANGUAGE: u32 = 0x26fb68;
+/// The setup's advanced option a map loaded directly runs with (MAP_LOCK_RANDOM_SEED),
+/// which the original's record of such a game has alone (its settings word 0x800002).
+const LOCK_RANDOM_SEED: u32 = 0x8000;
+/// A leave record's reasons: the leave of another player (`FUN_6f98c680`, after the
+/// host's PLAYERLEFT), and those as the local player leaves (`FUN_6f985030`).
+const LEFT_REMOTE: u32 = 1;
+const LEFT_LOCAL: u32 = 12;
+/// The LEAVEGAME words of a player who left still playing and of one whose game was
+/// over (read: the original's game played alone, quit, its closing leave 7; and left by
+/// the defeat dialog's Quit Game, 11).
+pub const LEFT_PLAYING: u32 = 7;
+pub const LEFT_OVER: u32 = 11;
 
 impl Replay {
     /// A network game's description as its saves carry it (read: the original's save
@@ -348,22 +346,23 @@ impl Replay {
 
     /// The replay as the original's file (.w3g), as it writes them: its header and
     /// record (the host and players, the game's description with the map and its
-    /// checksums, the slots, the seed), the start records, then each frame's turn (a
-    /// network game's message as it came, else its players' actions) and the game's
-    /// checksum after it, and the local player's leaving.  Only a frame not of whole
-    /// milliseconds or a command without an action of the original's, and a campaign
-    /// mission's setup, go privately.
+    /// checksums, the slots, the seed), the start records, then for each frame the
+    /// leaves and chat lines that came before its turn, its turn (a network game's
+    /// message as it came, else its players' actions), and the game's checksum after
+    /// it, and the leaves as the local player leaves.
     pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
         use w3_formats::w3g;
         let lobby = self.lobby.clone().unwrap_or_default();
         let name_of = |s: &crate::LobbySlot| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1));
         let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
-        let host = w3g::PlayerRecord { pid: host_slot.map_or(1, |s| s.player + 1), name: host_slot.map(name_of).or(self.local_name.clone()).unwrap_or_default(), extra: vec![0] };
+        // A game begun without a setup screen: its user in the record's slots.
+        let loaded_pid = self.net.as_ref().and_then(|n| n.slots.iter().find(|s| s.pid != 0 && !s.computer)).map(|s| s.pid);
+        let host = w3g::PlayerRecord { pid: host_slot.map(|s| s.player + 1).or(loaded_pid).unwrap_or(1), name: host_slot.map(name_of).or(self.local_name.clone()).unwrap_or_default(), extra: vec![0] };
         let players = lobby
             .iter()
             .filter(|s| matches!(s.fill, crate::SlotFill::Remote) || matches!(s.fill, crate::SlotFill::Observer(false)))
             .map(|s| w3g::PlayerRecord { pid: s.player + 1, name: name_of(s), extra: vec![0] })
-            .collect();
+            .collect::<Vec<_>>();
         // Races as the slot table has them: human 1, orc 2, night elf 4, undead 8, random
         // 0x20, each selectable (0x40).
         let race = |r: Option<i32>| 0x40 | match r {
@@ -390,52 +389,40 @@ impl Replay {
         let ms = self.map_stat.clone().unwrap_or_else(|| MapStat { path: self.map.clone(), ..Default::default() });
         let stat = w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host: host.name.clone(), map_sha1: ms.sha1 }.to_bytes();
         let mut records = Vec::new();
-        // What the original's record has no place for (a campaign mission's setup and
-        // progress) goes in a private record, which only this game reads; a game from a
-        // setup screen is all in the original's.
-        if self.campaign || self.lobby.is_none() {
-            let setup = Setup { map: self.map.clone(), lobby: self.lobby.clone(), persist: self.persist.clone(), campaign: self.campaign, version: self.version, flags: self.flags, local_name: self.local_name.clone() };
-            let setup = postcard::to_allocvec(&setup)?;
-            records.push(w3g::Record::Other { id: SETUP_RECORD, body: [&(setup.len() as u32).to_le_bytes()[..], &setup].concat() });
-        }
         for id in [0x1A, 0x1B, 0x1C] {
             records.push(w3g::Record::Other { id, body: 1u32.to_le_bytes().to_vec() });
         }
+        // The program's games so far (`games`), one more once the local player's game is
+        // over (provisional: another's leave after that).
+        let word = if self.left == 0 { LEFT_PLAYING } else { self.left };
+        let unknown = self.games.max(1);
         for f in &self.frames {
-            // A network turn as its message came; else the frame's actions, and its exact
-            // length privately only when it is not whole milliseconds.
-            let (ms, mut actions) = match &f.turn {
-                Some((ms, blocks)) => (*ms, blocks.clone()),
-                None => {
-                    let ms = (f.dt * 1000.0).round() as u16;
-                    let mut actions: Vec<(u8, Vec<u8>)> = Vec::new();
-                    match &f.actions {
-                        Some(acts) => actions.extend(acts.iter().filter(|(_, b)| !b.is_empty()).map(|(p, b)| (p + 1, b.clone()))),
-                        None => {
-                            for (player, c) in &f.commands {
-                                let body = postcard::to_allocvec(c)?;
-                                let mut a = vec![COMMAND_ACTION];
-                                a.extend((body.len() as u16).to_le_bytes());
-                                a.extend(body);
-                                match actions.iter_mut().find(|(p, _)| *p == player + 1) {
-                                    Some((_, bytes)) => bytes.extend(a),
-                                    None => actions.push((player + 1, a)),
-                                }
-                            }
-                        }
-                    }
-                    (ms, actions)
-                }
-            };
-            if f.turn.is_none() && (ms as f32 / 1000.0 - f.dt).abs() > 1e-6 {
-                actions.insert(0, (0u8, [&[STEP_ACTION][..], &f.dt.to_le_bytes()].concat()));
+            // Those who left and what was said before the turn, as they came (each
+            // computer writes another's leave with reason 1 and their word, as the
+            // net layer makes it: `FUN_6f98c680`).
+            for l in &f.leaves {
+                records.push(w3g::Record::Leave { reason: LEFT_REMOTE, pid: l.pid, result: l.word, unknown });
             }
+            for (pid, to, text) in &f.chat {
+                records.push(w3g::Record::Chat { pid: *pid, scope: Some(*to), text: text.clone() });
+            }
+            // A network turn as its message came; else the frame's actions, by network id.
+            let (ms, actions) = match &f.turn {
+                Some((ms, blocks)) => (*ms, blocks.clone()),
+                None => ((f.dt * 1000.0).round() as u16, f.actions.iter().flatten().filter(|(_, b)| !b.is_empty()).map(|(p, b)| (p + 1, b.clone())).collect()),
+            };
             records.push(w3g::Record::Turn { ms, actions });
             records.push(w3g::Record::Checksum(f.checksum.unwrap_or(0).to_le_bytes().to_vec()));
         }
-        // The game's record ends with the local player leaving (read: a game played
-        // alone, reason 12, result 7).
-        records.push(w3g::Record::Leave { reason: 12, pid: host.pid, result: 7, unknown: 1 });
+        // The game's record ends with the local player leaving: a leave for each player
+        // still in the game, the local one first, each with the word the local player
+        // left with (`FUN_6f985030`; read: a game played alone, reason 12, result 7).
+        let gone: Vec<u8> = self.frames.iter().flat_map(|f| f.leaves.iter().map(|l| l.pid)).collect();
+        let unknown = unknown + (word == LEFT_OVER) as u32;
+        records.push(w3g::Record::Leave { reason: LEFT_LOCAL, pid: host.pid, result: word, unknown });
+        for p in players.iter().filter(|p| !gone.contains(&p.pid)) {
+            records.push(w3g::Record::Leave { reason: LEFT_LOCAL, pid: p.pid, result: word, unknown });
+        }
         let length_ms = (self.length() * 1000.0).round() as u32;
         let humans = lobby.iter().filter(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote)).count();
         let r = w3g::Replay {
@@ -448,20 +435,21 @@ impl Replay {
             game_name: if multiplayer { self.game_name.clone().unwrap_or_else(|| self.map.clone()) } else { "Local Game".into() },
             stat,
             // As the original writes them: a network game's its slot table's slots and
-            // its offered type (`NetRecord`), a game played alone 12 and 1.
+            // its offered type (`NetRecord`); a game played alone 12, and 1, with 8 for a
+            // Blizzard map (`signed`).
             player_count: match &self.net {
+                _ if !multiplayer => 12,
                 Some(n) => n.slots.len() as u32,
-                None if multiplayer => humans.max(1) as u32,
-                None => 12,
+                None => humans.max(1) as u32,
             },
             game_type: match &self.net {
                 Some(n) => n.game_type,
                 None if multiplayer => 9,
-                None => 1,
+                None => 1 | if self.signed { 8 } else { 0 },
             },
-            language: 0,
+            language: LANGUAGE,
             players,
-            start_spots: slots.len() as u8,
+            start_spots: self.net.as_ref().map_or(slots.len() as u8, |n| if n.start_spots == 0 { n.slots.len() as u8 } else { n.start_spots }),
             slots,
             seed: self.seed,
             select_mode: self.net.as_ref().map_or(0, |n| n.layout),
@@ -470,75 +458,78 @@ impl Replay {
         Ok(r.to_bytes())
     }
 
+    /// A replay as the original writes them (.w3g), this game's or the original's: its
+    /// setup from the record (a game played alone whose setup locked the random seed as
+    /// a map loaded directly, from the map as such a game begins), its frames from its
+    /// turns, with the leaves and chat lines between them; the leaves as the record ends,
+    /// after the last turn, play no part.
     pub fn parse(b: &[u8]) -> anyhow::Result<Replay> {
-        use std::io::Read;
-        if b.starts_with(w3_formats::w3g::MAGIC) {
-            return Self::from_w3g(b);
-        }
-        let (body, old) = match (b.strip_prefix(MAGIC_5.as_slice()), b.strip_prefix(MAGIC_4.as_slice())) {
-            (Some(body), _) => (body, false),
-            (None, Some(body)) => (body, true),
-            _ => anyhow::bail!("not a replay this game recorded"),
-        };
-        let mut json = Vec::new();
-        flate2::read::ZlibDecoder::new(body).read_to_end(&mut json)?;
-        if old {
-            let r: Replay4 = postcard::from_bytes(&json)?;
-            return Ok(Replay { map: r.map, lobby: r.lobby, persist: r.persist, campaign: r.campaign, version: r.version, flags: r.flags, local_name: r.local_name, frames: r.frames, seed: 0, map_stat: None, game_name: None, net: None });
-        }
-        Ok(postcard::from_bytes(&json)?)
-    }
-
-    /// A replay as the original's file, this game's or the original's: its setup from
-    /// the private record when there is one, else from the original's record.
-    fn from_w3g(b: &[u8]) -> anyhow::Result<Replay> {
         use w3_formats::w3g;
         let r = w3g::Replay::parse(b)?;
         let stat = w3_net::GameStat::parse(&r.stat)?;
-        let private = r.records.iter().find_map(|rec| match rec {
-            w3g::Record::Other { id: SETUP_RECORD, body } => body.get(4..),
-            _ => None,
-        });
-        let s: Setup = match private {
-            Some(setup) => postcard::from_bytes(setup)?,
-            None => Self::setup_of(&r, &stat),
-        };
         let multiplayer = r.flags & 0x8000 != 0;
+        let flags = stat.settings >> 8;
+        let loaded = !multiplayer && flags & LOCK_RANDOM_SEED != 0;
         let mut frames: Vec<Frame> = Vec::new();
+        let (mut leaves, mut chat) = (Vec::new(), Vec::new());
         for rec in &r.records {
-            if let w3g::Record::Checksum(c) = rec {
-                if let (Some(f), true) = (frames.last_mut(), c.len() == 4) {
-                    f.checksum = Some(u32::from_le_bytes([c[0], c[1], c[2], c[3]]));
-                }
-                continue;
-            }
-            let w3g::Record::Turn { ms, actions } = rec else { continue };
-            // A network game's turn is played as its message came (its net module part).
-            let turn = multiplayer.then(|| (*ms, actions.iter().filter(|(p, _)| *p != 0).cloned().collect()));
-            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(Vec::new()), turn, checksum: None };
-            for (pid, bytes) in actions {
-                if *pid == 0 {
-                    if bytes.len() == 5 && bytes[0] == STEP_ACTION {
-                        f.dt = f32::from_le_bytes(bytes[1..5].try_into().unwrap());
+            match rec {
+                w3g::Record::Checksum(c) => {
+                    if let (Some(f), true) = (frames.last_mut(), c.len() == 4) {
+                        f.checksum = Some(u32::from_le_bytes([c[0], c[1], c[2], c[3]]));
                     }
-                    continue;
                 }
-                f.actions.get_or_insert_with(Vec::new).push((pid - 1, bytes.clone()));
+                w3g::Record::Leave { pid, result, .. } => {
+                    let player = r.slots.iter().position(|s| s.pid == *pid).unwrap_or(0) as u8;
+                    leaves.push(Leave { pid: *pid, player, word: *result });
+                }
+                // (A line of the setup's chat has no scope and no part in the game.)
+                w3g::Record::Chat { pid, scope: Some(to), text } => chat.push((*pid, *to, text.clone())),
+                w3g::Record::Turn { ms, actions } => {
+                    // A network game's turn is played as its message came (its net module part).
+                    let turn = multiplayer.then(|| (*ms, actions.clone()));
+                    let actions = actions.iter().filter(|(p, _)| *p != 0).map(|(pid, bytes)| (pid - 1, bytes.clone())).collect();
+                    frames.push(Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn, checksum: None, leaves: std::mem::take(&mut leaves), chat: std::mem::take(&mut chat) });
+                }
+                _ => {}
             }
-            frames.push(f);
         }
         let map_stat = Some(MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
-        let game_name = multiplayer.then(|| r.game_name.clone());
-        Ok(Replay { map: s.map, lobby: s.lobby, persist: s.persist, campaign: s.campaign, version: s.version, flags: s.flags, local_name: s.local_name, frames, seed: r.seed, map_stat, game_name, net: None })
+        let slots = r.slots.iter().map(|s| NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
+        let net = NetRecord { game_type: r.game_type, layout: r.select_mode, slots, stat: if multiplayer { r.stat.clone() } else { Vec::new() }, start_spots: r.start_spots };
+        // The local player's leaving as the record closes: its word and the games counted.
+        let (left, games) = r
+            .records
+            .iter()
+            .rev()
+            .find_map(|rec| match rec {
+                w3g::Record::Leave { reason: LEFT_LOCAL, pid, result, unknown } if *pid == r.host.pid => Some((*result, unknown.saturating_sub((*result == LEFT_OVER) as u32))),
+                _ => None,
+            })
+            .unwrap_or((0, 0));
+        Ok(Replay {
+            map: stat.map_path.clone(),
+            lobby: (!loaded).then(|| Self::lobby_of(&r)),
+            campaign: false,
+            version: if &r.product == b"PX3W" { 1 } else { 0 },
+            flags,
+            local_name: Some(r.host.name.clone()),
+            frames,
+            seed: r.seed,
+            map_stat,
+            game_name: multiplayer.then(|| r.game_name.clone()),
+            net: Some(net),
+            signed: r.game_type & 8 != 0,
+            left,
+            games,
+        })
     }
 
-    /// A game's setup from the original's record: its map as its description names it,
-    /// its slots (the host's on this computer; races by their bits, human 1, orc 2,
-    /// night elf 4, undead 8, random 0x20), and its advanced options eight bits up in
-    /// the settings word.
-    fn setup_of(r: &w3_formats::w3g::Replay, stat: &w3_net::GameStat) -> Setup {
-        let lobby = r
-            .slots
+    /// A game's setup screen from the original's record: its slots (the host's on this
+    /// computer; races by their bits, human 1, orc 2, night elf 4, undead 8, random
+    /// 0x20).
+    fn lobby_of(r: &w3_formats::w3g::Replay) -> Vec<crate::LobbySlot> {
+        r.slots
             .iter()
             .enumerate()
             .map(|(k, s)| {
@@ -561,8 +552,7 @@ impl Replay {
                 };
                 crate::LobbySlot { player: k as u8, fill, name, race, team: s.team as i32, color: s.color as i32, handicap: s.handicap as f32, difficulty: s.ai as i32 }
             })
-            .collect();
-        Setup { map: stat.map_path.clone(), lobby: Some(lobby), persist: Default::default(), campaign: false, version: if &r.product == b"PX3W" { 1 } else { 0 }, flags: stat.settings >> 8, local_name: Some(r.host.name.clone()) }
+            .collect()
     }
 
     /// The game's length in seconds.
@@ -579,15 +569,19 @@ pub struct Recorder {
     pending: Vec<(u8, Command)>,
     /// Those commands as actions.
     actions: Vec<(u8, Vec<u8>)>,
+    /// The chat lines since the last step, in a game played alone.
+    chat: Vec<(u8, u32, String)>,
     codec: crate::actions::Codec,
 }
 
 impl Recorder {
     pub fn new(replay: Replay) -> Recorder {
-        Recorder { replay, pending: Vec::new(), actions: Vec::new(), codec: Default::default() }
+        Recorder { replay, pending: Vec::new(), actions: Vec::new(), chat: Vec::new(), codec: Default::default() }
     }
 
-    /// Notes a command, as the world stands before it is carried out.
+    /// Notes a command, as the world stands before it is carried out: its actions, and a
+    /// chat line (one carried out here, in a game played alone) as the record's line
+    /// from the player's network id.
     /// (A network game's turn is noted whole as it is played, `step`.)
     pub fn command(&mut self, w: &crate::world::World, player: u8, c: Command) {
         let bytes = self.codec.encode(w, player, &c);
@@ -597,15 +591,28 @@ impl Recorder {
                 None => self.actions.push((player, bytes)),
             }
         }
+        if let Command::Chat { text, to, .. } = &c {
+            self.chat.push((player + 1, *to as u32, text.clone()));
+        }
         self.pending.push((player, c));
     }
 
-    /// Closes a frame of `dt` seconds: a network turn's message as it came (`turn`), and
-    /// the game's checksum for it.
-    pub fn step(&mut self, dt: f32, turn: Option<(u16, Vec<(u8, Vec<u8>)>)>, checksum: u32) {
+    /// Closes a frame of `dt` seconds and the game's checksum for it: the frame played
+    /// (`from`, a network turn's or a replay's) as it came, its actions, turn, leaves,
+    /// and chat; else the commands noted since the last.
+    pub fn step(&mut self, dt: f32, from: Option<&Frame>, checksum: u32) {
         let commands = std::mem::take(&mut self.pending);
-        let actions = std::mem::take(&mut self.actions);
-        self.replay.frames.push(Frame { dt, commands, actions: Some(actions), turn, checksum: Some(checksum) });
+        let mut actions = std::mem::take(&mut self.actions);
+        let mut chat = std::mem::take(&mut self.chat);
+        let (mut turn, mut leaves) = (None, Vec::new());
+        if let Some(f) = from {
+            if let Some(a) = &f.actions {
+                actions = a.clone();
+            }
+            chat.extend(f.chat.iter().cloned());
+            (turn, leaves) = (f.turn.clone(), f.leaves.clone());
+        }
+        self.replay.frames.push(Frame { dt, commands, actions: Some(actions), turn, checksum: Some(checksum), leaves, chat });
     }
 }
 
@@ -675,56 +682,87 @@ mod tests {
         assert!(r.network_head().is_none());
     }
 
-    /// A replay written as the original's file reads back as it was: its setup (from
-    /// the original's record), each frame's exact length, and each command.
+    /// A game played alone is written as the original writes one, all of it in the
+    /// original's records, and reads back as it was: its setup from the record, each
+    /// frame's length and actions, its chat line before the turn after it, and the local
+    /// player's leaving at the end.
     #[test]
     fn replays_keep_everything_in_the_originals_file() {
         let lobby = vec![
             crate::LobbySlot { player: 0, fill: crate::SlotFill::Local, name: Some("Jack".into()), race: Some(1), team: 0, color: 0, handicap: 100.0, difficulty: 1 },
             crate::LobbySlot { player: 1, fill: crate::SlotFill::Computer, name: None, race: None, team: 1, color: 1, handicap: 90.0, difficulty: 2 },
         ];
+        let train = vec![0x10, 0x42, 0, 0x61, 0x65, 0x70, 0x68, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
         let r = Replay {
             map: "Maps\\(2)BootyBay.w3m".into(),
             lobby: Some(lobby),
             version: 1,
-            flags: 0x64802,
+            flags: 0x648,
             seed: 0x35000000,
+            signed: true,
             frames: vec![
-                Frame { dt: 0.0166, commands: vec![], actions: None, turn: None, checksum: None },
-                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })], actions: None, turn: None, checksum: None },
-                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *crate::codes::unit::id::PEASANT })], actions: None, turn: None, checksum: None },
+                Frame { dt: 0.017, actions: Some(vec![]), checksum: Some(5), ..Default::default() },
+                Frame { dt: 0.016, actions: Some(vec![(0, train.clone())]), chat: vec![(1, 0, "hi".into())], checksum: Some(6), ..Default::default() },
             ],
             ..Default::default()
         };
         let b = r.to_bytes().unwrap();
-        assert!(b.starts_with(w3_formats::w3g::MAGIC));
-        let mut back = Replay::parse(&b).unwrap();
-        // The commands come back as their private actions; read them as play does.
-        for f in &mut back.frames {
-            for (p, bytes) in f.actions.take().unwrap_or_default() {
-                let mut k = 0;
-                while k < bytes.len() {
-                    assert_eq!(bytes[k], COMMAND_ACTION);
-                    let n = u16::from_le_bytes([bytes[k + 1], bytes[k + 2]]) as usize;
-                    f.commands.push((p, postcard::from_bytes(&bytes[k + 3..k + 3 + n]).unwrap()));
-                    k += 3 + n;
-                }
-            }
-        }
-        // The setup comes back from the original's record: the host's name as the local
-        // one, each frame's checksum, and the map's description.
-        assert_eq!(back.local_name.take().as_deref(), Some("Jack"));
-        assert_eq!(back.map_stat.take().map(|m| m.path), Some("Maps\\(2)BootyBay.w3m".to_string()));
-        for f in &mut back.frames {
-            assert_eq!(f.checksum.take(), Some(0));
-        }
-        assert_eq!(postcard::to_allocvec(&back).unwrap(), postcard::to_allocvec(&r).unwrap());
         let w = w3_formats::w3g::Replay::parse(&b).unwrap();
-        assert_eq!((w.seed, w.slots.len(), w.host.name.as_str(), w.game_type, w.player_count), (0x35000000, 2, "Jack", 1, 12));
-        // No private setup record for a game from a setup screen; the game ends with the
-        // local player's leaving.
-        assert!(!w.records.iter().any(|r| matches!(r, w3_formats::w3g::Record::Other { id: SETUP_RECORD, .. })));
-        assert!(matches!(w.records.last(), Some(w3_formats::w3g::Record::Leave { reason: 12, pid: 1, result: 7, unknown: 1 })));
+        assert_eq!((w.seed, w.slots.len(), w.host.name.as_str(), w.game_type, w.player_count, w.language), (0x35000000, 2, "Jack", 9, 12, LANGUAGE));
+        use w3_formats::w3g::Record as R;
+        assert!(matches!(&w.records[3..], [R::Turn { ms: 17, .. }, R::Checksum(_), R::Chat { pid: 1, scope: Some(0), .. }, R::Turn { ms: 16, .. }, R::Checksum(_), R::Leave { reason: 12, pid: 1, result: 7, unknown: 1 }]));
+        let back = Replay::parse(&b).unwrap();
+        assert_eq!((back.local_name.as_deref(), back.map_stat.map(|m| m.path)), (Some("Jack"), Some("Maps\\(2)BootyBay.w3m".to_string())));
+        assert_eq!((back.flags, back.signed, back.lobby.map(|l| l.len())), (0x648, true, Some(2)));
+        let f = &back.frames[1];
+        assert_eq!((f.dt, &f.actions, &f.chat, f.checksum), (0.016, &Some(vec![(0, train)]), &vec![(1, 0, "hi".to_string())], Some(6)));
+        assert!(back.frames.iter().all(|f| f.leaves.is_empty()));
+    }
+
+    /// A map loaded directly is written with the original's record of one (no setup
+    /// screen: its settings MAP_LOCK_RANDOM_SEED alone, the record's slots), and reads
+    /// back as such a game, without a setup screen and by the record's local name.
+    #[test]
+    fn a_map_loaded_directly_reads_back_so() {
+        let slot = |pid: u8, computer: bool| NetRecordSlot { pid, download: 100, status: 2, computer, team: computer as u8, color: computer as u8, race: 0x60, ai: 1, handicap: 100 };
+        let r = Replay {
+            map: "Maps\\Test\\bbq.w3x".into(),
+            flags: LOCK_RANDOM_SEED,
+            local_name: Some("WorldEdit".into()),
+            net: Some(NetRecord { game_type: 1, layout: 0, slots: vec![slot(1, false), slot(0, true)], stat: Vec::new(), start_spots: 2 }),
+            frames: vec![Frame { dt: 0.1, actions: Some(vec![]), ..Default::default() }],
+            ..Default::default()
+        };
+        let b = r.to_bytes().unwrap();
+        let w = w3_formats::w3g::Replay::parse(&b).unwrap();
+        assert_eq!((w.host.pid, w.host.name.as_str(), w.game_type, w.player_count, w.slots.len()), (1, "WorldEdit", 1, 12, 2));
+        assert_eq!(w3_net::GameStat::parse(&w.stat).unwrap().settings, 0x800002);
+        let back = Replay::parse(&b).unwrap();
+        assert!(back.lobby.is_none());
+        assert_eq!(back.local_name.as_deref(), Some("WorldEdit"));
+    }
+
+    /// A network game's leaves come before the turn after them, as the other player's
+    /// (reason 1 and the word PLAYERLEFT carried), and read back so; as the record ends,
+    /// a leave for each player still in it.
+    #[test]
+    fn a_network_games_leaves_keep() {
+        let slot = |player: u8, fill: crate::SlotFill| crate::LobbySlot { player, fill, name: Some(format!("P{player}")), race: None, team: player as i32, color: player as i32, handicap: 100.0, difficulty: 1 };
+        let r = Replay {
+            map: "Maps\\(2)BootyBay.w3m".into(),
+            lobby: Some(vec![slot(0, crate::SlotFill::Local), slot(1, crate::SlotFill::Remote), slot(2, crate::SlotFill::Remote)]),
+            frames: vec![
+                Frame { dt: 0.1, actions: Some(vec![]), turn: Some((100, vec![])), ..Default::default() },
+                Frame { dt: 0.1, actions: Some(vec![]), turn: Some((100, vec![])), leaves: vec![Leave { pid: 2, player: 1, word: 7 }], ..Default::default() },
+            ],
+            ..Default::default()
+        };
+        let b = r.to_bytes().unwrap();
+        let w = w3_formats::w3g::Replay::parse(&b).unwrap();
+        use w3_formats::w3g::Record as R;
+        assert!(matches!(&w.records[5..], [R::Leave { reason: 1, pid: 2, result: 7, .. }, R::Turn { .. }, R::Checksum(_), R::Leave { reason: 12, pid: 1, .. }, R::Leave { reason: 12, pid: 3, .. }]));
+        let back = Replay::parse(&b).unwrap();
+        assert_eq!(back.frames[1].leaves, vec![Leave { pid: 2, player: 1, word: 7 }]);
     }
 
     /// A network game's turn with a trigger's resumption (the original's 0x62 from its
@@ -737,7 +775,7 @@ mod tests {
         let r = Replay {
             map: "Maps\\(2)BootyBay.w3m".into(),
             lobby: Some(vec![slot(0, crate::SlotFill::Local), slot(1, crate::SlotFill::Remote)]),
-            frames: vec![Frame { dt: 0.1, commands: vec![], actions: Some(vec![(1, block.clone())]), turn: Some((100, vec![(2, block.clone())])), checksum: None }],
+            frames: vec![Frame { dt: 0.1, actions: Some(vec![(1, block.clone())]), turn: Some((100, vec![(2, block.clone())])), ..Default::default() }],
             ..Default::default()
         };
         let back = Replay::parse(&r.to_bytes().unwrap()).unwrap();

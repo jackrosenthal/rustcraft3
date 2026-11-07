@@ -7,7 +7,10 @@ use std::path::Path;
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
     let a: Vec<String> = std::env::args().collect();
-    let replay = w3_formats::w3g::Replay::parse(&std::fs::read(&a[2])?)?;
+    let bytes = std::fs::read(&a[2])?;
+    let replay = w3_formats::w3g::Replay::parse(&bytes)?;
+    // The game as the port reads it: a map loaded directly when the record says so.
+    let parsed = w3_game::replay::Replay::parse(&bytes)?;
     let stat = w3_net::GameStat::parse(&replay.stat)?;
     println!("version {} build {}, map {}, seed {:08x}, settings {:08x}, {} slots", replay.version, replay.build, stat.map_path, replay.seed, stat.settings, replay.slots.len());
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
@@ -50,22 +53,33 @@ fn main() -> anyhow::Result<()> {
             w3_game::LobbySlot { player: k as u8, fill, name, race, team: s.team as i32, color: s.color as i32, handicap: s.handicap as f32, difficulty: s.ai as i32 }
         })
         .collect();
-    // Its computers' objects made as the map loads, as a network game's lobby starts it.
-    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
+    // Its computers' objects made as the map loads, as a network game's lobby starts it
+    // (or as a map loaded directly does).
+    // (W3G_LOBBY: begun from the record's slots, as a setup screen's game, whatever it says.)
+    let loaded = parsed.lobby.is_none() && std::env::var("W3G_LOBBY").is_err();
+    let start = if loaded { w3_game::Start::without_setup(&map_info, false) } else { w3_game::Start::of(&lobby) };
+    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, start)?;
     g.config()?;
     g.world.seed = replay.seed;
     // The settings word holds the advanced options eight bits up.
     let (flags, _speed) = war3::net::from_settings(stat.settings);
-    g.start_lobby(&lobby, flags)?;
+    if loaded {
+        // A map loaded directly, as the original's -loadfile begins it, its player the
+        // record's.
+        g.start_without_setup(false)?;
+        let local = g.world.local_player as usize;
+        if let Some(p) = g.world.players.get_mut(local) {
+            p.name = replay.host.name.clone();
+        }
+    } else {
+        g.start_lobby(&lobby, flags)?;
+    }
     g.world.keepalive_modules = war3::net::data_modules(&data.chain);
-    // W3G_WRITE names a file for the port's own replay of the game as it plays it.
+    // W3G_WRITE names a file for the port's own replay of the game as it plays it, with
+    // the record's setup.
     let write = std::env::var("W3G_WRITE").ok();
     if write.is_some() {
-        let map_stat = Some(w3_game::replay::MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
-        // The network game's setup as the record has it.
-        let slots = replay.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
-        let net = (replay.flags & 0x8000 != 0).then(|| w3_game::replay::NetRecord { game_type: replay.game_type, layout: replay.select_mode, slots, stat: replay.stat.clone(), start_spots: replay.start_spots });
-        g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: stat.map_path.clone(), lobby: Some(lobby.clone()), version: 1, flags, seed: replay.seed, map_stat, net, ..Default::default() }));
+        g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { lobby: Some(lobby.clone()).filter(|_| !loaded), frames: Vec::new(), ..parsed.clone() }));
     }
     // A network game's turns play as the client plays them (`Game::play_turn`); each
     // checksum record follows the turn whose state it sums.
@@ -78,7 +92,7 @@ fn main() -> anyhow::Result<()> {
                 let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
                 // W3G_NONET: the turns as a game played alone takes them, no message.
                 let turn = std::env::var("W3G_NONET").is_err().then(|| (*ms, actions.clone()));
-                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn, checksum: None };
+                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, actions: Some(acts), turn, ..Default::default() };
                 let (_, keepalive) = g.play_turn(&frame);
                 last = Some(keepalive);
             }
@@ -105,11 +119,7 @@ fn main() -> anyhow::Result<()> {
         None => println!("checksums agree for all {checked} of {turn} turns"),
     }
     if let (Some(path), Some(r)) = (write, g.recorder.take()) {
-        let mut r = r.replay;
-        // The record as the original's: a network game's host and its name.
-        r.local_name = Some(replay.host.name.clone());
-        r.game_name = Some(replay.game_name.clone());
-        std::fs::write(path, r.to_bytes()?)?;
+        std::fs::write(path, r.replay.to_bytes()?)?;
     }
     Ok(())
 }

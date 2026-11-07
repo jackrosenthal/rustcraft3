@@ -523,14 +523,12 @@ impl Game {
     /// The game as a saved game in the original's format (`.w3z`, its recorded-game
     /// container with the header the original's 1.27 writes; a Reign of Chaos game's
     /// product as its replays').  Its header from the game's record: the map's path and
-    /// checksums (a map inside the game's archives, a campaign's mission, as
-    /// `archive_map_stat` reckons them), and a network game's description
-    /// (`Replay::network_head`), else a game played alone's (the local player's name,
-    /// the speed fast).
+    /// checksums, and a network game's description (`Replay::network_head`), else a
+    /// game played alone's (the local player's name, the speed fast).
     pub fn save_files(&self) -> anyhow::Result<Vec<u8>> {
         use anyhow::Context;
         let record = self.recorder.as_ref().map(|r| &r.replay);
-        let ms = record.and_then(|r| r.map_stat.clone().or_else(|| self.archive_map_stat(&r.map))).context("the map's checksums are not known")?;
+        let ms = record.and_then(|r| r.map_stat.clone()).context("the map's checksums are not known")?;
         let expansion = record.is_none_or(|r| r.version != 0);
         let network = record.and_then(|r| r.network_head());
         let stat = match &network {
@@ -540,24 +538,17 @@ impl Game {
                 w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes()
             }
         };
+        let mission = record.is_some_and(|r| !std::path::Path::new(&r.map).is_file());
         let head = SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network };
         let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
-        Ok(self.write_save_fresh(&head).to_file(&header))
-    }
-
-    /// A map inside the game's archives (a campaign's mission, `map` as the archives
-    /// name it) as a save's header names it: that name, its playable size, and its
-    /// checksums over the game's scripts, as a map file's (`war3::replays::map_stat`).
-    /// Provisional: the original's save of a mission not yet read.
-    fn archive_map_stat(&self, map: &str) -> Option<crate::replay::MapStat> {
-        let name = map.replace('/', "\\");
-        let chain = &self.world.chain;
-        let bytes = chain.read(&name).ok()?;
-        let archive = w3_mpq::Archive::from_bytes(&name, bytes.clone()).ok()?;
-        let info = w3_formats::map::MapInfo::parse(&archive.read("war3map.w3i").ok()?).ok()?;
-        let (common, blizzard) = (chain.read("Scripts\\common.j").unwrap_or_default(), chain.read("Scripts\\blizzard.j").unwrap_or_default());
-        let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
-        Some(crate::replay::MapStat { path: name, width: info.playable_width as u16, height: info.playable_height as u16, xoro: checksums.xoro, sha1: checksums.sha1 })
+        let mut save = self.write_save_fresh(&head);
+        // (A mission's game type 9, a Blizzard map's, where a custom map alone has 1: a
+        // map inside the game's archives; read, the original's save of NightElfX01 from
+        // its menu, its map's path and checksums as `war3::replays::map_stat` has them.)
+        if mission {
+            save.info_words[1] = 9;
+        }
+        Ok(save.to_file(&header))
     }
 
     /// A save from the port's state alone, without a template: the header (`head`'s map

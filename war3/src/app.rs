@@ -659,8 +659,8 @@ impl ApplicationHandler for App {
                                     let map = save.map.clone();
                                     let path = self.data.map_of_save(&save);
                                     // (A campaign's mission is a map inside the game's
-                                    // archives, as its save names it; provisional, the
-                                    // original's save of one not yet read.)
+                                    // archives, as its save names it: read, the original's
+                                    // save of NightElfX01, Maps\FrozenThrone\Campaign\.)
                                     self.data.campaign_game.set(!path.is_file() && self.data.chain.contains(&map));
                                     glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
                                     glue.show_loading(&mut r.assets);

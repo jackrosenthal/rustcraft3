@@ -44,9 +44,10 @@ pub enum Event {
 }
 
 /// The net client's id, as REQJOIN carries it (its +0xc, which `FUN_6f98a740` copies to
-/// the request's +0x1a) and a leave record its last word: 2 in each the original sent
-/// (measured: its REQJOIN, and adpeople.w3g's last leave record).
-pub const SESSION: u32 = 2;
+/// the request's +0x1a) and a leave record its last word: it counts the program's games,
+/// 1 in a fresh process (measured: the original's REQJOIN from a fresh process, and 2
+/// from one that had played; the port does not count them here yet).
+pub const SESSION: u32 = 1;
 
 /// How long a player leaving waits for the host's answer (`Net::NetClient::vf7_6f986990`
 /// waits 5000 ms for it).

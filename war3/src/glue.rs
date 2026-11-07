@@ -422,7 +422,16 @@ impl Glue {
                 if let Some(c) = self.persist.borrow_mut().custom_campaign.as_mut() {
                     *c = crate::data::load_custom_campaign(&c.name, c.version);
                 }
-                self.tree.set_visible("MissionSelectFrame", false);
+                let custom = self.campaigns.custom.is_some();
+                // The custom campaign's title replaces the logo and difficulty
+                // controls (the difficulty was chosen before opening the campaign).
+                self.tree.set_visible("MissionSelectFrame", custom);
+                self.tree.set_visible("CampaignSelectFrame", !custom);
+                if custom {
+                    let name = self.campaigns.list.first().and_then(|c| c.as_ref()).map_or("", |c| c.name.as_str());
+                    self.tree.set_text("MissionName", name);
+                    self.tree.set_text("MissionNameHeader", "");
+                }
                 // SlidingDoors (Campaign-Fade) fades to black when a mission starts.
                 self.tree.set_visible("SlidingDoors", false);
                 if let Some(logo) = db.skin_value("MainMenuLogo") {
@@ -1194,8 +1203,7 @@ impl Glue {
             (Screen::Campaign, "DifficultySelect") => {
                 let sel = self.tree.get("DifficultySelect").map_or(0, |i| self.tree.frames[i].selected);
                 let d = if sel == 1 { 2 } else { 1 };
-                // A custom campaign's goes to its own file (provisional: the original's
-                // campaign screen with a custom campaign is not measured).
+                // Custom campaigns choose their difficulty before this screen opens.
                 let mut p = self.persist.borrow_mut();
                 match p.custom_campaign.as_mut() {
                     Some(c) => {

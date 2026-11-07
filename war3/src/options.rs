@@ -18,6 +18,13 @@ pub struct Options {
     pub tooltips: bool,
     pub healthbars: bool,
     pub formationtoggle: bool,
+    pub formations: bool,
+    #[serde(rename = "allyFilter")]
+    pub ally_filter: u32,
+    #[serde(rename = "creepFilter")]
+    pub creep_filter: bool,
+    #[serde(rename = "terrainFilter")]
+    pub terrain_filter: bool,
     pub subgrouporder: bool,
     pub customkeys: bool,
     pub netgameport: u32,
@@ -64,6 +71,10 @@ impl Default for Options {
             tooltips: true,
             healthbars: false,
             formationtoggle: true,
+            formations: true,
+            ally_filter: 1,
+            creep_filter: true,
+            terrain_filter: true,
             subgrouporder: false,
             customkeys: false,
             netgameport: 6112,
@@ -567,10 +578,13 @@ mod tests {
     /// Settings go to the registry file and back as they were.
     #[test]
     fn settings_keep_through_the_registry_file() {
-        let o = Options { mousescroll: 70, healthbars: true, musicvolume: 12, chatsupport: 2, lanname: "Jack \"J\"".into(), ..Default::default() };
+        let o = Options { mousescroll: 70, healthbars: true, musicvolume: 12, chatsupport: 2, lanname: "Jack \"J\"".into(), ally_filter: 2, creep_filter: false, terrain_filter: false, formations: false, ..Default::default() };
         let reg = o.to_reg();
         assert!(reg.contains("[HKEY_CURRENT_USER\\Software\\Blizzard Entertainment\\Warcraft III\\Gameplay]"));
         assert!(reg.contains("\"mousescroll\"=dword:00000046"));
+        assert!(reg.contains("\"allyFilter\"=dword:00000002"));
+        assert!(reg.contains("\"creepFilter\"=dword:00000000"));
+        assert!(reg.contains("\"terrainFilter\"=dword:00000000"));
         let back = Options::from_reg(&reg);
         assert_eq!(back, o);
     }

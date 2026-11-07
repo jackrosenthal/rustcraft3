@@ -486,18 +486,21 @@ impl ApplicationHandler for App {
                         Some(p) => crate::glue::GlueAction::PlayReplay(Box::new(p.replay.clone())),
                         None => crate::glue::GlueAction::Restart(std::path::PathBuf::from(&scene.map_path), scene.lobby.clone()),
                     });
+                    // LoadGame opens a map archive when its name does not end in .w3z.
                     // A save that cannot load stays in the game with the reason.
+                    let mut map_load = None;
                     if let Some(file) = scene.load_requested.take() {
-                        match crate::saveload::load_error(&self.data, &r.assets.frames, &file) {
-                            Some(text) => {
-                                if let Some(h) = scene.hud.as_mut() {
-                                    h.unit_message(&text, 0.0, 0.0, 10.0);
-                                }
+                        if !crate::saveload::is_save(&file) {
+                            map_load = Some(crate::glue::GlueAction::Restart(file, None));
+                        } else if let Some(text) = crate::saveload::load_error(&self.data, &r.assets.frames, &file) {
+                            if let Some(h) = scene.hud.as_mut() {
+                                h.unit_message(&text, 0.0, 0.0, 10.0);
                             }
-                            None => scene.load_requested = Some(file),
+                        } else {
+                            scene.load_requested = Some(file);
                         }
                     }
-                    if let Some(action) = scene.load_requested.take().map(crate::glue::GlueAction::LoadSave).or(restart) {
+                    if let Some(action) = scene.load_requested.take().map(crate::glue::GlueAction::LoadSave).or(map_load).or(restart) {
                         let mut audio = scene.audio.take();
                         if let Some(a) = audio.as_mut() {
                             a.stop_music();

@@ -9,6 +9,11 @@ use w3_ui::{Draw, FrameDb, FrameTree, Justify, Rect};
 /// Extension of saved games.
 pub const EXTENSION: &str = "w3z";
 
+/// LoadGame treats only this suffix as a saved game (FUN_6f1e7630).
+pub fn is_save(file: &Path) -> bool {
+    file.extension().is_some_and(|e| e.eq_ignore_ascii_case(EXTENSION))
+}
+
 /// Height of a list row and its text, as the map list's (the same list widget).
 const ROW: f32 = 0.0195;
 /// Measured from the original's list.

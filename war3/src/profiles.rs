@@ -10,6 +10,10 @@ use crate::data::{PROFILE_NAME_MAX, Profiles};
 const NEEDS_PROFILE: [&str; 8] = ["SelectProfileButton", "DeleteProfileButton", "ProfileButton", "CampaignButton", "LoadSavedButton", "ViewReplayButton", "SkirmishButton", "CustomCampaignButton"];
 
 const ROW: f32 = 0.0195;
+/// The list's margins at its ends and right side, as the file lists' (measured from
+/// their rows in the original).
+const END: f32 = 0.008;
+const SIDE: f32 = 0.0125;
 
 pub struct ProfilePanel {
     pub open: bool,
@@ -18,6 +22,10 @@ pub struct ProfilePanel {
     pub profiles: Profiles,
     /// The list's rows' rectangle.
     list: Option<Rect>,
+    /// The list's first row shown.
+    scroll: usize,
+    /// Wheel movement short of a notch.
+    wheel_lines: f32,
 }
 
 /// What a click or key asks of the menu.
@@ -32,7 +40,7 @@ pub enum Event {
 
 impl ProfilePanel {
     pub fn new() -> ProfilePanel {
-        ProfilePanel { open: false, text: String::new(), profiles: Profiles::load(), list: None }
+        ProfilePanel { open: false, text: String::new(), profiles: Profiles::load(), list: None, scroll: 0, wheel_lines: 0.0 }
     }
 
     /// The chosen profile's name.
@@ -52,6 +60,12 @@ impl ProfilePanel {
         use w3_ui::FramePoint as P;
         tree.set_point("NewProfileEditBoxText", P::TopLeft, "NewProfileEditBox", P::TopLeft, 0.009, -0.009);
         tree.set_point("NewProfileEditBoxText", P::BottomRight, "NewProfileEditBox", P::BottomRight, -0.009, 0.009);
+        // ListBoxWar3's scroll bar (only its top right point in its template) goes inside
+        // the list's margins, the list's height less them, as the map lists' do
+        // (provisional: these margins are its rows').
+        tree.set_point("ListScrollBar", P::TopRight, "ListBoxWar3", P::TopRight, -SIDE, -END);
+        tree.set_point("ListScrollBar", P::BottomRight, "ListBoxWar3", P::BottomRight, -SIDE, END);
+        self.scroll = 0;
         if self.profiles.entries.is_empty() {
             self.open = true;
         }
@@ -66,10 +80,7 @@ impl ProfilePanel {
         for n in NEEDS_PROFILE {
             tree.set_enabled(n, any);
         }
-        // The list's scroll bar shows only when its rows outgrow it (FUN_6f2ac2a0), not
-        // before the list is laid out.
-        let rows = tree.get("ProfileListContainer").and_then(|i| tree.frames[i].rect).map(|c| ((c.h() - 0.016) / ROW) as usize);
-        tree.set_visible("ListScrollBar", rows.is_some_and(|n| self.profiles.entries.len() > n));
+        self.set_bar(tree);
         // Create needs a name not already taken (FUN_6f2faa30).
         tree.set_enabled("AddProfileButton", !self.text.is_empty() && self.profiles.find(&self.text).is_none());
         tree.set_text("ProfileNameText", &self.name().unwrap_or_default());
@@ -147,13 +158,57 @@ impl ProfilePanel {
         Event::Chosen
     }
 
+    /// The rows the list shows at once, once it is laid out.
+    fn rows(tree: &FrameTree) -> Option<usize> {
+        tree.get("ProfileListContainer").and_then(|i| tree.frames[i].rect).map(|c| ((c.h() - 2.0 * END) / ROW) as usize)
+    }
+
+    /// The rows past the first page, and the first row shown.
+    fn past(&self, tree: &FrameTree) -> (usize, usize) {
+        let past = Self::rows(tree).map_or(0, |n| self.profiles.entries.len().saturating_sub(n));
+        (past, self.scroll.min(past))
+    }
+
+    /// The list's scroll bar shows only when its rows outgrow it, its range 0 to the rows
+    /// past the first page, a row a step, its value from that at the top to 0 at the end
+    /// (FUN_6f2ac2a0, as the map lists' bar); not before the list is laid out.
+    fn set_bar(&self, tree: &mut FrameTree) {
+        let Some(bar) = tree.get("ListScrollBar") else { return };
+        let (past, first) = self.past(tree);
+        tree.frames[bar].visible = past > 0;
+        tree.frames[bar].range = (past > 0).then_some((0.0, past as f32, 1.0));
+        tree.frames[bar].value = (past - first) as f32;
+        tree.layout();
+    }
+
+    /// The pointer moved the list's scroll bar: the list follows it.
+    pub fn follow_bar(&mut self, tree: &mut FrameTree) {
+        let Some(bar) = tree.scrolled.filter(|&b| Some(b) == tree.get("ListScrollBar")) else { return };
+        tree.scrolled = None;
+        let past = tree.frames[bar].range.map_or(0.0, |r| r.1);
+        self.scroll = (past - tree.frames[bar].value).round().max(0.0) as usize;
+    }
+
+    /// The mouse wheel over the open list scrolls it a row a notch, as the map list's.
+    pub fn wheel(&mut self, tree: &mut FrameTree, x: f32, y: f32, lines: f32) {
+        if !self.open || !self.list.is_some_and(|r| r.contains(x, y)) {
+            return;
+        }
+        self.wheel_lines += lines;
+        let notches = self.wheel_lines.trunc();
+        self.wheel_lines -= notches;
+        let (past, first) = self.past(tree);
+        self.scroll = (first as i64 - notches as i64).clamp(0, past as i64) as usize;
+        self.set_bar(tree);
+    }
+
     /// A click in the list chooses that profile (FUN_6f2f97d0).
     pub fn click(&mut self, tree: &mut FrameTree, x: f32, y: f32) -> Option<Event> {
         let r = self.list.filter(|_| self.open)?;
         if !r.contains(x, y) {
             return None;
         }
-        let k = ((r.y1 - y) / ROW) as usize;
+        let k = ((r.y1 - y) / ROW) as usize + self.past(tree).1;
         if k >= self.profiles.entries.len() || self.profiles.current == Some(k) {
             return None;
         }
@@ -169,12 +224,15 @@ impl ProfilePanel {
             return;
         }
         let Some(c) = tree.get("ProfileListContainer").and_then(|i| tree.frames[i].rect) else { return };
-        let inner = Rect { x0: c.x0 + 0.012, x1: c.x1 - 0.0125, y0: c.y0 + 0.008, y1: c.y1 - 0.008 };
+        // The rows stop at the scroll bar while it shows (FUN_6f2ac2a0).
+        let bar = tree.get("ListScrollBar").filter(|&b| tree.is_visible(b)).and_then(|b| tree.frames[b].rect).map_or(0.0, |r| r.w());
+        let inner = Rect { x0: c.x0 + 0.012, x1: c.x1 - SIDE - bar, y0: c.y0 + END, y1: c.y1 - END };
         self.list = Some(inner);
         let font = db.decorate("MasterFont");
         let rows = (inner.h() / ROW) as usize;
-        for (k, e) in self.profiles.entries.iter().enumerate().take(rows) {
-            let y1 = inner.y1 - k as f32 * ROW;
+        let first = self.past(tree).1;
+        for (k, e) in self.profiles.entries.iter().enumerate().skip(first).take(rows) {
+            let y1 = inner.y1 - (k - first) as f32 * ROW;
             let row = Rect { x0: inner.x0, x1: inner.x1, y0: y1 - ROW, y1 };
             let chosen = self.profiles.current == Some(k);
             if chosen {

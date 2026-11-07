@@ -491,6 +491,9 @@ impl Glue {
         if Self::lists(screen) {
             self.skirmish.set_bar(&mut self.tree);
         }
+        if screen == Screen::SinglePlayer {
+            self.profile.sync(&mut self.tree);
+        }
     }
 
     /// The screens with a list of files (maps, saved games, replays, or campaigns).
@@ -789,14 +792,22 @@ impl Glue {
     pub fn pointer_move(&mut self, x: f32, y: f32, size: (u32, u32)) {
         self.pointer = self.to_ui(x, y, size);
         self.tree.pointer_move(self.pointer.0, self.pointer.1);
+        self.follow_bars();
+    }
+
+    /// A list's scroll bar the pointer moved: its list follows it.
+    fn follow_bars(&mut self) {
         self.skirmish.follow_bar(&mut self.tree);
+        self.profile.follow_bar(&mut self.tree);
     }
 
     /// The mouse wheel, in notches (up positive): it scrolls the list under the pointer.
     pub fn wheel(&mut self, lines: f32) {
+        let (x, y) = self.pointer;
         if Self::lists(self.screen) {
-            let (x, y) = self.pointer;
             self.skirmish.wheel(&mut self.tree, x, y, lines);
+        } else if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
+            self.profile.wheel(&mut self.tree, x, y, lines);
         }
     }
 
@@ -814,7 +825,7 @@ impl Glue {
         }
         let (x, y) = self.pointer;
         if self.tree.pointer_down(x, y).is_some() {
-            self.skirmish.follow_bar(&mut self.tree);
+            self.follow_bars();
             return true;
         }
         if self.screen == Screen::Score {
@@ -1335,7 +1346,7 @@ impl Glue {
         }
         // A held scroll bar arrow goes on stepping, and the list follows.
         self.tree.tick(dt);
-        self.skirmish.follow_bar(&mut self.tree);
+        self.follow_bars();
         if self.skirmish.rebuild && self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.rebuild = false;
             self.build(Screen::Skirmish, assets);

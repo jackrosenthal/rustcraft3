@@ -758,10 +758,9 @@ impl Skirmish {
 
     /// The pointer moved the list's scroll bar: the list follows it.
     pub fn follow_bar(&mut self, tree: &mut FrameTree) {
-        let Some(bar) = tree.scrolled.take() else { return };
-        if Some(bar) != self.bar(tree) {
-            return;
-        }
+        // Another list's bar is that list's to follow.
+        let Some(bar) = tree.scrolled.filter(|&b| Some(b) == self.bar(tree)) else { return };
+        tree.scrolled = None;
         let past = tree.frames[bar].range.map_or(0.0, |r| r.1);
         self.scroll = (past - tree.frames[bar].value).round().max(0.0) as usize;
     }

@@ -378,7 +378,15 @@ impl Commands {
         let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
         let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));
         if let (Some(on), Some(off)) = (on, off) {
-            button.autocast = Some((on, off, u.autocast.contains(&a)));
+            let state = u.autocast.contains(&a);
+            button.autocast = Some((on, off, state));
+            // Its tooltip ends, a line apart, with how to turn auto-casting over: Untip
+            // ("Right-click to activate auto-casting.") while off, Unubertip ("... to
+            // deactivate ...") while on, as the original's Repair shows.
+            let hint = level_entry(&ab.list(if state { "Unubertip" } else { "Untip" }), level);
+            if !hint.is_empty() {
+                button.ubertip = format!("{}|n|n{hint}", button.ubertip);
+            }
         }
         let left = u.cooldowns.get(&a).copied().unwrap_or(0.0);
         let total = w.data(a, "Cool", level as u32);

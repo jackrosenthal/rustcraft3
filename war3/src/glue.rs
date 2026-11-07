@@ -473,6 +473,15 @@ impl Glue {
         self.tree.bind_points();
         self.tree.fit_text_widths();
         self.tree.layout();
+        // A list's scroll bar takes its range from the rows on a page, known only now.
+        if Self::lists(screen) {
+            self.skirmish.set_bar(&mut self.tree);
+        }
+    }
+
+    /// The screens with a list of files (maps, saved games, replays, or campaigns).
+    fn lists(screen: Screen) -> bool {
+        matches!(screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad)
     }
 
     /// Plays a model cinematic, then shows `score` (going on to `next`), starts `next`,
@@ -772,9 +781,16 @@ impl Glue {
 
     /// The mouse wheel, in notches (up positive): it scrolls the list under the pointer.
     pub fn wheel(&mut self, lines: f32) {
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) {
+        if Self::lists(self.screen) {
             let (x, y) = self.pointer;
             self.skirmish.wheel(&mut self.tree, x, y, lines);
+        }
+    }
+
+    /// A key for the screen's list (see Skirmish::key).
+    pub fn list_key(&mut self, key: crate::skirmish::ListKey, assets: &Assets) {
+        if Self::lists(self.screen) && self.dialog.is_none() {
+            self.skirmish.key(&mut self.tree, &assets.frames, key);
         }
     }
 
@@ -1271,6 +1287,9 @@ impl Glue {
         for i in self.background.iter_mut().chain(self.layers.iter_mut()) {
             self.anim_sounds.append(&mut i.sound_events);
         }
+        // A held scroll bar arrow goes on stepping, and the list follows.
+        self.tree.tick(dt);
+        self.skirmish.follow_bar(&mut self.tree);
         if self.skirmish.rebuild && self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.rebuild = false;
             self.build(Screen::Skirmish, assets);

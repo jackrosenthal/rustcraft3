@@ -32,6 +32,21 @@ pub enum EntryKind {
     Replay,
 }
 
+/// The keys a list takes (game.dll's key codes 0x205, 0x207, 0x20c, 0x20d with Space,
+/// 0x20a, 0x20b; Backspace and Left, Right, and Enter).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListKey {
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+    Back,
+    Open,
+    Enter,
+}
+
 /// What the Custom Campaign screen shows about the selected campaign.
 #[derive(Clone, Debug, Default)]
 pub struct CampaignSummary {
@@ -164,6 +179,10 @@ const ROW: f32 = 0.0195;
 const MAP_LIST_INSET: f32 = 0.013125;
 const MAP_ROW: f32 = 0.02;
 const ROW_FONT: f32 = 0.012;
+/// The file lists' (saved games, replays, campaigns) margins at their ends and right side,
+/// measured from their rows in the original.
+const FILE_LIST_END: f32 = 0.008;
+const FILE_LIST_SIDE: f32 = 0.0125;
 
 impl Skirmish {
     pub fn new(game_dir: &Path) -> Skirmish {
@@ -391,6 +410,7 @@ impl Skirmish {
                 }
             }
         }
+        Self::place_file_bar(tree);
         // Measured from the original's Load Saved Game screen.
         Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
         self.entries = crate::saveload::saved_games(dir).into_iter().map(|(name, path)| Entry { name, path, kind: EntryKind::Save, players: 0, melee: false }).collect();
@@ -413,6 +433,7 @@ impl Skirmish {
                 tree.frames[i].all_points = true;
             }
         }
+        Self::place_file_bar(tree);
         self.root = dir.to_path_buf();
         self.dir = self.root.clone();
         self.scan();
@@ -460,6 +481,7 @@ impl Skirmish {
                 }
             }
         }
+        Self::place_file_bar(tree);
         Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
         // CViewReplayScreen clears the pane's description row (+0x194 bit 0x80).
         tree.set_visible("MapDescLabel", false);
@@ -540,6 +562,16 @@ impl Skirmish {
     pub fn selected_map(&self) -> Option<PathBuf> {
         let e = self.entries.get(self.selected?)?;
         (e.kind == EntryKind::Map).then(|| e.path.clone())
+    }
+
+    /// A file list's scroll bar (MapListBox's, which has only its top right point) goes
+    /// inside the list's margins, the list's height less them, as CMapList sets the map
+    /// list's (FUN_6f2abb20; provisional: the file lists' margins beside their bar were not
+    /// measured, these are their rows').
+    fn place_file_bar(tree: &mut FrameTree) {
+        use w3_ui::FramePoint as FP;
+        tree.set_point("MapListScrollBar", FP::TopRight, "MapListBox", FP::TopRight, -FILE_LIST_SIDE, -FILE_LIST_END);
+        tree.set_point("MapListScrollBar", FP::BottomRight, "MapListBox", FP::BottomRight, -FILE_LIST_SIDE, FILE_LIST_END);
     }
 
     /// Creates the screen's parts in their containers and fills in the first map.
@@ -667,14 +699,15 @@ impl Skirmish {
     /// The rows the list shows at once, inside its margins.
     fn rows(&self, tree: &FrameTree) -> usize {
         let Some(r) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return 0 };
-        let inset = if self.list_frame == "MapListContainer" { MAP_LIST_INSET } else { 0.008 };
+        let inset = if self.list_frame == "MapListContainer" { MAP_LIST_INSET } else { FILE_LIST_END };
         ((r.h() - 2.0 * inset) / self.row_h()) as usize
     }
 
     /// Sets the scroll bar to the list: its range runs from 0 to the rows past the first
     /// page, a row a step, its value from that at the list's top to 0 at its end
-    /// (FUN_6f2ac2a0).
-    fn set_bar(&self, tree: &mut FrameTree) {
+    /// (FUN_6f2ac2a0).  The rows on a page come from the list's size, so this is set
+    /// again once the screen is laid out.
+    pub fn set_bar(&self, tree: &mut FrameTree) {
         let Some(bar) = self.bar(tree) else { return };
         let past = self.entries.len().saturating_sub(self.rows(tree)) as f32;
         tree.frames[bar].range = (past > 0.0).then_some((0.0, past, 1.0));
@@ -688,8 +721,8 @@ impl Skirmish {
         if Some(bar) != self.bar(tree) {
             return;
         }
-        let past = self.entries.len().saturating_sub(self.rows(tree));
-        self.scroll = past.saturating_sub(tree.frames[bar].value.round().max(0.0) as usize);
+        let past = tree.frames[bar].range.map_or(0.0, |r| r.1);
+        self.scroll = (past - tree.frames[bar].value).round().max(0.0) as usize;
     }
 
     /// The mouse wheel over the list scrolls it a row a notch (provisional: the
@@ -724,9 +757,61 @@ impl Skirmish {
         if row >= self.entries.len() {
             return;
         }
+        self.choose(tree, db, row, self.selected == Some(row));
+    }
+
+    /// A key in the list (CListBoxWar3's FUN_6f2b52b0, CMapList's vf21): Up and Down step
+    /// the selection, Page Up and Page Down (and Space) move it a page, Home and End go to
+    /// the ends, and with nothing selected any of them selects the first row; the list
+    /// scrolls only as far as it must to show it (FUN_6f2b9330).  Backspace and Left go up
+    /// a folder, Right opens the selected folder, and Enter opens it or goes up.
+    pub fn key(&mut self, tree: &mut FrameTree, db: &FrameDb, key: ListKey) {
+        let n = self.entries.len();
+        if n == 0 {
+            return;
+        }
+        let rows = self.rows(tree).max(1);
+        let folder = |s: Option<usize>, up: bool| s.filter(|&s| self.entries[s].kind == EntryKind::Folder || (up && self.entries[s].kind == EntryKind::Up));
+        let row = match (key, self.selected) {
+            (ListKey::Back, _) => {
+                if self.entries[0].kind == EntryKind::Up {
+                    self.choose(tree, db, 0, true);
+                }
+                return;
+            }
+            (ListKey::Open | ListKey::Enter, s) => {
+                if let Some(s) = folder(s, key == ListKey::Enter) {
+                    self.choose(tree, db, s, true);
+                }
+                return;
+            }
+            (ListKey::Home, _) | (_, None) => 0,
+            (ListKey::End, _) => n - 1,
+            (ListKey::Up, Some(s)) => s.saturating_sub(1),
+            (ListKey::Down, Some(s)) => (s + 1).min(n - 1),
+            (ListKey::PageUp, Some(s)) => s.saturating_sub(rows),
+            (ListKey::PageDown, Some(s)) => (s + rows).min(n - 1),
+        };
+        // A step past either end does nothing; Home and End always show their end.
+        if self.selected == Some(row) && !matches!(key, ListKey::Home | ListKey::End) {
+            return;
+        }
+        if self.selected != Some(row) {
+            self.choose(tree, db, row, false);
+        }
+        if row < self.scroll {
+            self.scroll = row;
+        } else if row >= self.scroll + rows {
+            self.scroll = row + 1 - rows;
+        }
+        self.set_bar(tree);
+    }
+
+    /// Selects a row, or opens it when `open` and it is a folder or the parent folder.
+    fn choose(&mut self, tree: &mut FrameTree, db: &FrameDb, row: usize, open: bool) {
         let e = self.entries[row].clone();
         match e.kind {
-            EntryKind::Up | EntryKind::Folder if self.selected == Some(row) => {
+            EntryKind::Up | EntryKind::Folder if open => {
                 self.dir = e.path;
                 self.scan();
                 // A folder opens with its "(up one level)" row chosen.
@@ -787,7 +872,9 @@ impl Skirmish {
         // The map list (CMapList) keeps 0.013125 inside its border on every side, its
         // rows 0.02 tall, and its scroll bar inside the same margins (FUN_6f2abb20).
         let inner = if saves {
-            Rect { x0: container.x0 + 0.012, x1: container.x1 - 0.0125, y0: container.y0 + 0.008, y1: container.y1 - 0.008 }
+            // Its rows stop at its scroll bar while that shows (FUN_6f2ac2a0).
+            let bar = self.bar(tree).filter(|&b| tree.is_visible(b)).and_then(|b| tree.frames[b].rect).map_or(0.0, |r| r.w());
+            Rect { x0: container.x0 + 0.012, x1: container.x1 - FILE_LIST_SIDE - bar, y0: container.y0 + FILE_LIST_END, y1: container.y1 - FILE_LIST_END }
         } else {
             Rect { x0: container.x0 + MAP_LIST_INSET, x1: container.x1 - MAP_LIST_INSET - 0.0165, y0: container.y0 + MAP_LIST_INSET, y1: container.y1 - MAP_LIST_INSET }
         };

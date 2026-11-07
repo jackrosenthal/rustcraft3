@@ -320,7 +320,13 @@ pub struct FrameTree {
     pub scrolled: Option<usize>,
     /// A scroll bar whose thumb the pointer holds.
     pub dragging: Option<usize>,
+    /// A scroll bar arrow the pointer holds: its bar, its step (1 up, -1 down), and the
+    /// time since it last stepped.
+    held: Option<(usize, f32, f32)>,
 }
+
+/// A held scroll bar arrow steps again each 0.125 seconds (CScrollBar's +0x208).
+const SCROLL_REPEAT: f32 = 0.125;
 
 impl FrameTree {
     pub fn new(_aspect: f32) -> FrameTree {
@@ -858,11 +864,18 @@ impl FrameTree {
         if self.frames[hit].def.kind == "SLIDER" {
             self.slide_to(hit, x);
         }
-        // A scroll bar's arrows step it; its thumb is held; a press on its track moves the
-        // thumb there and holds it.
+        // A scroll bar's arrows step it, and go on stepping while held (CScrollBar's vf3
+        // and FUN_6f0ffa60); its thumb is held; a press on its track moves the thumb there
+        // and holds it.
         match self.scroll_bar_part(hit) {
-            Some((bar, "ScrollBarIncButtonFrame")) => self.scroll_by(bar, 1.0),
-            Some((bar, "ScrollBarDecButtonFrame")) => self.scroll_by(bar, -1.0),
+            Some((bar, "ScrollBarIncButtonFrame")) => {
+                self.scroll_by(bar, 1.0);
+                self.held = Some((bar, 1.0, 0.0));
+            }
+            Some((bar, "ScrollBarDecButtonFrame")) => {
+                self.scroll_by(bar, -1.0);
+                self.held = Some((bar, -1.0, 0.0));
+            }
             Some((bar, _)) => self.dragging = Some(bar),
             None if self.frames[hit].def.kind == "SCROLLBAR" => {
                 self.scroll_to(hit, y);
@@ -876,6 +889,20 @@ impl FrameTree {
             self.scrolled = Some(hit);
         }
         Some(hit)
+    }
+
+    /// Time passes: a held scroll bar arrow steps again once it has been held another
+    /// SCROLL_REPEAT, at most once a frame (FUN_6f0ffa80).
+    pub fn tick(&mut self, dt: f32) {
+        let Some((bar, step, t)) = self.held else { return };
+        let t = t + dt;
+        if t > SCROLL_REPEAT {
+            self.scroll_by(bar, step);
+            self.scrolled = Some(bar);
+            self.held = Some((bar, step, t - SCROLL_REPEAT));
+        } else {
+            self.held = Some((bar, step, t));
+        }
     }
 
     /// A slider's SliderMinValue, SliderMaxValue, and SliderStepSize.
@@ -946,6 +973,7 @@ impl FrameTree {
             f.pushed = false;
         }
         self.dragging = None;
+        self.held = None;
         if let Some(p) = self.popup_changed.take() {
             return Some(p);
         }

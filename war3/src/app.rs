@@ -288,6 +288,23 @@ impl ApplicationHandler for App {
                         }
                     }
                     if let Some(glue) = r.glue.as_mut().filter(|g| g.interactive()) {
+                        // A list's keys (game.dll's FUN_6f090a80 names them).
+                        use crate::skirmish::ListKey as L;
+                        let list = match event.physical_key {
+                            PhysicalKey::Code(KeyCode::ArrowUp) => Some(L::Up),
+                            PhysicalKey::Code(KeyCode::ArrowDown) => Some(L::Down),
+                            PhysicalKey::Code(KeyCode::PageUp) => Some(L::PageUp),
+                            PhysicalKey::Code(KeyCode::PageDown | KeyCode::Space) => Some(L::PageDown),
+                            PhysicalKey::Code(KeyCode::Home) => Some(L::Home),
+                            PhysicalKey::Code(KeyCode::End) => Some(L::End),
+                            PhysicalKey::Code(KeyCode::Backspace | KeyCode::ArrowLeft) => Some(L::Back),
+                            PhysicalKey::Code(KeyCode::ArrowRight) => Some(L::Open),
+                            PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) => Some(L::Enter),
+                            _ => None,
+                        };
+                        if let Some(k) = list {
+                            glue.list_key(k, &r.assets);
+                        }
                         if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
                             glue.key('\u{1b}', &mut r.assets);
                         } else if let Some(text) = event.text.as_ref() {

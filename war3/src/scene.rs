@@ -14,6 +14,7 @@ use w3_render::texture::TextureCache;
 
 use crate::data::{DataSet, GameData, PRIORITY_MAP};
 use w3_game::codes;
+use crate::presentation::{Presentation, Snapshot};
 
 pub struct Assets {
     pub textures: TextureCache,
@@ -371,6 +372,8 @@ pub struct Scene {
     pub playback: Option<w3_game::replay::Playback>,
     /// Game time not yet stepped in a game played alone, under a millisecond.
     step_owed: f32,
+    /// Display authoritative LAN turns on the original game clock.
+    presentation: Presentation,
     /// Whether the game ended by its script (EndGame: the victory or defeat dialog's
     /// button) rather than through the game menu, for the replay's last leave.
     left_by_script: bool,
@@ -950,7 +953,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options, options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), step_owed: 0.0, left_by_script: false, menu_noted: false, dialog_noted: false, net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir().unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options, options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), step_owed: 0.0, presentation: Presentation::default(), left_by_script: false, menu_noted: false, dialog_noted: false, net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1855,7 +1858,7 @@ impl Scene {
             if self.time - start > 1.1 {
                 continue;
             }
-            let Some((x, y)) = w.widget_pos(h) else { continue };
+            let Some((x, y)) = w.unit(h).map(|u| { let p = self.unit_pose(w, u).0; (p.x, p.y) }).or_else(|| w.widget_pos(h)) else { continue };
             let scale = w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).map_or(1.0, |o| o.real("scale"));
             let size = scale * num("ScaleFactor", 72.0);
             let Some(tex) = misc.get_str("SelectionCircle", "Texture00") else { continue };
@@ -1913,9 +1916,10 @@ impl Scene {
             } else {
                 "ColorEnemy"
             };
+            let p = self.unit_pose(w, u).0;
             out.push(w3_render::decal::Decal {
                 texture,
-                center: [u.x, u.y, self.terrain.height_at(u.x, u.y)],
+                center: [p.x, p.y, self.terrain.height_at(p.x, p.y)],
                 size: [size, size],
                 color: argb(rel),
                 additive: false,
@@ -2202,18 +2206,22 @@ impl Scene {
             }
             let (x, y, z) = match t.unit {
                 Some((u, dz)) => match w.unit(u) {
-                    Some(u) if !u.hidden => (u.x, u.y, w.ground_z(u.x, u.y) + dz),
+                    Some(u) if !u.hidden => {
+                        let p = self.unit_pose(w, u).0;
+                        (p.x, p.y, p.z - u.extra.shown_height.unwrap_or(u.fly_height) + dz)
+                    },
                     _ => continue,
                 },
                 None => (t.x, t.y, t.z),
             };
             let Some((px, py)) = self.project(Vec3::new(x, y, z), size) else { continue };
             const UNIT: f32 = 0.8;
-            let ux = px / size.0 as f32 * width + t.velocity.0 * t.age * UNIT;
-            let uy = (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT + t.velocity.1 * t.age * UNIT;
+            let age = self.presentation.text_age(t.age, t.suspended);
+            let ux = px / size.0 as f32 * width + t.velocity.0 * age * UNIT;
+            let uy = (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT + t.velocity.1 * age * UNIT;
             let mut alpha = t.color[3] as f32 / 255.0;
-            if !t.permanent && t.age > t.fadepoint && t.lifespan > t.fadepoint {
-                alpha *= (1.0 - (t.age - t.fadepoint) / (t.lifespan - t.fadepoint)).clamp(0.0, 1.0);
+            if !t.permanent && age > t.fadepoint && t.lifespan > t.fadepoint {
+                alpha *= (1.0 - (age - t.fadepoint) / (t.lifespan - t.fadepoint)).clamp(0.0, 1.0);
             }
             let em = t.height * UNIT;
             let color = [t.color[0] as f32 / 255.0, t.color[1] as f32 / 255.0, t.color[2] as f32 / 255.0, alpha];
@@ -2222,6 +2230,16 @@ impl Scene {
             out.push(w3_ui::Draw::Text { font: font.clone(), size: em, rect, text: t.text.clone(), color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow: Some(([0.0, 0.0, 0.0, alpha], 0.0015 * UNIT, -0.0015 * UNIT)) });
         }
         out
+    }
+
+    fn unit_pose(&self, w: &w3_game::World, u: &w3_game::types::Unit) -> (Vec3, f32) {
+        let (mut p, facing) = self.presentation.unit(w, u);
+        let mut ground = self.terrain.height_at(p.x, p.y);
+        if w.move_kind(u.handle) == w3_game::pathing::Move::Float {
+            ground = ground.max(self.terrain.water_at(p.x, p.y).unwrap_or(ground));
+        }
+        p.z += ground;
+        (p, facing)
     }
 
     pub fn project(&self, p: Vec3, size: (u32, u32)) -> Option<(f32, f32)> {
@@ -2245,9 +2263,9 @@ impl Scene {
             }
             let o = w.objects.units.get(u.type_id);
             let radius = o.map_or(32.0, |o| o.real("scale") * w.misc_f32("ScaleFactor", 72.0) * 0.5).max(16.0);
-            let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
-            let Some(c) = self.project(Vec3::new(u.x, u.y, z + radius * 0.5), size) else { continue };
-            let Some(e) = self.project(Vec3::new(u.x + radius, u.y, z + radius * 0.5), size) else { continue };
+            let p = self.unit_pose(w, u).0 + Vec3::Z * radius * 0.5;
+            let Some(c) = self.project(p, size) else { continue };
+            let Some(e) = self.project(p + Vec3::X * radius, size) else { continue };
             let r = (e.0 - c.0).abs().max(8.0);
             let d = (c.0 - sx).hypot(c.1 - sy);
             if d <= r && best.is_none_or(|b| d < b.0) {
@@ -2335,8 +2353,7 @@ impl Scene {
                             continue;
                         }
                         let Some(u) = w.unit(o).filter(|u| controls(o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
-                        let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
-                        if self.project(Vec3::new(u.x, u.y, z), size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
+                        if self.project(self.unit_pose(w, u).0, size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
                             picked.push(o);
                         }
                     }
@@ -2351,8 +2368,7 @@ impl Scene {
                 if u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
-                let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
-                if let Some((px, py)) = self.project(Vec3::new(u.x, u.y, z), size) {
+                if let Some((px, py)) = self.project(self.unit_pose(w, u).0, size) {
                     if px >= x0 && px <= x1 && py >= y0 && py <= y1 {
                         picked.push(h);
                     }
@@ -3908,7 +3924,18 @@ impl Scene {
         let Some(g) = self.game.as_ref() else { return };
         let w = &g.world;
         let local = w.local_player;
-        let live: std::collections::HashSet<u32> = w.missiles.iter().map(|m| m.id).collect();
+        let current: std::collections::HashSet<u32> = w.missiles.iter().map(|m| m.id).collect();
+        let landing = self.presentation.previous.missiles.values().filter(|m| !current.contains(&m.id));
+        let shown: Vec<_> = w.missiles.iter().chain(landing).collect();
+        let target_of = |m: &w3_game::sim::Missile| m.bullet.as_ref().filter(|b| b.aimed).and_then(|b| b.seen)
+            .or(m.impact).or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
+        let samples: HashMap<_, _> = shown.iter().filter_map(|m| {
+            self.presentation.missile(w, m, glam::Vec2::from(target_of(m))).map(|sample| (m.id, sample))
+        }).collect();
+        let live: std::collections::HashSet<u32> = shown.iter().filter(|m| {
+            samples.get(&m.id).is_some_and(|(_, landed)| !landed)
+                && (current.contains(&m.id) || self.presentation.alpha() < 1.0)
+        }).map(|m| m.id).collect();
         // Landed: play the death, or drop at once without one.
         self.missiles.retain(|id, v| {
             if live.contains(id) {
@@ -3924,7 +3951,10 @@ impl Scene {
             }
             !(v.inst.finished || v.inst.looped)
         });
-        for m in &w.missiles {
+        for m in shown {
+            if !live.contains(&m.id) && !self.missiles.contains_key(&m.id) {
+                continue;
+            }
             if m.id == 0 || m.model.is_empty() {
                 continue;
             }
@@ -3935,20 +3965,24 @@ impl Scene {
                 inst.team = w.unit(m.source).map_or(0, |u| world_color(w, u.owner, w.players.get(u.owner as usize).map_or(0, |p| p.color)));
                 self.missiles.insert(m.id, EffectView { inst, props: String::new(), dying: false, done: false });
             }
-            let target = m.impact.or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
+            let target = target_of(m);
+            let Some(&(position, _)) = samples.get(&m.id) else {
+                self.missiles.get_mut(&m.id).unwrap().inst.visible = false;
+                continue;
+            };
             let target_z = w.unit(m.target).map_or(self.terrain.height_at(target.0, target.1), |t| {
                 let impact = w.objects.units.get(t.type_id).map_or(60.0, |o| o.real("impactZ"));
                 self.terrain.height_at(t.x, t.y) + t.extra.shown_height.unwrap_or(t.fly_height) + impact
             });
             let total = (target.0 - m.start.0).hypot(target.1 - m.start.1).max(1.0);
-            let left = (target.0 - m.x).hypot(target.1 - m.y);
+            let left = (target.0 - position.x).hypot(target.1 - position.y);
             let t = (1.0 - left / total).clamp(0.0, 1.0);
             let z = m.z + (target_z - m.z) * t + m.arc * total * 4.0 * t * (1.0 - t);
             let slope = (target_z - m.z) / total + m.arc * 4.0 * (1.0 - 2.0 * t);
-            let yaw = (target.1 - m.y).atan2(target.0 - m.x);
+            let yaw = (target.1 - position.y).atan2(target.0 - position.x);
             let v = self.missiles.get_mut(&m.id).unwrap();
-            v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-slope.atan()), Vec3::new(m.x, m.y, z));
-            v.inst.visible = w.fog_state(m.x, m.y, local) == w3_game::fog::FOG_VISIBLE;
+            v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-slope.atan()), Vec3::new(position.x, position.y, z));
+            v.inst.visible = w.fog_state(position.x, position.y, local) == w3_game::fog::FOG_VISIBLE;
         }
     }
 
@@ -4236,6 +4270,7 @@ impl Scene {
                 view.update(&u.anim, u.anim_serial, &u.extra.anim_queue);
                 self.units.insert(h, view);
             }
+            let (position, facing) = self.unit_pose(w, u);
             let view = self.units.get_mut(&h).unwrap();
             // A unit's animations cross-fade over its blend (UnitUI blend, or
             // SetUnitBlendTime).
@@ -4282,11 +4317,10 @@ impl Scene {
                 Some((bone.clone(), Vec3::new(tu.x + off[0], tu.y + off[1], tz + off[2])))
             });
             let inst = &mut view.inst;
-            let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
             inst.transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(u.scale),
-                Quat::from_rotation_z(u.shown_facing.unwrap_or(u.facing).to_radians()),
-                Vec3::new(u.x, u.y, z),
+                Quat::from_rotation_z(facing.to_radians()),
+                position,
             );
             inst.team = world_color(w, u.owner, u.color);
             // Enemy units show only where the local player sees; structures stay where
@@ -4385,7 +4419,10 @@ impl Scene {
                 // Each turn's keepalive is the original's, made after its actions and
                 // before its time passes; the games are compared by it (a player out of
                 // step is dropped).
+                g.world.capture_render_motion = true;
+                let before = Snapshot::capture(&g.world);
                 let (outcomes, keepalive) = g.play_turn(f);
+                self.presentation.turn(before, &g.world, f.dt);
                 for (p, o) in outcomes {
                     if let (true, w3_game::replay::Outcome::Error(e)) = (p == local, o) {
                         errors.push(e);
@@ -4393,6 +4430,7 @@ impl Scene {
                 }
                 s.check(first + k as u32 + 1, f.dt, keepalive as u64);
             }
+            self.presentation.elapsed = s.owed;
             // A network game's saves, each computer's copy made at the save's moment in
             // its turn (`Game::after_keepalive`): kept in Save\\Multiplayer under the name
             // the action gave, as the original's.

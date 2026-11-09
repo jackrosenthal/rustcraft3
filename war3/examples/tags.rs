@@ -165,6 +165,8 @@ fn main() -> anyhow::Result<()> {
         }
     }
     g.start_lobby(&lobby, flags)?;
+    // TAGS_RENDER_MOTION: verify that presentation recording leaves checksums intact.
+    g.world.capture_render_motion = std::env::var_os("TAGS_RENDER_MOTION").is_some();
     // TAGS_LOAD=<save>: the game is loaded from a network game's save as each computer of
     // a LAN load loads its own copy (`war3::app`'s PlayNetSave): over the map started with
     // the lobby (`Game::restore_original`).  Its turns count from 1 again.

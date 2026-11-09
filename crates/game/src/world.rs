@@ -390,6 +390,14 @@ pub struct World {
     /// 100 ms turns; `FUN_6f15aa80`).
     #[serde(skip)]
     pub steps: u32,
+    /// Optional motion history for presenting a precomputed network turn. Neither
+    /// affects the simulation nor belongs in a saved game.
+    #[serde(skip)]
+    pub capture_render_motion: bool,
+    #[serde(skip)]
+    pub render_walks: HashMap<u32, Vec<(i64, u32, crate::motion::Mover)>>,
+    #[serde(skip)]
+    pub render_missiles: HashMap<u32, crate::sim::Missile>,
     /// The engine's main clock (its single's bits) at a 0.005s tick: the tick and its
     /// clock, the sum of 0.005s so far by the engine's addition (`motion::TICK`).
     #[serde(default)]
@@ -1108,6 +1116,9 @@ impl World {
             cheat_flags: 0,
             network: false,
             steps: 0,
+            capture_render_motion: false,
+            render_walks: HashMap::default(),
+            render_missiles: HashMap::default(),
             main_clock: (0, 0),
             main_wraps: 0,
             clock_wraps: 0,
@@ -2442,6 +2453,8 @@ impl World {
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
+        self.render_walks.clear();
+        self.render_missiles.clear();
         self.tags.turn();
         self.tick_inner(vm, dt);
         // What was released during the turn goes at its end (its destruction falls due

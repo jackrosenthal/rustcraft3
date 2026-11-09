@@ -1863,6 +1863,7 @@ impl World {
         }
         self.tags.free_step_paths(carried);
         for h in stepped {
+            self.record_render_walker(h, 0);
             self.step_regions(vm, h);
         }
         let tick = self.step_ticks.first().copied();
@@ -2085,6 +2086,7 @@ impl World {
             // tree in the same step), then those of orders due after it in its tick.
             self.tags.free_step_paths(carried);
             for h in stepped {
+                self.record_render_walker(h, k);
                 self.step_regions(vm, h);
             }
             let tick = self.step_ticks.get(k).copied();
@@ -2320,6 +2322,43 @@ impl World {
             u.extra.step_marks.push(mark);
         }
         stopped
+    }
+
+    /// Record the completed step, including early exits through hold, coarse-point,
+    /// harvesting and build-arrival logic. No authoritative state is changed.
+    fn record_render_walker(&mut self, h: u32, k: usize) {
+        if !self.capture_render_motion {
+            return;
+        }
+        let Some(&clock) = self.step_clocks.get(k) else { return };
+        let Some(u) = self.unit(h) else { return };
+        let mover = if u.steps_walker() && !u.paused { u.extra.mover } else { None };
+        let mover = match mover {
+            Some(m) => m,
+            None => {
+                let Some(p) = self.pathing.as_ref() else { return };
+                let cell = |v: f32, o: f32| crate::efloat::div(crate::efloat::sub(v.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
+                crate::motion::Mover {
+                    x: cell(u.x, p.origin[0]), y: cell(u.y, p.origin[1]),
+                    heading: u.facing.to_radians().to_bits(), placed_at: clock,
+                    ..Default::default()
+                }
+            }
+        };
+        self.record_render_mover(h, k, mover);
+    }
+
+    fn record_render_mover(&mut self, h: u32, k: usize, mover: crate::motion::Mover) {
+        if !self.capture_render_motion {
+            return;
+        }
+        let (Some(&tick), Some(&wraps)) = (self.step_ticks.get(k), self.step_wraps.get(k)) else { return };
+        let samples = self.render_walks.entry(h).or_default();
+        // A slow missile can replay earlier steps: replace that part of the visual
+        // history rather than leaving stale or out-of-order velocity changes.
+        let at = samples.partition_point(|s| s.0 < tick);
+        samples.truncate(at);
+        samples.push((tick, wraps, mover));
     }
 
     /// A walker slowed by a missile landing at `at` (the main clock, seconds since the
@@ -2671,6 +2710,7 @@ impl World {
                 _ => m.step(&gait, to, clock),
             };
             log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
+            self.record_render_mover(h, k, m);
             if r == crate::motion::Step::Moving {
                 continue;
             }
@@ -6431,6 +6471,11 @@ impl World {
     /// its velocity takes it by then (`World::place_now`), the others left to be flown
     /// after the steps.
     pub(crate) fn fly_bullets(&mut self, vm: &mut Vm, t: f64) {
+        if self.capture_render_motion {
+            for m in &self.missiles {
+                self.render_missiles.entry(m.id).or_insert_with(|| m.clone());
+            }
+        }
         let end = self.time_exact;
         let among = !self.after_steps;
         let at = if among { self.main_tick_clock(t) } else { None };

@@ -565,6 +565,34 @@ these are the findings behind them.
   keepalives agreeing to turn 6, two of them to turns 497 and 546, where they parted at
   turns 3 to 5 by the time alone.  The speed is in the steps, not the turns: at the
   normal speed a turn of 100 ms moves the game 80.
+- LAN presentation must not draw only a whole turn's final positions. Verified in
+  `game.dll` (SHA-256 d51e5680…8236): `FUN_6f32d670` consumes a 25 ms wall-clock
+  budget separately from the received turn's remaining time (+0x284). Each portion
+  advances 15/20/25 ms of game time at slow/normal/fast speed. Its synchronous idle
+  event 0x40090093 is registered at `0x6f372940` to `FUN_6f36abb0`, which accumulates
+  the consumed game time in the interface's +0x238 via `FUN_6f37efd0`.
+  `FUN_6f385c10` passes that accumulated time to `FUN_6f28c560` -> `FUN_6f9a1910`
+  for text-tag ages, then clears it; tags are not aged by the whole incoming turn
+  on each draw. Unit display positions (`FUN_6f684480` -> `FUN_6f058900` ->
+  `FUN_6f05a970`) evaluate the position's last placement plus its velocity times
+  elapsed main-clock time (`FUN_6f161040`, `FUN_6f05bdd0`). The port retains its
+  authoritative turn calculation, records the movement velocity changes and missile
+  trajectories as presentation-only data, and displays them on this clock. This
+  avoids altering simulation call boundaries: experimentally splitting 100 ms turns
+  into four simulation calls diverges from the original Booty Bay keepalive capture
+  at turn 85, while the unchanged calculation agrees through all 500 tested turns.
+  With presentation recording enabled, all 1615 original Booty Bay keepalives agree
+  (`tags`, `TAGS_RENDER_MOTION=1`, `TAGS_TURNS=1615`, seed 35000000,
+  `docs/reference/bootybay_keepalives.txt`). The captured velocity changes use the
+  original's existing motion arithmetic; they do not feed back into pathing or AI.
+  Presentation must check whether a mover is active: the port's normal death keeps
+  `extra.mover`, and integrating that old velocity makes a corpse slide indefinitely.
+  Dead and paused units display their authoritative positions. Capture completed
+  movement steps, including hold/coarse-point/arrival exits, not just the normal
+  steering branch; replace recorded steps when a slow replays movement. Plain flying
+  Move orders currently use the port's legacy `walk_inner` (the player-walk setup is
+  restricted to Foot), so they have no mover samples. Their bounded per-turn legs
+  are presented on the same display clock without changing the simulation route.
 - An aura's scan (its in-range listener's half-second check) runs at its due among the
   tick's steps, before the first step due after it, with the detectors' looks that
   share its queue (`World::plan_aura_scans`), not at the end of the port's tick (a

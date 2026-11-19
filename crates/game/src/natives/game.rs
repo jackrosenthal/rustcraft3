@@ -227,7 +227,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetCreepCampFilterState => |w, _, a| { w.creep_camp_filter = a.b(0); none() },
         GetCreepCampFilterState => |w, _, _| boolean(w.creep_camp_filter),
         EnableMinimapFilterButtons => |w, _, a| { w.minimap_filter_buttons = (a.b(0), a.b(1)); none() },
-        EnableDragSelect => |w, _, a| { w.select_allowed.1 = a.b(0); none() },
+        // (state, ui): CGameUI +0x290 and +0x294 (FUN_6f36c280).
+        EnableDragSelect => |w, _, a| { w.select_allowed.1 = a.b(0); w.drag_box = a.b(1); none() },
         EnablePreSelect => |w, _, a| { w.select_allowed.2 = a.b(1); none() },
         // Turning selection off also clears the local player's (FUN_6f36c2f0).
         EnableSelect => |w, _, a| {

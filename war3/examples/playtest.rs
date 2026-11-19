@@ -1262,6 +1262,12 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // drag <x0> <y0> <x1> <y1>: holds the left button down in a drag from the
+            // first screen point to the second (its box shown, not yet let go).
+            "drag" => {
+                scene.drag = Some(((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4]))));
+                i += 5;
+            }
             // shift <0|1>: holds Shift (queued orders).
             "shift" => {
                 scene.shift_held = num(&a[i + 1]) != 0.0;

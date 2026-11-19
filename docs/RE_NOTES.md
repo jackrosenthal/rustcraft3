@@ -418,6 +418,59 @@ original images.
   CustomDefeatDialogBJ's dialog holds Quit Campaign alone, the game is not paused, and
   each defeated player is told "%s was defeated." (PLAYER_DEFEATED); Mafarazzo TD's
   lives go on below 0 under the dialog.  The port plays it so (playtest W3LOBBY="R1,L1").
+- An order's point (CWorldFrameWar3 +0x58c, made by `FUN_6f384900` from the skin's
+  TargetPointConfirm, Confirmation.mdl): one model, played again by `FUN_6f380fd0` at each
+  point, its Stand once (its arrows close in and are gone, alpha 0, from 1100 ms).  It
+  lies along the ground: its up the normal from the heights 10 west of the point and 7
+  east and 7 south and north of it, its y the normal crossed with east, its x that
+  crossed with the normal.  Its color is [SelectionCircle] ColorEnemy for an attack (the
+  order at `0x6fb77dd0`, 851983) and ColorFriend for any other (+0x3a8, +0x3a0, loaded
+  with ColorNeutral at +0x3a4 by `FUN_6f37c750`).  A right click on the ground or the
+  minimap plays it in the move's color whatever the order becomes, Shift or not
+  (`FUN_6f394680`, `FUN_6f394500`), once the order passes its checks; a targeted order's
+  point plays it in its order's color when Shift is not held (`FUN_6f3a90c0`, from
+  CTargetMode's `FUN_6f3c2200` and `FUN_6f3c39b0`).
+- An order's target takes an indicator (+0x378, eight, the oldest replaced): a right
+  click on a unit (`FUN_6f392fa0` → `FUN_6f3814e0`) or another widget (`FUN_6f394840` →
+  `FUN_6f3818b0`), and a targeted order's target without Shift (`FUN_6f3a9020`,
+  `FUN_6f3a90c0`).  A unit's circle is in the local player's standing toward its owner
+  (`FUN_6f340400`) at alpha 0xf0, another widget's in ColorNeutral, a destructable's
+  model taking TargetingColors' SelTargetColor besides (`FUN_6f380df0`; its sprite's
+  color, vf 0x30, and the widget's own again, vf 0xb4).  Each lasts 1.1 seconds
+  (`0x6fce5a04`) and blinks: `FUN_6f38da30` shows it in a frame only while the seconds
+  since it began over 0.3 (`0x6fa93554`), truncated, are even, the shown flag (0x20,
+  `FUN_6f78cc80`) being asked for each frame as a unit's own circles are (vf
+  `FUN_6f6987d0`).  UnitAddIndicator's blink too.  (Provisional: a unit target whose
+  word at +0x48 has 0x400, which flashes its model and doubles its circle in
+  ColorNeutral; the flag is not read, and the port leaves the case out.)
+- Waypoints (+0x598, 256 flags of the race's WaypointIndicator, in the local player's
+  color: `FUN_6f384950`, `FUN_6f35b620` with +0x198): the local leader's (`FUN_6f293110`
+  → `FUN_6f38c0d0`, all made again as it changes, and none for a unit the player does
+  not command), a flag for each of its orders flagged 4 (`FUN_6f386ee0`), those given
+  with Shift.  A flag at a point lies along the ground as the confirmation does
+  (`FUN_6f38b1c0`); one for a target stands on it (`FUN_6f38b7a0`, `FUN_6f38bc10`);
+  each plays its Birth then its Stand, and goes when its order is done
+  (`FUN_6f386b00`).  The port keeps a flag while its order waits or is carried out.
+- Rally flags (+0x3b8, sixteen of the race's RallyIndicatorDst, `FUN_6f3847d0`): on a
+  point (`FUN_6f3800f0`), its x along the way from the structure to the point (the
+  difference with height, normalized), its y that's level square, its z up, standing as
+  made when the point is within 0.1 of the structure; on a widget (`FUN_6f380460`), at
+  its model's "sprite rallypoint" attachment.  Birth, then Stand.  The port shows one
+  for each selected structure the player commands that has a rally point (provisional:
+  CGameUI's callers, `FUN_6f3761f0` and `FUN_6f376220`, are not read).
+- The drag box (CPreselectUI, vtable `0x6fabba10`; +0x9c a drag, +0x54 its start):
+  `FUN_6f398090` lays two rectangles in the world frame's -1 to 1 coordinates, the
+  drag's and one 0.001 wide and 0.0015 high outside it (`0x6fa84470`, `0x6fab3ecc`),
+  only while CGameUI +0x294 is set (EnableDragSelect's second argument, `FUN_6f36c280`);
+  `FUN_6f390a00`'s indices (0 1 2 3 0 4 5 6 7 4) draw them as one strip of lines, in
+  [SelectionCircle] ColorFriend (+0xfc, `FUN_6f38f230`; drawn by `FUN_6f395fe0`).  So a
+  drag shows a green box two pixels thick.  The units it would select take their
+  preselection circles as it goes (vf 0x190, `FUN_6f691800`).  (A second mode, +0x20,
+  lays the box along the ground, four pieces a side 10 above it, in 0xf0ffffff:
+  `FUN_6f39a1b0`, `FUN_6f39a1d0`, `FUN_6f396130`; nothing was seen to set it.)
+- A model node billboarded about Z alone (node flag 0x40: the rally and waypoint
+  flags' poles, whose flat cloth was otherwise seen edge on) turns about the model's up,
+  its x toward the camera.
 
 ## Glue screens
 

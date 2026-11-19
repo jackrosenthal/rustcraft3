@@ -209,6 +209,12 @@ impl Skeleton {
             if flags & node_flags::BILLBOARDED != 0 {
                 // Face the camera regardless of the parent's rotation.
                 r = prot.inverse() * camera_rotation;
+            } else if flags & node_flags::BILLBOARDED_LOCK_Z != 0 {
+                // Turned about the model's up alone, its +x as near the camera as that
+                // allows (the rally and waypoint flags' poles, flat quads that were
+                // otherwise seen edge on).
+                let f = camera_rotation * Vec3::X;
+                r = prot.inverse() * Quat::from_rotation_z(f.y.atan2(f.x));
             }
             // A looking node's +x points at its target.
             if let Some((node, target)) = self.look.filter(|l| l.0 == i) {

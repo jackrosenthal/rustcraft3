@@ -558,6 +558,10 @@ pub struct World {
     /// +0x298).
     #[serde(default = "selection_allowed")]
     pub select_allowed: (bool, bool, bool),
+    /// Whether a drag shows its box (EnableDragSelect's second argument: CGameUI
+    /// +0x294, without which CPreselectUI leaves the box's lines unset).
+    #[serde(default = "yes")]
+    pub drag_box: bool,
     /// The leaderboard each player is shown (PlayerSetLeaderboard).
     pub player_leaderboards: HashMap<u8, u32>,
     /// MultiboardSuppressDisplay.
@@ -1157,6 +1161,7 @@ impl World {
             cheat_fog: None,
             volume_groups: full_volume(),
             select_allowed: selection_allowed(),
+            drag_box: true,
             day_night_models: (String::new(), String::new()),
             fog_enabled: true,
             fog_mask_enabled: true,

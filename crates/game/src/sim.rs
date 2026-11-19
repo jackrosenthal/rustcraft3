@@ -477,6 +477,13 @@ impl World {
                 u.acquire_timer = 0.0;
             }
         }
+        // A new order takes the place of a queued one being carried out (an autocast's
+        // toggle does not).
+        if !toggle {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.queued_current = None;
+            }
+        }
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");
         let attack = crate::natives::basic::order_id("attack");
@@ -3560,7 +3567,12 @@ impl World {
                 let next = self.unit_mut(h).unwrap().extra.order_queue.pop_front();
                 match next {
                     Some((crate::aiposts::AI_IDLE_ORDER, ..)) => self.ai_unit_idle(h),
-                    Some((order, x, y, target)) => self.order_unit(h, order, x, y, target),
+                    Some(next @ (order, x, y, target)) => {
+                        self.order_unit(h, order, x, y, target);
+                        if let Some(u) = self.unit_mut(h) {
+                            u.extra.queued_current = Some(next);
+                        }
+                    }
                     None => {}
                 }
             }

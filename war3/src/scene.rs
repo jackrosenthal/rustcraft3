@@ -141,9 +141,12 @@ struct Indicator {
     widget: u32,
     color: [f32; 4],
     start: f32,
-    /// Its model takes TargetingColors' SelTargetColor while the circle shows, and its
-    /// own color between (FUN_6f380df0; a destructable ordered to).
-    flash: bool,
+    /// The color its model takes while the circle shows, its own between
+    /// (FUN_6f380df0: a destructable's).
+    flash: Option<[f32; 4]>,
+    /// Its circle's width, when not the widget's selection circle's (a destructable's
+    /// fog ghost's).
+    size: Option<f32>,
 }
 
 impl Indicator {
@@ -167,9 +170,10 @@ struct Feedback {
     /// local leader's, FUN_6f38c0d0), and each order's flag.
     lead: Option<u32>,
     waypoints: Vec<((i32, f32, f32, u32), ModelInstance)>,
-    /// The race's RallyIndicatorDst on each selected structure's rally point (+0x3b8,
-    /// sixteen: FUN_6f3800f0 and FUN_6f380460).
-    rallies: Vec<(u32, ModelInstance)>,
+    /// The race's RallyIndicatorDst on each selected unit's rally point (+0x3b8,
+    /// sixteen: FUN_6f3800f0 and FUN_6f380460): the unit, where its rally is (its
+    /// widget, else its point), and the flag.
+    rallies: Vec<(u32, (u32, (f32, f32)), ModelInstance)>,
     /// Destructables an indicator tinted, to take their own color back.
     tinted: Vec<u32>,
 }
@@ -1267,7 +1271,7 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
-                w3_game::world::Request::Indicator { widget, color } => self.add_indicator(widget, color.map(|c| c as f32 / 255.0), false),
+                w3_game::world::Request::Indicator { widget, color } => self.widget_indicator(widget, Some(color.map(|c| c as f32 / 255.0))),
                 // ForceUIKey: the interface acts on the key as if pressed; ForceUICancel
                 // drops a targeting or placement in progress.
                 w3_game::world::Request::ForceUIKey(k) => {
@@ -1878,34 +1882,64 @@ impl Scene {
 
     /// One of the eight indicator slots (CWorldFrameWar3 +0x378), replacing the oldest;
     /// one on the same widget starts again.
-    fn add_indicator(&mut self, widget: u32, color: [f32; 4], flash: bool) {
+    fn add_indicator(&mut self, widget: u32, color: [f32; 4], flash: Option<[f32; 4]>, size: Option<f32>) {
         self.indicators.retain(|i| i.widget != widget);
         if self.indicators.len() >= 8 {
             self.indicators.remove(0);
         }
-        self.indicators.push(Indicator { widget, color, start: self.time, flash });
+        self.indicators.push(Indicator { widget, color, start: self.time, flash, size });
     }
 
-    /// The widget an order went to takes an indicator (FUN_6f3814e0, FUN_6f3818b0): a
-    /// unit's circle in how the local player stands toward its owner (FUN_6f340400)
-    /// at alpha 0xf0, another widget's in [SelectionCircle] ColorNeutral, and a
-    /// destructable's model flashing besides (FUN_6f380df0).  (Provisional: the unit
-    /// case for a unit whose word +0x48 has 0x400, its model flashing and its circle
-    /// twice as wide in ColorNeutral, is left out, the flag not being read.)
-    fn target_indicator(&mut self, target: u32) {
+    /// An indicator on a widget (FUN_6f3818b0: for an order's target, and for
+    /// UnitAddIndicator and AddIndicator, FUN_6f1f7850 and FUN_6f218210, with their
+    /// color): its circle in the color given, else a unit's in its circle color at
+    /// alpha 0xf0 and another widget's in [SelectionCircle] ColorNeutral; a
+    /// destructable's model flashing in the color given, else in TargetingColors'
+    /// SelTargetColor (FUN_6f380df0).
+    fn widget_indicator(&mut self, target: u32, given: Option<[f32; 4]>) {
         let Some(g) = self.game.as_ref() else { return };
         let w = &g.world;
         let neutral = misc_argb(w, "SelectionCircle", "ColorNeutral", [1.0, 1.0, 0.0, 1.0]);
+        let sel_target = misc_argb(w, "TargetingColors", "SelTargetColor", [240.0 / 255.0, 200.0 / 255.0, 0.0, 1.0]);
         let (color, flash) = match w.handles.get(target) {
             Some(w3_game::types::Obj::Unit(u)) => {
-                let c = Self::standing_color(w, u.owner);
-                ([c[0], c[1], c[2], 240.0 / 255.0], false)
+                let c = Self::circle_color(w, u);
+                (given.unwrap_or([c[0], c[1], c[2], 240.0 / 255.0]), None)
             }
-            Some(w3_game::types::Obj::Destructable(_)) => (neutral, true),
-            Some(_) => (neutral, false),
+            Some(w3_game::types::Obj::Destructable(_)) => (given.unwrap_or(neutral), Some(given.unwrap_or(sel_target))),
+            Some(_) => (given.unwrap_or(neutral), None),
             None => return,
         };
-        self.add_indicator(target, color, flash);
+        self.add_indicator(target, color, flash, None);
+    }
+
+    /// The widget an order went to takes an indicator (FUN_6f3818b0).  One the local
+    /// player does not see is clicked as its fog ghost (FUN_6f392fa0 and FUN_6f3a9020
+    /// give it to FUN_6f3814e0): a unit's circle in how the local player stands toward
+    /// its owner at alpha 0xf0; a destructable's (its ghost's word +0x48 0x400,
+    /// FUN_6f6da850) in ColorNeutral and twice ScaleFactor wide, its ghost's type
+    /// having no unit scale (FUN_6f343800 giving 1), the ghost flashing in
+    /// SelTargetColor (FUN_6f380c90).
+    fn target_indicator(&mut self, target: u32) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let local = w.local_player;
+        let ghost = match w.handles.get(target) {
+            Some(w3_game::types::Obj::Unit(u)) if !w.unit_visible_to(target, local) => {
+                let c = Self::standing_color(w, u.owner);
+                Some(([c[0], c[1], c[2], 240.0 / 255.0], None, None))
+            }
+            Some(w3_game::types::Obj::Destructable(d)) if w.fog_state(d.x, d.y, local) != w3_game::fog::FOG_VISIBLE => {
+                let neutral = misc_argb(w, "SelectionCircle", "ColorNeutral", [1.0, 1.0, 0.0, 1.0]);
+                let sel_target = misc_argb(w, "TargetingColors", "SelTargetColor", [240.0 / 255.0, 200.0 / 255.0, 0.0, 1.0]);
+                Some((neutral, Some(sel_target), Some(2.0 * w.misc_f32("ScaleFactor", 72.0))))
+            }
+            _ => None,
+        };
+        match ghost {
+            Some((color, flash, size)) => self.add_indicator(target, color, flash, size),
+            None => self.widget_indicator(target, None),
+        }
     }
 
     /// The point an order went to takes TargetPointConfirm, played again from its
@@ -1933,29 +1967,34 @@ impl Scene {
         for i in self.indicators.iter().filter(|i| i.shown(self.time)) {
             let h = i.widget;
             let Some((x, y)) = w.unit(h).map(|u| { let p = self.unit_pose(w, u).0; (p.x, p.y) }).or_else(|| w.widget_pos(h)) else { continue };
-            let size = match w.handles.get(h) {
+            let size = i.size.unwrap_or_else(|| match w.handles.get(h) {
                 Some(w3_game::types::Obj::Unit(u)) => w.objects.units.get(u.type_id).map_or(1.0, |o| o.real("scale")) * num("ScaleFactor", 72.0),
                 Some(w3_game::types::Obj::Destructable(d)) => w.objects.destructables.get(d.type_id).map_or(128.0, |o| o.real("selcircsize")),
                 Some(w3_game::types::Obj::Item(it)) => w.objects.items.get(it.type_id).map_or(1.0, |o| o.real("scale")) * num("ScaleFactor", 72.0),
                 _ => num("ScaleFactor", 72.0),
-            };
+            });
             let sizes = num("NumSizes", 3.0) as usize;
             let idx = (0..sizes.saturating_sub(1)).find(|k| size <= num(&format!("Size{k:02}"), f32::MAX)).unwrap_or(sizes.saturating_sub(1));
             let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) else { continue };
             let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
             out.push(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [size, size], color: i.color, additive: false });
         }
-        // The unit under the pointer takes the dotted circle (CPreselectUI's
-        // TextureDottedNN), unless it is selected; so do those a drag's box would
-        // select.
-        let hovered = if self.over_console(self.cursor.0, self.cursor.1, self.screen) { None } else { self.pick_unit(self.cursor.0, self.cursor.1, self.screen) };
-        let mut preselected: Vec<u32> = hovered.into_iter().collect();
-        for h in self.drag_preview(self.screen) {
-            if !preselected.contains(&h) {
-                preselected.push(h);
+        // The unit under the pointer, and those a drag's box would select, take their
+        // preselection circles (CPreselectUI calling each one's vf 0x190,
+        // `FUN_6f691800`): `FUN_6f654a90`'s image, its texture the plain TextureNN (the
+        // dotted ones are for another player's selection, `FUN_6f697a10`), unless
+        // EnablePreSelect's second argument turned them off (CGameUI +0x29c).
+        let mut preselected: Vec<u32> = Vec::new();
+        if w.select_allowed.2 {
+            let hovered = if self.over_console(self.cursor.0, self.cursor.1, self.screen) { None } else { self.pick_unit(self.cursor.0, self.cursor.1, self.screen) };
+            preselected.extend(hovered);
+            for h in self.drag_preview(self.screen) {
+                if !preselected.contains(&h) {
+                    preselected.push(h);
+                }
             }
         }
-        let hovered: Vec<(u32, bool)> = preselected.into_iter().filter(|h| !self.selection.contains(h)).map(|h| (h, true)).collect();
+        preselected.retain(|h| !self.selection.contains(h));
         // A chosen destructable: its selcircsize circle; an item: its scale times
         // ScaleFactor (CItem::vf66); both in ColorNeutral.
         let chosen = match self.selected_widget.map(|h| w.handles.get(h)) {
@@ -1977,7 +2016,7 @@ impl Scene {
                 out.push(w3_render::decal::Decal { texture, center: [cx, cy, self.terrain.height_at(cx, cy)], size: [size, size], color: argb("ColorNeutral"), additive: false });
             }
         }
-        for (h, dotted) in self.selection.iter().map(|&h| (h, false)).chain(hovered) {
+        for &h in self.selection.iter().chain(&preselected) {
             let Some(u) = w.unit(h) else { continue };
             let Some(o) = w.objects.units.get(u.type_id) else { continue };
             // UI\MiscData.txt [SelectionCircle]: size = SLK scale x ScaleFactor; the texture
@@ -1991,24 +2030,14 @@ impl Scene {
                     break;
                 }
             }
-            let key = if dotted { format!("TextureDotted{idx:02}") } else { format!("Texture{idx:02}") };
-            let Some(tex) = misc.get_str("SelectionCircle", &key) else { continue };
+            let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) else { continue };
             let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
-            let rel = if u.owner == w.local_player {
-                "ColorFriend"
-            } else if w3_game::natives::players::is_ally(w, w.local_player, u.owner) {
-                "ColorFriend"
-            } else if u.owner >= w3_game::types::PLAYER_NEUTRAL_AGGRESSIVE {
-                "ColorNeutral"
-            } else {
-                "ColorEnemy"
-            };
             let p = self.unit_pose(w, u).0;
             out.push(w3_render::decal::Decal {
                 texture,
                 center: [p.x, p.y, self.terrain.height_at(p.x, p.y)],
                 size: [size, size],
-                color: argb(rel),
+                color: Self::circle_color(w, u),
                 additive: false,
             });
         }
@@ -2251,13 +2280,14 @@ impl Scene {
     /// [SelectionCircle] ColorFriend, one the local player is not allied (passive)
     /// toward in ColorEnemy, others and every player to an observer in ColorNeutral
     /// (each alpha, red, green, blue).  So Mafarazzo TD's creeps name "Enemy" in red.
+    /// The local player shares control with itself (its mask's own bit, `FUN_6f1ea970`).
     fn standing_color(w: &w3_game::World, owner: u8) -> [f32; 4] {
         // ALLIANCE_SHARED_CONTROL, the alliance flag the owner's record gives the local
         // player (+0x98 of the record, 0x38 + 16 x 6).
         const SHARED_CONTROL: usize = 6;
         let me = w.local_player;
         let observer = w.players.get(me as usize).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
-        let shares = w.players.get(owner as usize).is_some_and(|p| p.alliances[me as usize][SHARED_CONTROL]);
+        let shares = owner == me || w.players.get(owner as usize).is_some_and(|p| p.alliances[me as usize][SHARED_CONTROL]);
         let allied = w3_game::natives::players::is_ally(w, me, owner);
         let key = match (observer, shares, allied) {
             (false, true, _) => "ColorFriend",
@@ -2268,6 +2298,22 @@ impl Scene {
         match v.as_slice() {
             [a, r, g, b] => [r / 255.0, g / 255.0, b / 255.0, a / 255.0],
             _ => [1.0; 4],
+        }
+    }
+
+    /// A unit's circle color, as its selection circle, its preselection circle, and an
+    /// indicator on it take it (`FUN_6f697a10`, `FUN_6f691800`, `FUN_6f3818b0`): how
+    /// the local player stands toward its owner, but ColorNeutral for one not a friend
+    /// while it is a mechanical critter (its word +0x60's bit 1: set on the unit
+    /// CAbilityMechanicalCritter summons, `FUN_6f57f410`, cleared with its buff,
+    /// `FUN_6f58dfa0`).
+    fn circle_color(w: &w3_game::World, u: &w3_game::types::Unit) -> [f32; 4] {
+        let c = Self::standing_color(w, u.owner);
+        let critter = u.buffs.iter().any(|b| w.ability_code(b.ability) == codes::ability::MECHANICAL_CRITTER);
+        if critter && c != misc_argb(w, "SelectionCircle", "ColorFriend", [0.0, 1.0, 0.0, 1.0]) {
+            misc_argb(w, "SelectionCircle", "ColorNeutral", [1.0, 1.0, 0.0, 1.0])
+        } else {
+            c
         }
     }
 
@@ -4156,11 +4202,17 @@ impl Scene {
             feedback.lead = lead;
             feedback.waypoints.clear();
         }
-        let lead_unit = lead.and_then(|h| w.unit(h));
-        let queued: Vec<(i32, f32, f32, u32)> = lead_unit.map(|u| u.extra.order_queue.iter().copied().filter(|o| o.0 != w3_game::aiposts::AI_IDLE_ORDER).collect()).unwrap_or_default();
-        let current = lead_unit.map(|u| action_goal(&u.action)).unwrap_or_default();
-        feedback.waypoints.retain(|(o, _)| queued.contains(o) || (o.3 != 0 && current.1 == o.3) || (o.3 == 0 && current.0.is_some_and(|(x, y)| (x - o.1).abs() < 1.0 && (y - o.2).abs() < 1.0)));
-        for o in &queued {
+        // Its orders flagged 4 are the one taken from its queue that it carries out and
+        // those waiting there; one on a unit its owner cannot see shows none
+        // (FUN_6f69e1c0).
+        let mut flagged: Vec<(i32, f32, f32, u32)> = Vec::new();
+        if let Some(u) = lead.and_then(|h| w.unit(h)) {
+            flagged.extend(u.extra.queued_current.filter(|_| !matches!(u.action, w3_game::types::Action::Idle)));
+            flagged.extend(u.extra.order_queue.iter().copied().filter(|o| o.0 != w3_game::aiposts::AI_IDLE_ORDER));
+            flagged.retain(|o| o.3 == 0 || w.unit(o.3).is_none() || w.unit_visible_to(o.3, u.owner));
+        }
+        feedback.waypoints.retain(|(o, _)| flagged.contains(o));
+        for o in &flagged {
             if !feedback.waypoints.iter().any(|(k, _)| k == o) {
                 if let Some(inst) = flag(assets, "WaypointIndicator") {
                     feedback.waypoints.push((*o, inst));
@@ -4177,11 +4229,13 @@ impl Scene {
                 None => inst.visible = false,
             }
         }
-        // The rally flag of each selected structure the player commands with a rally
-        // point (FUN_6f3800f0: on the ground facing away from the structure;
-        // FUN_6f380460: standing on a widget, a unit's at its "sprite rallypoint"
-        // attachment).
-        let rallies: Vec<(u32, Mat4)> = self
+        // The rally flag of each selected unit with a rally point whose owner shares
+        // control with the player (its selection, FUN_6f697a10, has its rally's
+        // FUN_6f4352d0 test FUN_6f1ea8b0 and show it; its leaving the selection hides it,
+        // FUN_6f41a2f0): on the ground facing away from the unit (FUN_6f3800f0), or
+        // standing on a widget, a unit's at its "sprite rallypoint" attachment
+        // (FUN_6f380460).
+        let rallies: Vec<(u32, (u32, (f32, f32)), Mat4)> = self
             .selection
             .iter()
             .filter(|&&h| controls(h))
@@ -4190,42 +4244,51 @@ impl Scene {
                 if u.dead || u.hidden {
                     return None;
                 }
+                let from = widget_at(h).unwrap_or(Vec3::new(u.x, u.y, terrain.height_at(u.x, u.y)));
                 let t = u.extra.rally_target;
                 if t != 0 && t != h {
-                    let to = match self.units.get(&t) {
-                        Some(v) => v.inst.visible.then(|| attachment_point(&v.inst, "sprite rallypoint"))?,
-                        None => widget_at(t)?,
+                    // A dead one's (vf 0x13c, a unit's +0x5c bit 0x100) at its place on
+                    // the ground, as a point's (FUN_6f435170).
+                    let dead = match w.handles.get(t) {
+                        Some(w3_game::types::Obj::Unit(v)) => v.dead,
+                        Some(w3_game::types::Obj::Destructable(d)) => d.life <= 0.0,
+                        _ => false,
                     };
-                    return Some((h, Mat4::from_translation(to)));
+                    let to = match self.units.get(&t) {
+                        Some(v) if !dead => v.inst.visible.then(|| attachment_point(&v.inst, "sprite rallypoint"))?,
+                        _ => widget_at(t)?,
+                    };
+                    let at = if dead { rally_frame(from, Vec3::new(to.x, to.y, terrain.height_at(to.x, to.y))) } else { Mat4::from_translation(to) };
+                    return Some((h, (t, (0.0, 0.0)), at));
                 }
                 let (x, y) = u.rally?;
-                let from = widget_at(h).unwrap_or(Vec3::new(u.x, u.y, terrain.height_at(u.x, u.y)));
-                Some((h, rally_frame(from, Vec3::new(x, y, terrain.height_at(x, y)))))
+                Some((h, (0, (x, y)), rally_frame(from, Vec3::new(x, y, terrain.height_at(x, y)))))
             })
             .take(16)
             .collect();
-        feedback.rallies.retain(|(h, _)| rallies.iter().any(|r| r.0 == *h));
-        for &(h, at) in &rallies {
-            if !feedback.rallies.iter().any(|(k, _)| *k == h) {
+        // A flag shows anew, from its birth, as its rally point changes (the rally's
+        // FUN_6f4352d0 showing it again).
+        feedback.rallies.retain(|(h, key, _)| rallies.iter().any(|r| r.0 == *h && r.1 == *key));
+        for &(h, key, at) in &rallies {
+            if !feedback.rallies.iter().any(|(k, _, _)| *k == h) {
                 if let Some(inst) = flag(assets, "RallyIndicatorDst") {
-                    feedback.rallies.push((h, inst));
+                    feedback.rallies.push((h, key, inst));
                 }
             }
-            if let Some((_, inst)) = feedback.rallies.iter_mut().find(|(k, _)| *k == h) {
+            if let Some((_, _, inst)) = feedback.rallies.iter_mut().find(|(k, _, _)| *k == h) {
                 inst.transform = at;
                 inst.visible = true;
             }
         }
-        // A destructable an indicator flashes takes SelTargetColor while it shows, and
-        // its own color otherwise (FUN_6f38da30: the sprite's color, vf 0x30, or the
-        // widget's own again, vf 0xb4).
-        let flash = misc_argb(w, "TargetingColors", "SelTargetColor", [240.0 / 255.0, 200.0 / 255.0, 0.0, 1.0]);
+        // A destructable an indicator flashes takes its flash's color while it shows, and
+        // its own otherwise (FUN_6f38da30: the sprite's color, vf 0x30, or the widget's
+        // own again, vf 0xb4).
         let now = self.time;
-        let lit: Vec<u32> = self.indicators.iter().filter(|i| i.flash && i.shown(now)).map(|i| i.widget).collect();
-        for h in feedback.tinted.drain(..).chain(lit.iter().copied()).collect::<Vec<_>>() {
+        let lit: Vec<(u32, [f32; 4])> = self.indicators.iter().filter(|i| i.shown(now)).filter_map(|i| Some((i.widget, i.flash?))).collect();
+        for h in feedback.tinted.drain(..).chain(lit.iter().map(|l| l.0)).collect::<Vec<_>>() {
             let Some((inst, _)) = self.dests.get_mut(&h) else { continue };
-            if lit.contains(&h) {
-                inst.tint = glam::Vec4::new(flash[0], flash[1], flash[2], 1.0);
+            if let Some((_, c)) = lit.iter().find(|l| l.0 == h) {
+                inst.tint = glam::Vec4::new(c[0], c[1], c[2], 1.0);
             } else if let Some(w3_game::types::Obj::Destructable(d)) = w.handles.get(h) {
                 // Its type's tint (DestructableData colorR, colorG, colorB).
                 let o = w.objects.destructables.get(d.type_id);
@@ -4233,7 +4296,7 @@ impl Scene {
                 inst.tint = glam::Vec4::new(c("colorR"), c("colorG"), c("colorB"), 1.0);
             }
         }
-        feedback.tinted = lit;
+        feedback.tinted = lit.into_iter().map(|l| l.0).collect();
     }
 
     /// Draws each missile in flight at its place, rising from its launch height to its
@@ -4888,7 +4951,7 @@ impl Scene {
                 c.visible = false;
             }
         }
-        let flags = self.feedback.waypoints.iter_mut().map(|(_, i)| i).chain(self.feedback.rallies.iter_mut().map(|(_, i)| i));
+        let flags = self.feedback.waypoints.iter_mut().map(|(_, i)| i).chain(self.feedback.rallies.iter_mut().map(|(_, _, i)| i));
         for inst in flags {
             inst.advance(dt * 1000.0);
             let birth = inst.sequence.and_then(|s| inst.model.mdx.sequences.get(s)).is_some_and(|s| s.name.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("birth")));
@@ -5504,7 +5567,7 @@ impl Scene {
             self.models.submit(&mut v.inst, eye, rot);
         }
         let feedback = &mut self.feedback;
-        let flags = feedback.waypoints.iter_mut().map(|(_, i)| i).chain(feedback.rallies.iter_mut().map(|(_, i)| i));
+        let flags = feedback.waypoints.iter_mut().map(|(_, i)| i).chain(feedback.rallies.iter_mut().map(|(_, _, i)| i));
         for inst in feedback.confirm.iter_mut().chain(flags).filter(|i| i.visible) {
             inst.light_cell = cell(inst);
             self.models.submit(inst, eye, rot);
@@ -6091,18 +6154,4 @@ fn rally_frame(from: Vec3, to: Vec3) -> Mat4 {
     let d = to - from;
     let (ax, ay) = if d.length_squared() > 0.01 { (d.normalize(), Vec3::new(-d.y, d.x, 0.0).normalize_or(Vec3::Y)) } else { (Vec3::X, Vec3::Y) };
     Mat4::from_cols(ax.extend(0.0), ay.extend(0.0), Vec3::Z.extend(0.0), to.extend(1.0))
-}
-
-/// Where an order being carried out goes: its point, and its target (0 for none).
-fn action_goal(a: &w3_game::types::Action) -> (Option<(f32, f32)>, u32) {
-    use w3_game::types::Action as A;
-    match *a {
-        A::Move { x, y } | A::AttackMove { x, y } | A::AttackGround { x, y } | A::Build { x, y, .. } | A::DropItem { x, y, .. } | A::Unload { x, y } => (Some((x, y)), 0),
-        A::Patrol { b, .. } => (Some(b), 0),
-        A::Cast { target, x, y, .. } => (if target == 0 { Some((x, y)) } else { None }, target),
-        A::Attack { target } | A::Follow { target } | A::Harvest { target } | A::GiveItem { target, .. } | A::Construct { target } | A::Load { target } | A::Repair { target } => (None, target),
-        A::PickUp { item } => (None, item),
-        A::Board { transport } => (None, transport),
-        A::Idle | A::Hold | A::ReturnResources => (None, 0),
-    }
 }

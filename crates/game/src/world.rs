@@ -554,8 +554,8 @@ pub struct World {
     /// Counts script changes to the selection, so the interface can follow them.
     pub selection_serial: u32,
     /// Whether the player may select at all, with a drag, and see what is under the
-    /// cursor (EnableSelect, EnableDragSelect, EnablePreSelect: CGameUI +0x2a0, +0x290,
-    /// +0x298).
+    /// cursor (EnableSelect, EnableDragSelect, and EnablePreSelect's second argument:
+    /// CGameUI +0x2a0, +0x290, +0x29c, `FUN_6f36c2b0`).
     #[serde(default = "selection_allowed")]
     pub select_allowed: (bool, bool, bool),
     /// Whether a drag shows its box (EnableDragSelect's second argument: CGameUI

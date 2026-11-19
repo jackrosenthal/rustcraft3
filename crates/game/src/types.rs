@@ -1036,6 +1036,11 @@ pub struct UnitExtra {
     /// Orders given with Shift, waiting for the ones before them: id, point, target.
     #[serde(default)]
     pub order_queue: std::collections::VecDeque<(i32, f32, f32, u32)>,
+    /// The order given with Shift that the unit now carries out, taken from its queue,
+    /// until another order takes its place: the original's head order keeps its flag 4,
+    /// by which its waypoint shows, until it is done (`FUN_6f694a10`).
+    #[serde(default)]
+    pub queued_current: Option<(i32, f32, f32, u32)>,
 }
 
 impl Default for UnitExtra {
@@ -1186,6 +1191,7 @@ impl Default for UnitExtra {
             ai_timers: Vec::new(),
             blend_time: None,
             order_queue: Default::default(),
+            queued_current: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

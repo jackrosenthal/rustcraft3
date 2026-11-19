@@ -431,33 +431,68 @@ original images.
   point plays it in its order's color when Shift is not held (`FUN_6f3a90c0`, from
   CTargetMode's `FUN_6f3c2200` and `FUN_6f3c39b0`).
 - An order's target takes an indicator (+0x378, eight, the oldest replaced): a right
-  click on a unit (`FUN_6f392fa0` → `FUN_6f3814e0`) or another widget (`FUN_6f394840` →
-  `FUN_6f3818b0`), and a targeted order's target without Shift (`FUN_6f3a9020`,
-  `FUN_6f3a90c0`).  A unit's circle is in the local player's standing toward its owner
-  (`FUN_6f340400`) at alpha 0xf0, another widget's in ColorNeutral, a destructable's
-  model taking TargetingColors' SelTargetColor besides (`FUN_6f380df0`; its sprite's
-  color, vf 0x30, and the widget's own again, vf 0xb4).  Each lasts 1.1 seconds
-  (`0x6fce5a04`) and blinks: `FUN_6f38da30` shows it in a frame only while the seconds
-  since it began over 0.3 (`0x6fa93554`), truncated, are even, the shown flag (0x20,
-  `FUN_6f78cc80`) being asked for each frame as a unit's own circles are (vf
-  `FUN_6f6987d0`).  UnitAddIndicator's blink too.  (Provisional: a unit target whose
-  word at +0x48 has 0x400, which flashes its model and doubles its circle in
-  ColorNeutral; the flag is not read, and the port leaves the case out.)
+  click on a widget (`FUN_6f394840`) and a targeted order's target without Shift
+  (`FUN_6f3a90c0`) give it to `FUN_6f3818b0`, as UnitAddIndicator and AddIndicator do
+  with their color (`FUN_6f1f7850`, `FUN_6f218210`; alpha its fourth argument).  Its
+  circle is in the color given, else a unit's (cast by its tag, `+w3u`) in its circle
+  color at alpha 0xf0, an item's (`item`) and a destructable's in ColorNeutral; a
+  destructable's model takes the color given, else TargetingColors' SelTargetColor
+  (`FUN_6f380df0`; its sprite's color, vf 0x30, and its own again, vf 0xb4).  A click
+  that lands on a fog ghost (`+wgh`, what the player remembers under the fog) goes to
+  `FUN_6f3814e0` instead (`FUN_6f392fa0`, `FUN_6f3a9020`): the ghost's word +0x48 holds
+  its owner and flags for a unit's ghost and 0x400 for a destructable's
+  (`FUN_6f6da850`), so a unit's ghost takes how the player stands toward its owner at
+  alpha 0xf0, and a destructable's flashes in SelTargetColor (`FUN_6f380c90`) under a
+  ColorNeutral circle twice ScaleFactor wide (its type has no unit scale,
+  `FUN_6f343800` giving 1).  The port, without ghosts, takes a destructable outside the
+  player's sight as its ghost.  Each lasts 1.1 seconds (`0x6fce5a04`) and blinks:
+  `FUN_6f38da30` shows it in a frame only while the seconds since it began over 0.3
+  (`0x6fa93554`), truncated, are even, the shown flag (0x20, `FUN_6f78cc80`) being
+  asked for each frame as a unit's own circles are (vf `FUN_6f6987d0`).
+- A unit's selection circle, its preselection circle, and an indicator on it are in
+  how the local player stands toward its owner (`FUN_6f340400` given the local player:
+  `FUN_6f697a10`, `FUN_6f691800`, `FUN_6f3818b0`): green for a player sharing control
+  with it, itself included, red for one it is not passive toward (Neutral Hostile's
+  creeps), else yellow (an ally, Neutral Passive), yellow to an observer.  A mechanical
+  critter not the player's friend is yellow: CAbilityMechanicalCritter's summon sets the
+  unit's word +0x60 bit 1 (`FUN_6f57f410`, its vtable `0x6fb3d9a0` slot 0x3e4) and its
+  buff clears it (`FUN_6f58dfa0`); with it set a unit also shows as Neutral Passive's
+  (`FUN_6f695090`).  (The port had colored allies green and every neutral yellow.)
+- The preselection circle (CSelectable +0x48, `FUN_6f654a90`; the selection circle is
+  +0x44), shown for the unit under the pointer and those a drag would select by vf
+  0x190 (`FUN_6f691800`), is the plain TextureNN: `FUN_6f78ad30`'s third argument, which
+  `FUN_6f7211b0` makes "Dotted", is 0 there and set only for the circles showing
+  another player's selection (`FUN_6f697a10`, +0x278).  EnablePreSelect's second
+  argument turns preselection circles off (CGameUI +0x29c, `FUN_6f36c2b0`, its first
+  +0x298).  (The port had drawn them dotted.)
 - Waypoints (+0x598, 256 flags of the race's WaypointIndicator, in the local player's
   color: `FUN_6f384950`, `FUN_6f35b620` with +0x198): the local leader's (`FUN_6f293110`
   → `FUN_6f38c0d0`, all made again as it changes, and none for a unit the player does
   not command), a flag for each of its orders flagged 4 (`FUN_6f386ee0`), those given
-  with Shift.  A flag at a point lies along the ground as the confirmation does
-  (`FUN_6f38b1c0`); one for a target stands on it (`FUN_6f38b7a0`, `FUN_6f38bc10`);
-  each plays its Birth then its Stand, and goes when its order is done
-  (`FUN_6f386b00`).  The port keeps a flag while its order waits or is carried out.
-- Rally flags (+0x3b8, sixteen of the race's RallyIndicatorDst, `FUN_6f3847d0`): on a
-  point (`FUN_6f3800f0`), its x along the way from the structure to the point (the
-  difference with height, normalized), its y that's level square, its z up, standing as
-  made when the point is within 0.1 of the structure; on a widget (`FUN_6f380460`), at
-  its model's "sprite rallypoint" attachment.  Birth, then Stand.  The port shows one
-  for each selected structure the player commands that has a rally point (provisional:
-  CGameUI's callers, `FUN_6f3761f0` and `FUN_6f376220`, are not read).
+  with Shift, unless one on a unit its owner cannot see (`FUN_6f69e1c0`).  A flag at a
+  point lies along the ground as the confirmation does (`FUN_6f38b1c0`); one for a
+  target stands on it (`FUN_6f38b7a0`, `FUN_6f38bc10`); each plays its Birth then its
+  Stand, and goes once its order's flag 4 is cleared (`FUN_6f386b00`): as the unit's
+  head order is done and dropped (`FUN_6f694a10`), or on the completion events
+  0xd016b to 0xd0174, 0xd0176, 0xd0193, and 0xd0144 (`FUN_6f5fa7a0`, `FUN_6f691260`
+  calling `FUN_6f674180`).  So a queued order's flag stays while the unit carries it
+  out; the port marks that order as it leaves the queue (`queued_current`), until
+  another takes its place.
+- Rally flags (+0x3b8, sixteen of the race's RallyIndicatorDst, `FUN_6f3847d0`): a unit
+  selected (`FUN_6f697a10`) has its rally ability show its flag (`FUN_6f4352d0`) when
+  the ability is not disabled and its owner shares control with the player
+  (`FUN_6f1ea8b0`), and hide it when it leaves the selection (`FUN_6f41a2f0`); a rally
+  point set anew shows it again from its Birth.  On a point (`FUN_6f3800f0`, the
+  ground's height there, `FUN_6f64f7e0`), its x along the way from the unit to the
+  point (the difference with height, normalized), its y that's level square, its z
+  up, standing as made when the point is within 0.1 of the unit; on a widget
+  (`FUN_6f380460`), at its model's "sprite rallypoint" attachment, but at a dead one's
+  place on the ground (vf 0x13c, a unit's +0x5c bit 0x100; `FUN_6f435170`).  Birth,
+  then Stand.
+- The world frame's feedback (the confirmation, the flags, and the indicators) runs by
+  real time: CNetEventAsyncIdleTick's milliseconds (`FUN_6f36ab40`) add to its +0x23c
+  (`FUN_6f37ef70`), which its update (`FUN_6f385c10`) hands each model and
+  `FUN_6f38da30`, whatever the game's speed or pause.
 - The drag box (CPreselectUI, vtable `0x6fabba10`; +0x9c a drag, +0x54 its start):
   `FUN_6f398090` lays two rectangles in the world frame's -1 to 1 coordinates, the
   drag's and one 0.001 wide and 0.0015 high outside it (`0x6fa84470`, `0x6fab3ecc`),

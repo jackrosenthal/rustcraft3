@@ -146,9 +146,24 @@ pub struct Audio {
 }
 
 impl Audio {
+    #[cfg(target_os = "macos")]
+    fn open_sink() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
+        // CoreAudio keeps an explicitly requested buffer size for the lifetime of the
+        // process. Let it choose the device's native size instead of rodio's fixed 50 ms size.
+        rodio::DeviceSinkBuilder::from_default_device()
+            .map(|builder| builder.with_buffer_size(cpal::BufferSize::Default))
+            .and_then(rodio::DeviceSinkBuilder::open_stream)
+            .or_else(|_| rodio::DeviceSinkBuilder::open_default_sink())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn open_sink() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
+        rodio::DeviceSinkBuilder::open_default_sink()
+    }
+
     /// Opens the default output device; without one, every call does nothing.
     pub fn new(chain: Arc<Chain>) -> Audio {
-        let sink = match rodio::DeviceSinkBuilder::open_default_sink() {
+        let sink = match Self::open_sink() {
             Ok(mut s) => {
                 s.log_on_drop(false);
                 Some(s)

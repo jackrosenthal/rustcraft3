@@ -275,7 +275,7 @@ $("test").onclick = () => {
 showSound();
 
 // ---- Warnings: each sounded once per level and stage, however often the state comes
-// (forgotten as a new game starts, its time going back).
+// (a new game reloads the page, starting them over).
 const warned = new Set();
 function warnOnce(key, fn) { if (!warned.has(key)) { warned.add(key); fn(); } }
 function alerts(s, next) {
@@ -428,15 +428,18 @@ function render(s) {
 let seenPlaying = false;
 
 // ---- Live state over a WebSocket, pushed by the game four times a second.  A game time
-// that stops moving is a paused game; no message at all for a while, a stalled one.  The
-// socket comes back on its own (the server goes with each game and returns with the next).
+// that stops moving is a paused game; no message at all for a while, a stalled one.
 // The host's lobby serves the page too, its state as it changes; the game takes over the
-// same socket as it begins.
+// same socket as it begins.  The server goes with each game (or a lobby left), so a socket
+// lost is that game over: the page waits for a server to come back (the next game, or its
+// lobby) and reloads from it, starting the new game fresh, page, sounds, and all.
 function setStatus(text, cls) { $("status").textContent = text; $("status").className = "status " + cls; }
-let lastTime = null, lastMove = 0, lastMsg = 0, retry = 500;
+let lastTime = null, lastMove = 0, lastMsg = 0, ws = null;
+// A game sends four times a second even paused, so this long without a word is a
+// connection gone dead without closing (the host's network dropped, say).
+const DEAD_AFTER = 10000, POLL_EVERY = 1000;
 function connect() {
-  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onopen = () => { retry = 500; };
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   ws.onmessage = ev => {
     let s;
     try { s = JSON.parse(ev.data); } catch (e) { return; }
@@ -444,20 +447,32 @@ function connect() {
     if (!s.levels) return;
     const now = performance.now();
     lastMsg = now;
-    // A new game (its time starting over): its warnings, lives, and end are its own.
-    if (lastTime !== null && s.time < lastTime - 1) { warned.clear(); lastLives = null; lastHsbc = null; seenPlaying = false; }
     if (s.time !== lastTime) { lastTime = s.time; lastMove = now; }
     const paused = now - lastMove > 1500;
     setStatus(paused ? "Paused" : "Live", paused ? "paused" : "live");
     render(s);
   };
-  ws.onclose = () => {
-    setStatus("Offline", "down");
-    setTimeout(connect, retry);
-    retry = Math.min(retry * 2, 5000);
-  };
+  ws.onclose = lost;
 }
-setInterval(() => { if (lastMsg && performance.now() - lastMsg > 3000 && $("status").className.includes("live")) setStatus("Stalled", "paused"); }, 1000);
+function lost() {
+  if (ws) { ws.onclose = ws.onmessage = null; ws.close(); ws = null; }
+  lastMsg = 0;
+  setStatus("Offline", "down");
+  waitForServer();
+}
+// Asks for the state until the server answers, then reloads.
+function waitForServer() {
+  const timeout = window.AbortSignal && AbortSignal.timeout ? { signal: AbortSignal.timeout(POLL_EVERY * 2) } : {};
+  fetch("/state", { cache: "no-store", ...timeout })
+    .then(r => { if (!r.ok) throw r.status; location.reload(); })
+    .catch(() => setTimeout(waitForServer, POLL_EVERY));
+}
+setInterval(() => {
+  if (!lastMsg) return;
+  const quiet = performance.now() - lastMsg;
+  if (quiet > DEAD_AFTER) lost();
+  else if (quiet > 3000 && $("status").className.includes("live")) setStatus("Stalled", "paused");
+}, 1000);
 connect();
 </script>
 </body>

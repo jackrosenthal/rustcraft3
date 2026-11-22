@@ -117,6 +117,11 @@ dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums
 /* An HSBC finished: a gold banner over the page's top for a few seconds. */
 .kaching{position:fixed;left:50%;top:1rem;transform:translate(-50%,calc(-100% - 2rem));z-index:10;display:flex;align-items:center;gap:.8rem;padding:.7rem 1.4rem;background:#000;border:.18rem solid var(--gold);box-shadow:0 0 2rem rgba(252,210,13,.6),inset 0 0 1rem rgba(252,210,13,.3);font:900 2rem/1 var(--display);color:var(--gold);letter-spacing:.04em;text-shadow:0 .12rem 0 #000;transition:transform .35s ease-out;pointer-events:none;max-width:calc(100vw - 32px)}
 .kaching.on{transform:translate(-50%,0)} .kaching small{font:600 1.2rem var(--body);color:var(--fg);letter-spacing:0}
+/* While the browser holds the sound back: a button in the corner to let it play. */
+.unmute{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:11;display:flex;flex-direction:column;align-items:flex-start;gap:.2rem;padding:.6rem 1rem;max-width:calc(100vw - 32px);text-align:left;cursor:pointer;
+background:linear-gradient(180deg,#2a303a,#11151b);color:var(--gold);border:.16rem solid var(--gold);box-shadow:0 0 1.4rem rgba(252,210,13,.45);font:900 1.4rem/1.1 var(--display);letter-spacing:.04em}
+.unmute:hover{filter:brightness(1.2)} .unmute[hidden]{display:none}
+.unmute small{font:600 1.05rem/1.2 var(--body);color:var(--muted);letter-spacing:0}
 .sw{display:inline-block;width:.8rem;height:.8rem;margin-right:.5rem;border:.07rem solid #000;vertical-align:-.05rem}
 .empty{color:var(--muted)}
 /* Portrait and small screens: stack and scroll instead of fitting one screen. */
@@ -131,6 +136,7 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
 </head>
 <body>
 <div class="kaching" id="kaching" role="status" aria-live="polite"></div>
+<button class="unmute" id="unmute" type="button" hidden>Click to turn on sound<small>Or allow autoplay for this site in the browser, to skip this</small></button>
 <div class="wrap">
 <header>
   <h1>Mafarazzo TD</h1>
@@ -187,6 +193,13 @@ for (const [name, file] of Object.entries(SOUNDS)) {
 }
 function unlock() { if (ctx.state !== "running") ctx.resume().catch(() => {}); }
 for (const ev of ["pointerdown", "keydown", "touchend"]) document.addEventListener(ev, unlock, { capture: true });
+// A browser that allows the site's autoplay lets the audio start at once; others hold it
+// until a click or key on the page (each load: a new game reloads the page).  The corner
+// button shows only while the audio is held, after a moment's grace for its start.
+function showUnmute() { $("unmute").hidden = ctx.state === "running"; }
+ctx.onstatechange = showUnmute;
+ctx.resume().catch(() => {});
+setTimeout(showUnmute, 400);
 function play(name) {
   const buf = buffers[name];
   if (!buf) return;

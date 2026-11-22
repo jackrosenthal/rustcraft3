@@ -119,10 +119,19 @@ fn nuke_sound() -> Option<(&'static str, Arc<[u8]>)> {
     std::fs::read(NUKE_FILE).ok().map(|b| ("nuke.mp3", Arc::from(b)))
 }
 
+/// The Wilhelm scream, one death cry in ten on the page, which the game has none of: kept
+/// beside the source as a WAV or an MP3.  Without it every cry is the footman's.
+const WILHELM_FILES: [&str; 2] = [concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/wilhelm.wav"), concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/wilhelm.mp3")];
+
+/// The first of `WILHELM_FILES` there, as the page's "wilhelm".
+fn wilhelm_sound() -> Option<(&'static str, Arc<[u8]>)> {
+    WILHELM_FILES.iter().find_map(|f| std::fs::read(f).ok()).map(|b| ("wilhelm", Arc::from(b)))
+}
+
 /// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
 const HSBC: &[u8; 4] = b"o008";
 
-/// Reads the page's sounds from the game's archives (and `NUKE_FILE`).
+/// Reads the page's sounds from the game's archives (and `NUKE_FILE`, `WILHELM_FILES`).
 fn read_sounds(chain: &w3_mpq::Chain) -> Vec<(&'static str, Arc<[u8]>)> {
     SOUNDS
         .iter()
@@ -134,6 +143,7 @@ fn read_sounds(chain: &w3_mpq::Chain) -> Vec<(&'static str, Arc<[u8]>)> {
             }
         })
         .chain(nuke_sound())
+        .chain(wilhelm_sound())
         .collect()
 }
 
@@ -638,7 +648,8 @@ fn respond(mut s: TcpStream, shared: &Shared) -> std::io::Result<()> {
         });
     // The sounds never change within a game; the page and its state always may.
     let (status, kind, cache, body): (&str, &str, &str, Arc<[u8]>) = match (method, path, sound) {
-        ("GET", _, Some((n, b))) => ("200 OK", if n.ends_with(".mp3") { "audio/mpeg" } else { "audio/wav" }, "max-age=3600", b),
+        // A WAV (RIFF) or else an MP3, by its bytes: the Wilhelm scream may be either.
+        ("GET", _, Some((_, b))) => ("200 OK", if b.starts_with(b"RIFF") { "audio/wav" } else { "audio/mpeg" }, "max-age=3600", b),
         ("GET", "/" | "/index.html", _) => ("200 OK", "text/html; charset=utf-8", "no-store", Arc::from(PAGE.as_bytes())),
         ("GET", "/state", _) => ("200 OK", "application/json", "no-store", Arc::from(shared.state.lock().unwrap().1.as_bytes())),
         ("GET", _, _) => ("404 Not Found", "text/plain", "no-store", Arc::from(&b"not found"[..])),

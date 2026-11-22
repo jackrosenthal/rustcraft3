@@ -4021,7 +4021,10 @@ impl Scene {
                 inst.play(if alive { "stand" } else { "death" });
                 if !alive {
                     // Already dead when placed: show the end of the death animation.
-                    inst.frame = f32::MAX / 4.0;
+                    // (The sequence's own length: a frame past what a u32 holds overflows
+                    // the instance's time when read before its next advance.)
+                    let seq = inst.sequence.and_then(|s| inst.model.mdx.sequences.get(s));
+                    inst.frame = seq.map_or(0.0, |s| (s.end - s.start) as f32);
                 }
                 self.dests.insert(h, (inst, alive));
             }

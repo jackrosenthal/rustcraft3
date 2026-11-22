@@ -6,9 +6,10 @@
 <title>Mafarazzo TD Live</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Alegreya+Sans:wght@400;500;700&display=swap">
 <style>
-/* Left: the level being fought, the next one (with its warning), dangers ahead, and the
-   players' kills.  Right: the 40 levels as a command card, past ones dimmed.  One dark
-   look after the Warcraft III console, as the static level sheet. */
+/* Left: dangers ahead, what each fantas unlocks, and the towers' tech tree.  Right: a
+   strip with the level being fought, the next one, its countdown, and its warning, over
+   the 40 levels as a command card, past ones dimmed.  One dark look after the Warcraft III
+   console, as the static level sheet. */
 :root{color-scheme:dark;
 --bg:#07090c;--stone:#12161c;--panel:#0b0e13;--fg:#f2efe4;--muted:#a59f8e;
 --gold:#fcd20d;--trim:#b08a2e;--trim-dark:#4a3810;--bevel:#2b313b;
@@ -36,31 +37,34 @@ header .map{color:var(--muted);font-size:1.3rem;flex:1;min-width:0}
 button{font:700 1.05rem var(--body);color:var(--fg);background:linear-gradient(180deg,#2a303a,#11151b);border:.14rem solid var(--trim);padding:.35rem .8rem;cursor:pointer}
 button:hover{border-color:var(--gold)} button[aria-pressed="true"]{color:var(--gold);box-shadow:inset 0 0 .6rem rgba(252,210,13,.35)}
 main{display:grid;grid-template-columns:minmax(0,34fr) minmax(0,66fr);gap:.9rem;min-height:0}
-.side{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:.6rem;min-height:0;overflow-y:auto}
-/* The panels above Kills keep their content's height; Kills takes what is left. */
+.side{display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:.6rem;min-height:0;overflow-y:auto}
+/* The panels above the tech tree keep their content's height; the tree takes what is left
+   and scrolls. */
 .side>.box:not(:last-child){min-height:auto}
+.right{display:grid;grid-template-rows:auto minmax(0,1fr);gap:.6rem;min-height:0;min-width:0}
 .box{background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 30%) var(--panel);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 1.2rem #000;padding:.6rem .9rem;min-width:0;min-height:0;display:flex;flex-direction:column;gap:.4rem}
 h2{font:700 1.2rem/1 var(--display);letter-spacing:.09em;text-transform:uppercase;margin:0;color:var(--gold);text-shadow:0 .08rem 0 #000}
-.lvl{display:flex;gap:1rem;align-items:center}
-.big{font:900 4.4rem/.85 var(--display);color:#cfd5df;text-shadow:0 .15rem 0 #000;min-width:3.2ch;text-align:center}
-.lvl .info{min-width:0;flex:1;display:flex;flex-direction:column;gap:.25rem}
-.unit{font:700 1.7rem/1.05 var(--body)}
-.line{color:var(--muted);font-size:1.3rem}
-.line b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums}
-.stats{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.25rem;color:var(--muted)}
-.stats b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums} .stats .gold b{color:var(--gold)}
-.tags{display:flex;gap:.3rem;flex-wrap:wrap}
 .tag{font:700 .95rem/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:.2rem .35rem;background:#000;border:.07rem solid currentColor}
 .air{color:var(--air)} .boss{color:var(--boss)} .fan{color:var(--fan)}
-.big.air{color:var(--air)} .big.boss{color:var(--boss)} .big.fan{color:var(--fan)}
-.count{font:900 3rem/1 var(--display);color:var(--gold);font-variant-numeric:tabular-nums lining-nums}
-.warn{display:none;align-items:center;gap:.8rem;padding:.55rem .8rem;border:.14rem solid currentColor;background:#000;font:900 1.5rem/1.05 var(--display);letter-spacing:.05em;text-transform:uppercase}
-.warn.on{display:flex} .warn small{font:600 1.15rem var(--body);letter-spacing:0;text-transform:none;color:var(--muted);display:block}
-.warn.boss{color:var(--boss);box-shadow:0 0 1.4rem rgba(255,75,58,.45),inset 0 0 1rem rgba(255,75,58,.3)}
-.warn.air{color:var(--air);box-shadow:0 0 1.4rem rgba(99,200,255,.4),inset 0 0 1rem rgba(99,200,255,.25)}
-.warn.urgent{animation:pulse .8s ease-in-out infinite}
+/* The strip over the grid: the level now, the next with its countdown; before an air or
+   boss level it turns into that level's warning, pulsing through the countdown; at the
+   end, the victory or defeat. */
+.strip{display:flex;align-items:center;gap:1.1rem;flex-wrap:wrap;padding:.35rem .9rem;background:#000;border:.14rem solid var(--trim);outline:.07rem solid #000;color:var(--fg);min-width:0}
+.strip .now{color:var(--muted);font-size:1.3rem} .strip .now b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums}
+.strip .nx{display:flex;align-items:center;gap:.5rem;flex:1;flex-wrap:wrap;min-width:0;font:700 1.4rem/1.1 var(--body)}
+.strip .nx .k{font:700 1rem var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.strip .nx .n{font:900 1.8rem/1 var(--display)}
+.strip .what{font:900 1.35rem/1.05 var(--display);letter-spacing:.05em;text-transform:uppercase}
+.strip .what small{display:block;font:600 1.05rem var(--body);letter-spacing:0;text-transform:none;color:var(--muted)}
+.strip .count{font:900 2.1rem/1 var(--display);color:var(--gold);font-variant-numeric:tabular-nums lining-nums;margin-left:auto}
+.strip.boss{border-color:var(--boss);color:var(--boss);box-shadow:0 0 1.4rem rgba(255,75,58,.45),inset 0 0 1rem rgba(255,75,58,.3)}
+.strip.air{border-color:var(--air);color:var(--air);box-shadow:0 0 1.4rem rgba(99,200,255,.4),inset 0 0 1rem rgba(99,200,255,.25)}
+.strip.urgent{animation:pulse .8s ease-in-out infinite}
+.strip.victory,.strip.defeat{justify-content:center;font:900 2.4rem/1 var(--display);letter-spacing:.12em;text-transform:uppercase}
+.strip.victory{color:var(--gold);border-color:var(--gold);box-shadow:0 0 1.6rem rgba(252,210,13,.5)}
+.strip.defeat{color:var(--boss);border-color:var(--boss);box-shadow:0 0 1.6rem rgba(255,75,58,.5)}
 @keyframes pulse{50%{filter:brightness(1.6)}}
-@media (prefers-reduced-motion:reduce){.warn.urgent,.cell.next,.health.hit .bar{animation:none}}
+@media (prefers-reduced-motion:reduce){.strip.urgent,.cell.next,.health.hit .bar{animation:none}}
 .ahead{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
 .ahead div{background:#000;border:.1rem solid currentColor;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.15rem}
 .ahead span{font:700 .95rem var(--body);letter-spacing:.1em;text-transform:uppercase}
@@ -70,16 +74,35 @@ table{border-collapse:collapse;width:100%;font-size:1.25rem}
 th{font:700 .95rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .4rem .15rem}
 td{padding:.2rem .4rem;border-top:.07rem solid var(--bevel)}
 .n{text-align:right;font-variant-numeric:tabular-nums lining-nums} th.n{text-align:right}
-.sw{display:inline-block;width:.8rem;height:.8rem;margin-right:.5rem;border:.07rem solid #000;vertical-align:-.05rem}
 .scroll{overflow:auto;min-height:0}
-.grid{list-style:none;margin:0;padding:.55rem;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:.45rem;min-height:0;
+/* What each fantas unlocks, after the static sheet's table; a fantas had shows solid. */
+td.lv{font:700 1.5rem/1 var(--display);width:2.6rem;color:var(--fan)}
+tr.had td strong{color:var(--fan)} tr.had td strong::after{content:" \2713";font-size:.9em} tr.later{opacity:.6}
+td strong{display:block;font-weight:700;line-height:1.1}
+.req{display:block;color:var(--muted);font-size:1.05rem;line-height:1.15}
+td.gold{color:var(--gold)}
+/* The tech tree: each tower a chip; an upgrade chain runs on one line (›), a branch opens
+   an indented list, a builder's buildings and a building's trained builder each get a line. */
+.tt,.tt ul{list-style:none;margin:0;padding:0}
+.tt ul{padding-left:1.1rem;border-left:.1rem solid var(--bevel);margin:.15rem 0 .15rem .35rem}
+.tt li{margin:.22rem 0;line-height:1.55}
+.tt .via{font:700 .8rem var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:.3rem}
+.tt .arr{color:var(--trim);margin:0 .2rem}
+.tw{display:inline-flex;align-items:baseline;gap:.3rem;padding:.05rem .4rem;background:#000;border:.07rem solid var(--bevel);font-size:1.08rem;white-space:nowrap}
+.tw .g{color:var(--gold);font-variant-numeric:tabular-nums lining-nums;font-size:.95rem}
+.tw .h{font:700 .75rem var(--body);letter-spacing:.06em}
+.tw .h.air{color:var(--air)} .tw .h.ground{color:#d9a066} .tw .h.both{color:var(--fg)}
+.tw .nd{font-size:.85rem;color:var(--muted)}
+.tw .nd.fan{color:var(--fan);font-weight:700}
+.tw.fan{border-color:var(--fan)} .tw.locked{opacity:.5}
+.grid{list-style:none;margin:0;padding:.45rem;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:.35rem;min-height:0;
 background:var(--stone);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 2rem #000}
 .cell{position:relative;background:linear-gradient(160deg,#1c222b,#0b0e12 60%);border:.14rem solid var(--bevel);border-top-color:#444c59;border-left-color:#444c59;border-bottom-color:#06080a;border-right-color:#06080a;padding:.35rem .55rem;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden}
 .cell .top{display:flex;justify-content:space-between;align-items:flex-start;gap:.3rem}
-.cell b{font:900 2.1rem/.9 var(--display);color:#7d8697;text-shadow:0 .1rem 0 #000}
+.cell b{font:900 1.85rem/.9 var(--display);color:#7d8697;text-shadow:0 .1rem 0 #000}
 .marks{display:flex;flex-direction:column;align-items:flex-end;gap:.15rem}
 .cell .tag{font-size:.78rem;padding:.15rem .25rem;letter-spacing:.04em}
-.cell .name{font:700 1.25rem/1.05 var(--body);color:var(--fg)}
+.cell .name{font:700 1.15rem/1.05 var(--body);color:var(--fg)}
 dl{margin:0;display:grid;font-size:1.15rem;line-height:1.1}
 dl div{display:flex;justify-content:space-between;gap:.4rem}
 dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums} dd.gold{color:var(--gold)}
@@ -94,15 +117,16 @@ dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums
 .cell.next{outline:.18rem dashed var(--fg);outline-offset:-.05rem;animation:nextglow 1.6s ease-in-out infinite}
 @keyframes nextglow{50%{filter:brightness(1.35)}}
 /* An HSBC finished: a gold banner over the page's top for a few seconds. */
-.kaching{position:fixed;left:50%;top:1rem;transform:translate(-50%,-150%);z-index:10;display:flex;align-items:center;gap:.8rem;padding:.7rem 1.4rem;background:#000;border:.18rem solid var(--gold);box-shadow:0 0 2rem rgba(252,210,13,.6),inset 0 0 1rem rgba(252,210,13,.3);font:900 2rem/1 var(--display);color:var(--gold);letter-spacing:.04em;text-shadow:0 .12rem 0 #000;transition:transform .35s ease-out;pointer-events:none;max-width:calc(100vw - 32px)}
+.kaching{position:fixed;left:50%;top:1rem;transform:translate(-50%,calc(-100% - 2rem));z-index:10;display:flex;align-items:center;gap:.8rem;padding:.7rem 1.4rem;background:#000;border:.18rem solid var(--gold);box-shadow:0 0 2rem rgba(252,210,13,.6),inset 0 0 1rem rgba(252,210,13,.3);font:900 2rem/1 var(--display);color:var(--gold);letter-spacing:.04em;text-shadow:0 .12rem 0 #000;transition:transform .35s ease-out;pointer-events:none;max-width:calc(100vw - 32px)}
 .kaching.on{transform:translate(-50%,0)} .kaching small{font:600 1.2rem var(--body);color:var(--fg);letter-spacing:0}
-.empty{color:var(--muted)} .gone{color:var(--muted);font-size:.95rem;text-transform:uppercase;letter-spacing:.08em;margin-left:.3rem}
+.sw{display:inline-block;width:.8rem;height:.8rem;margin-right:.5rem;border:.07rem solid #000;vertical-align:-.05rem}
+.empty{color:var(--muted)}
 /* Portrait and small screens: stack and scroll instead of fitting one screen. */
 @media (max-aspect-ratio:5/4),(max-width:820px){
 :root{font-size:16px} html,body{height:auto} .wrap{height:auto;display:flex;flex-direction:column}
-main{display:flex;flex-direction:column} .side{display:flex;flex-direction:column}
+main{display:flex;flex-direction:column} .side{display:flex;flex-direction:column} .right{display:flex;flex-direction:column}
+.tw{white-space:normal} .strip .nx{flex-basis:100%}
 .grid{grid-template-columns:repeat(auto-fill,minmax(8.6rem,1fr));grid-template-rows:none} .cell{gap:.5rem;min-height:8rem}
-.big{font-size:4rem}
 header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .status{margin-left:auto}
 }
 </style>
@@ -117,44 +141,34 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
     <span class="hl">Health</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">–</b>
   </div>
   <span class="status down" id="status">Offline</span>
-  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, when a life is lost, when an HSBC is built, and on falling under 10 lives">Sound: off</button>
+  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, as lives are lost, at the end, when an HSBC is built, and on falling under 10 lives">Sound: off</button>
   <button id="test" title="Play the boss, air, countdown, life-lost, HSBC, and under-10-lives sounds">Test</button>
 </header>
 <main>
 <div class="side">
   <section class="box">
-    <h2 id="nowTitle">Level</h2>
-    <div class="lvl"><div class="big" id="nowN">–</div><div class="info">
-      <div class="unit" id="nowName">Waiting for the game</div>
-      <div class="tags" id="nowTags"></div>
-      <div class="line" id="nowLine"></div>
-    </div></div>
-  </section>
-  <section class="box">
-    <h2>Next</h2>
-    <div class="warn" id="warn"></div>
-    <div class="lvl"><div class="big" id="nextN">–</div><div class="info">
-      <div class="unit" id="nextName"></div>
-      <div class="tags" id="nextTags"></div>
-      <div class="stats" id="nextStats"></div>
-    </div><div class="count" id="count"></div></div>
-  </section>
-  <section class="box">
     <h2>Ahead</h2>
     <div class="ahead" id="ahead"></div>
   </section>
   <section class="box">
-    <h2>Kills</h2>
-    <div class="scroll"><table><thead><tr><th>Player</th><th class="n">Kills</th></tr></thead><tbody id="players"></tbody></table></div>
+    <h2>Fantas unlocks</h2>
+    <table><thead><tr><th>Lvl</th><th>Unlocks</th><th class="n">Gold</th></tr></thead><tbody id="unlocks"></tbody></table>
+  </section>
+  <section class="box">
+    <h2>Tech tree</h2>
+    <div class="scroll"><ul class="tt" id="tech"></ul></div>
   </section>
 </div>
-<ol class="grid" id="grid"></ol>
+<div class="right">
+  <div class="strip" id="strip" role="status"></div>
+  <ol class="grid" id="grid"></ol>
+</div>
 </main>
 </div>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-// The game's player colors, by color index.
+// The game's player colors, by color index (the HSBC banner's builder).
 const COLORS = ["#ff0303","#0042ff","#1ce6b9","#540081","#fffc01","#fe8a0e","#20c000","#e55bb0","#959697","#7ebff1","#106246","#4e2a04"];
 const fmt = n => n >= 10000 ? (Math.round(n / 1000) + "k") : n.toLocaleString();
 const goldText = g => g[0] === g[1] ? fmt(g[0]) : `${fmt(g[0])}–${fmt(g[1])}`;
@@ -163,46 +177,44 @@ const kinds = l => [l.boss && "boss", l.air && "air", l.fantas && "fan"].filter(
 const tagsHtml = l => (l.fantas ? '<span class="tag fan">Fantas</span>' : "") + (l.air ? '<span class="tag air">Air</span>' : "") + (l.boss ? '<span class="tag boss">Boss</span>' : "");
 const danger = l => l && (l.boss ? "boss" : l.air ? "air" : null);
 
-// ---- Sound: the game's own files, served by the game (/sound/<name>.wav), decoded
-// once; browsers allow sound only after a click.
-const SOUNDS = ["heads-up", "boss", "air", "tick", "death", "kaching"];
-let ctx = null, soundOn = false;
-const buffers = {};
+// ---- Sound: the game's own files, served by the game (/sound/<file>), fetched and
+// decoded as the page loads.  Browsers start the audio only after a click or key on the
+// page, so a page reopened with sound on starts it on the first one anywhere.
+const SOUNDS = { "heads-up": "heads-up.wav", boss: "boss.wav", air: "air.wav", tick: "tick.wav", death: "death.wav", victory: "victory.mp3", defeat: "defeat.mp3", kaching: "kaching.wav", nuke: "nuke.mp3" };
+let soundOn = false;
 try { soundOn = localStorage.getItem("tddash.sound") === "1"; } catch (e) {}
-function audio() {
-  if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    for (const name of SOUNDS) {
-      fetch(`/sound/${name}.wav`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
-        .then(b => ctx.decodeAudioData(b)).then(buf => { buffers[name] = buf; })
-        .catch(e => console.warn("sound", name, e));
-    }
-    // The nuke: the host's file (war3/sounds/nuke.mp3), if any; else nukeSiren's.
-    fetch("/sound/nuke").then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
-      .then(b => ctx.decodeAudioData(b)).then(buf => { buffers.nuke = buf; })
-      .catch(() => {});
-  }
-  if (ctx.state === "suspended") ctx.resume();
-  return ctx;
-}
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const buffers = {};
+const loaded = Object.fromEntries(Object.entries(SOUNDS).map(([name, file]) => [name,
+  fetch(`/sound/${file}`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+    .then(b => ctx.decodeAudioData(b)).then(buf => (buffers[name] = buf))
+    // The nuke's file is the host's own and may be missing: nukeSiren stands in.
+    .catch(e => name !== "nuke" && console.warn("sound", name, e))]));
+function unlock() { if (ctx.state !== "running") ctx.resume().then(showSound, () => {}); }
+for (const ev of ["pointerdown", "keydown", "touchend"]) document.addEventListener(ev, unlock, { capture: true });
+ctx.onstatechange = () => showSound();
 function play(name, force) {
   if (!soundOn && !force) return;
-  const a = audio(), buf = buffers[name];
+  const buf = buffers[name];
   if (!buf) return;
-  const src = a.createBufferSource();
-  src.buffer = buf; src.connect(a.destination); src.start();
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start();
 }
 // One death cry per life lost, each starting as the last ends: lives lost together play
-// back to back.
-let deathsEnd = 0;
-function playDeaths(n) {
-  if (!soundOn) return;
-  const a = audio(), buf = buffers.death;
+// back to back, each cry of an unbroken run faster than the one before (by DEATH_SPEEDUP,
+// up to DEATH_FASTEST times), the run's pace starting over once the cries have caught up.
+const DEATH_SPEEDUP = 1.25, DEATH_FASTEST = 4;
+let deathsEnd = 0, deathRun = 0;
+function playDeaths(n, force) {
+  if (!soundOn && !force) return;
+  const buf = buffers.death;
   if (!buf) return;
   for (let i = 0; i < n; i++) {
-    const src = a.createBufferSource(), at = Math.max(a.currentTime, deathsEnd);
-    src.buffer = buf; src.connect(a.destination); src.start(at);
-    deathsEnd = at + buf.duration;
+    if (ctx.currentTime >= deathsEnd) deathRun = 0;
+    const rate = Math.min(DEATH_SPEEDUP ** deathRun++, DEATH_FASTEST);
+    const src = ctx.createBufferSource(), at = Math.max(ctx.currentTime, deathsEnd);
+    src.buffer = buf; src.playbackRate.value = rate; src.connect(ctx.destination); src.start(at);
+    deathsEnd = at + buf.duration / rate;
   }
 }
 // Falling under 10 lives: a tactical nuke incoming.  The host's own file if it gave one,
@@ -236,24 +248,31 @@ function nukeSiren(a) {
 }
 function playNuke(force) {
   if (!soundOn && !force) return;
-  const a = audio();
-  if (buffers.nuke) play("nuke", force); else nukeSiren(a);
+  if (buffers.nuke) play("nuke", force); else nukeSiren(ctx);
 }
-function showSound() { $("sound").textContent = "Sound: " + (soundOn ? "on" : "off"); $("sound").setAttribute("aria-pressed", soundOn); }
+function showSound() {
+  const blocked = soundOn && ctx.state !== "running";
+  $("sound").textContent = "Sound: " + (!soundOn ? "off" : blocked ? "click to start" : "on");
+  $("sound").setAttribute("aria-pressed", soundOn);
+}
 $("sound").onclick = () => {
   soundOn = !soundOn;
   try { localStorage.setItem("tddash.sound", soundOn ? "1" : "0"); } catch (e) {}
-  if (soundOn) { audio(); setTimeout(() => play("heads-up"), 300); }
+  if (soundOn) loaded["heads-up"].then(() => play("heads-up"));
   showSound();
 };
 $("test").onclick = () => {
-  audio();
-  [["boss", 300], ["air", 2600], ["tick", 4300], ["death", 5000], ["kaching", 6200]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
-  setTimeout(() => playNuke(true), 7400);
+  Promise.all(Object.values(loaded)).then(() => {
+    [["boss", 0], ["air", 2300], ["tick", 4000]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
+    setTimeout(() => playDeaths(6, true), 4700);
+    setTimeout(() => play("kaching", true), 9000);
+    setTimeout(() => playNuke(true), 10200);
+  });
 };
 showSound();
 
-// ---- Warnings: each sounded once per level and stage, however often the state comes.
+// ---- Warnings: each sounded once per level and stage, however often the state comes
+// (forgotten as a new game starts, its time going back).
 const warned = new Set();
 function warnOnce(key, fn) { if (!warned.has(key)) { warned.add(key); fn(); } }
 function alerts(s, next) {
@@ -283,6 +302,58 @@ function renderGrid(s) {
     c.classList.toggle("now", l.n === s.level && s.fight);
     c.classList.toggle("next", l.n === upcoming);
   }
+}
+// A tower's chip: its name, gold, what it hits, and what else it needs (a fantas by its
+// level, dim until the fantas is had).
+const HITS = { air: "Air", ground: "Gnd", both: "A+G" };
+function chip(t, level) {
+  const fan = t.needs.find(n => n.fantas);
+  const locked = fan && level < fan.fantas;
+  const needs = t.needs.map(n => n.fantas ? `<span class="nd fan">F${n.fantas}</span>` : `<span class="nd">${esc(n.name)}</span>`).join(" ");
+  const title = `${t.name}: ${t.gold} gold` + (t.hits ? `, ${t.damage} damage, hits ${t.hits}` : "") + (t.needs.length ? `; needs ${t.needs.map(n => n.fantas ? `the level ${n.fantas} fantas` : n.name).join(", ")}` : "");
+  return `<span class="tw${fan ? " fan" : ""}${locked ? " locked" : ""}" title="${esc(title)}">${esc(t.name)} <span class="g">${fmt(t.gold)}</span>${t.hits ? ` <span class="h ${t.hits}">${HITS[t.hits]}</span>` : ""}${needs ? " " + needs : ""}</span>`;
+}
+const VIA = { build: "builds", train: "trains", upgrade: "›", start: "" };
+// A node and what comes from it: a lone upgrade runs on after it, anything else opens a list.
+function branch(n, level) {
+  let html = chip(n, level);
+  let cur = n;
+  while (cur.next.length === 1 && cur.next[0].via === "upgrade") {
+    cur = cur.next[0];
+    html += `<span class="arr">›</span>${chip(cur, level)}`;
+  }
+  if (cur.next.length) html += `<ul>${cur.next.map(c => `<li>${c.via !== "upgrade" ? `<span class="via">${VIA[c.via]}</span>` : `<span class="arr">›</span>`}${branch(c, level)}</li>`).join("")}</ul>`;
+  return html;
+}
+let techKey = "";
+function renderTech(s) {
+  const key = s.level + JSON.stringify(s.tech).length;
+  if (key === techKey) return;
+  techKey = key;
+  $("tech").innerHTML = s.tech.map(n => `<li>${branch(n, s.level)}</li>`).join("");
+  $("unlocks").innerHTML = s.unlocks.length ? s.unlocks.map(u => {
+    const others = u.needs.filter(n => !n.fantas).map(n => esc(n.name));
+    return `<tr class="${s.level < u.level ? "later" : "had"}"><td class="lv">${u.level}</td><td><strong>${esc(u.name)}</strong><span class="req">${u.from ? `from ${esc(u.from)}` : ""}${others.length ? ` · needs ${others.join(", ")}` : ""}</span></td><td class="n gold">${fmt(u.gold)}</td></tr>`;
+  }).join("") : `<tr><td class="empty" colspan="3">None</td></tr>`;
+}
+// The strip: now, next, countdown, warning, or the game's end.
+function renderStrip(s, cur, next) {
+  const st = $("strip");
+  if (s.outcome) {
+    st.className = "strip " + s.outcome;
+    st.textContent = s.outcome === "victory" ? "Victory" : "Defeat";
+    return;
+  }
+  const now = !cur ? "Building phase" : s.fight ? `Level <b>${cur.n}</b> · <b>${s.creeps}</b>/${cur.count * cur.spawns} left` : `Level <b>${cur.n}</b> cleared`;
+  const soon = !s.fight && s.countdown != null;
+  const count = soon ? `<span class="count">${Math.ceil(s.countdown)}s</span>` : "";
+  if (!next) { st.className = "strip"; st.innerHTML = `<span class="now">${now}</span>`; return; }
+  const kind = danger(next);
+  let what = "";
+  if (kind === "boss") what = `<span class="what">Boss incoming<small>${next.count * next.spawns} &times; ${esc(next.name)}, ${fmt(next.hp)} HP each</small></span>`;
+  else if (kind === "air") what = `<span class="what">Air incoming<small>Only anti-air towers can hit them</small></span>`;
+  st.className = "strip" + (kind ? " " + kind : "") + (kind && soon ? " urgent" : "");
+  st.innerHTML = `<span class="now">${now}</span><span class="nx"><span class="k">Next</span><span class="n ${kinds(next).join(" ")}">${next.n}</span>${esc(next.name)} ${tagsHtml(next)}</span>${what}${count}`;
 }
 // The header's health bar; a lost life flashes it.
 let lastLives = null;
@@ -318,47 +389,24 @@ function renderHsbc(s) {
 function render(s) {
   $("map").textContent = s.map;
   const lv = s.levels, cur = lv[s.level - 1], next = lv[s.level];
-  // The level panel: the one being fought, or the last one cleared.
-  if (!cur) {
-    $("nowTitle").textContent = "Level"; $("nowN").textContent = "0"; $("nowN").className = "big";
-    $("nowName").textContent = "Building phase"; $("nowTags").innerHTML = "";
-  } else {
-    $("nowTitle").textContent = s.fight ? "Fighting" : "Cleared";
-    $("nowN").textContent = cur.n; $("nowN").className = "big " + kinds(cur).join(" ");
-    $("nowName").textContent = cur.name; $("nowTags").innerHTML = tagsHtml(cur);
-  }
-  const total = cur ? cur.count * cur.spawns : 0;
-  $("nowLine").innerHTML = s.fight ? `<b>${s.creeps}</b> of ${total} creeps left` : cur ? "All creeps down" : "";
   renderHealth(s);
-  // The next level, its countdown, and its warning.
-  if (!next) {
-    $("nextN").textContent = "–"; $("nextN").className = "big"; $("nextName").textContent = s.level >= lv.length && !s.fight ? "All levels cleared" : "Last level";
-    $("nextTags").innerHTML = ""; $("nextStats").innerHTML = ""; $("count").textContent = ""; $("warn").className = "warn";
-  } else {
-    $("nextN").textContent = next.n; $("nextN").className = "big " + kinds(next).join(" ");
-    $("nextName").textContent = next.name; $("nextTags").innerHTML = tagsHtml(next);
-    $("nextStats").innerHTML = `<span>Count <b>${next.count} &times; ${next.spawns}</b></span><span>HP <b>${fmt(next.hp)}</b></span><span class="gold">Gold <b>${goldText(next.gold)}</b></span>`;
-    $("count").textContent = !s.fight && s.countdown != null ? Math.ceil(s.countdown) + "s" : "";
-    const kind = danger(next), w = $("warn");
-    if (kind) {
-      const soon = !s.fight && s.countdown != null;
-      const title = kind === "boss" ? "Boss incoming" : "Air incoming";
-      const sub = kind === "boss" ? `${next.count * next.spawns} &times; ${esc(next.name)}, ${fmt(next.hp)} HP each` : "Only anti-air towers can hit them";
-      w.innerHTML = `<div>${title}${soon ? ` in ${Math.ceil(s.countdown)}s` : ""}<small>${sub}</small></div>`;
-      w.className = `warn on ${kind}${soon ? " urgent" : ""}`;
-    } else w.className = "warn";
-  }
+  renderStrip(s, cur, next);
+  renderTech(s);
   // The next air, boss, and fantas levels after the one being fought.
   const from = s.level + 1;
   $("ahead").innerHTML = [["air", "Next air", l => l.air], ["boss", "Next boss", l => l.boss], ["fan", "Next fantas", l => l.fantas]].map(([cls, label, f]) => {
     const l = lv.find(l => l.n >= from && f(l));
     return `<div class="${cls}"><span>${label}</span>${l ? `<b>${l.n}</b><em>${l.n === from ? "next level" : `in ${l.n - s.level} levels`}</em>` : `<b>–</b><em>none left</em>`}</div>`;
   }).join("");
-  $("players").innerHTML = s.players.length ? s.players.slice().sort((a, b) => b.kills - a.kills).map(p => `<tr><td><span class="sw" style="background:${COLORS[p.color] || "#888"}"></span>${esc(p.name)}${p.left ? ' <span class="gone">left</span>' : ""}</td><td class="n">${p.kills.toLocaleString()}</td></tr>`).join("") : `<tr><td class="empty" colspan="2">No players</td></tr>`;
   renderGrid(s);
   alerts(s, next);
   renderHsbc(s);
+  // The game's end, once, and only when this page saw the game being played (a page
+  // opened on a game already over stays quiet).
+  if (!s.outcome) seenPlaying = true;
+  else if (seenPlaying) warnOnce("outcome", () => play(s.outcome));
 }
+let seenPlaying = false;
 
 // ---- Live state over a WebSocket, pushed by the game four times a second.  A game time
 // that stops moving is a paused game; no message at all for a while, a stalled one.  The
@@ -374,6 +422,8 @@ function connect() {
     if (!s.levels) return;
     const now = performance.now();
     lastMsg = now;
+    // A new game (its time starting over): its warnings, lives, and end are its own.
+    if (lastTime !== null && s.time < lastTime - 1) { warned.clear(); lastLives = null; lastHsbc = null; seenPlaying = false; }
     if (s.time !== lastTime) { lastTime = s.time; lastMove = now; }
     const paused = now - lastMove > 1500;
     setStatus(paused ? "Paused" : "Live", paused ? "paused" : "live");

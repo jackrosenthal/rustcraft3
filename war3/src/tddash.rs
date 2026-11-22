@@ -1,7 +1,8 @@
 //! A live web dashboard for Mafarazzo TD, served over HTTP by the game's host while a
-//! game of the map runs: the level being fought, the countdown to the next, the 40
-//! levels' creeps, and warnings (with sound, in the page) before air and boss levels,
-//! and gold's ring as an HSBC is finished.
+//! game of the map runs: our lives, the countdown to the next level, the 40 levels'
+//! creeps, what each fantas unlocks, the towers' tech tree, and warnings (with the game's
+//! own sounds, in the page) before air and boss levels, as lives are lost, and at the end;
+//! gold's ring as an HSBC is finished, and a nuke's alarm on falling under 10 lives.
 //!
 //! The map is recognized by its script's globals rather than its name, so its edits
 //! (the 2.x originals, the RELAXED versions with their larger counts) all read right:
@@ -45,10 +46,9 @@ const LEVELS: usize = 40;
 const SPAWNS: u32 = 6;
 /// The creeps' owner, Player(11).
 const CREEP_PLAYER: u8 = 11;
-/// At most this many creeps left get a health bar each.
-const HEALTH_BARS: usize = 12;
-/// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
-const HSBC: &[u8; 4] = b"o008";
+/// The fantas each player is given as a level begins (the script's Messages trigger), by
+/// level: a token unit whose having it is what the towers it unlocks require.
+const FANTAS: &[(u32, &[u8; 4])] = &[(2, b"h010"), (19, b"h011"), (28, b"h012"), (33, b"h013"), (38, b"h00Z")];
 /// How often the page's state is remade, in real seconds.
 const PUBLISH_EVERY: f32 = 0.25;
 
@@ -63,36 +63,43 @@ pub fn is_mafarazzo(g: &Game) -> bool {
 struct Shared {
     state: Mutex<(u64, Arc<str>)>,
     stop: AtomicBool,
-    /// The page's sounds, by the name it asks for them under, with their media type:
-    /// read from the game's archives (and `NUKE_FILE`) at the start.
-    sounds: Vec<(&'static str, &'static str, Arc<[u8]>)>,
+    /// The page's sounds, by the name it asks for them under, read from the game's
+    /// archives at the start.
+    sounds: Vec<(&'static str, Arc<[u8]>)>,
 }
 
-/// The page's sounds, all the game's own (PCM WAV, which browsers play as is): the name
-/// the page asks for, and the file.
+/// The page's sounds, all the game's own (PCM WAV and MP3, which browsers play as is):
+/// the name the page asks for, and the file.
 const SOUNDS: &[(&str, &str)] = &[
     // The level before an air or boss level begins.
-    ("heads-up", "Sound\\Interface\\Hint.wav"),
+    ("heads-up.wav", "Sound\\Interface\\Hint.wav"),
     // The countdown to a boss level: an Infernal landing (levels 30 and 40's bosses).
-    ("boss", "Units\\Demon\\Infernal\\InfernalBirth1.wav"),
+    ("boss.wav", "Units\\Demon\\Infernal\\InfernalBirth1.wav"),
     // The countdown to an air level: a dragon's roar.
-    ("air", "Units\\Creeps\\AzureDragon\\DragonWhat1.wav"),
+    ("air.wav", "Units\\Creeps\\AzureDragon\\DragonWhat1.wav"),
     // Its last three seconds: the lobby's countdown tick.
-    ("tick", "Sound\\Interface\\BattleNetTick.wav"),
+    ("tick.wav", "Sound\\Interface\\BattleNetTick.wav"),
     // A life lost.
-    ("death", "Units\\Human\\Footman\\FootmanDeath.wav"),
+    ("death.wav", "Units\\Human\\Footman\\FootmanDeath.wav"),
+    // The game's end, as the game itself marks a human player's: its victory and defeat
+    // music (the players build with Human peasants and town halls).
+    ("victory.mp3", "Sound\\Music\\mp3Music\\HumanVictory.mp3"),
+    ("defeat.mp3", "Sound\\Music\\mp3Music\\HumanDefeat.mp3"),
     // An HSBC finished: gold received.
-    ("kaching", "Sound\\Interface\\ReceiveGold.wav"),
+    ("kaching.wav", "Sound\\Interface\\ReceiveGold.wav"),
 ];
 
 /// The sound for falling under 10 lives, which the game has none fit for: MW2's tactical
 /// nuke alarm, kept beside the source.  Without it the page makes its own siren.
 const NUKE_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/nuke.mp3");
 
-/// `NUKE_FILE`, as the page's "nuke" sound, if it can be read.
-fn nuke_sound() -> Option<(&'static str, &'static str, Arc<[u8]>)> {
-    std::fs::read(NUKE_FILE).ok().map(|b| ("nuke", "audio/mpeg", Arc::from(b)))
+/// `NUKE_FILE`, as the page's "nuke.mp3", if it can be read.
+fn nuke_sound() -> Option<(&'static str, Arc<[u8]>)> {
+    std::fs::read(NUKE_FILE).ok().map(|b| ("nuke.mp3", Arc::from(b)))
 }
+
+/// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
+const HSBC: &[u8; 4] = b"o008";
 
 /// The running server.  Dropping it stops its threads and frees the port, for the next
 /// game to bind.
@@ -106,6 +113,10 @@ pub struct Dashboard {
     /// The most lives the game has had: the map's start (30 or 40, by its edit), or more
     /// should a script give them.
     lives_max: i32,
+    /// What each fantas unlocks, and the towers' tech tree, read from the map's object
+    /// data once: they do not change in a game.
+    unlocks: Vec<Unlock>,
+    tech: Vec<Node>,
     /// The HSBCs standing finished as last seen, and how many have been finished this
     /// game (built, or upgraded into) with who finished the last.
     hsbcs: Vec<u32>,
@@ -125,7 +136,7 @@ impl Dashboard {
         let sounds = SOUNDS
             .iter()
             .filter_map(|&(name, file)| match g.world.chain.read(file) {
-                Ok(b) => Some((name, "audio/wav", Arc::from(b))),
+                Ok(b) => Some((name, Arc::from(b))),
                 Err(e) => {
                     log::warn!("tddash: {file}: {e}");
                     None
@@ -140,7 +151,8 @@ impl Dashboard {
         }
         let url = format!("http://{}:{port}/", lan_address().unwrap_or_else(|| "localhost".into()));
         let (boss, fantas) = tagged_levels(g);
-        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0, hsbcs: Vec::new(), hsbc: Hsbc::default() };
+        let (tech, unlocks) = tech_tree(g);
+        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0, unlocks, tech, hsbcs: Vec::new(), hsbc: Hsbc::default() };
         d.update(g, 0.0);
         Ok(d)
     }
@@ -182,7 +194,7 @@ impl Dashboard {
         self.hsbcs = now;
     }
 
-    fn snapshot(&self, g: &Game) -> Snapshot {
+    fn snapshot(&self, g: &Game) -> Snapshot<'_> {
         let (w, vm) = (&g.world, &g.vm);
         let int = |n: &str| vm.global(n).map_or(0, |v| v.int());
         let level = int("udg_Level").max(0) as u32;
@@ -193,32 +205,7 @@ impl Dashboard {
             },
             _ => None,
         });
-        let alive: Vec<_> = w
-            .handles
-            .iter()
-            .filter_map(|(_, o)| match o {
-                Obj::Unit(u) if u.owner == CREEP_PLAYER && !u.dead => Some(u),
-                _ => None,
-            })
-            .collect();
-        let health = Health {
-            life: alive.iter().map(|u| u.life.max(0.0) as f64).sum(),
-            max: alive.iter().map(|u| u.max_life.max(0.0) as f64).sum(),
-            units: if alive.len() <= HEALTH_BARS { alive.iter().map(|u| (u.life.max(0.0).round() as u32, u.max_life.max(0.0).round() as u32)).collect() } else { Vec::new() },
-        };
-        let creeps = alive.len() as u32;
-        let players = (0..CREEP_PLAYER)
-            .filter_map(|p| w.players.get(p as usize))
-            // Those who left (or lost) keep their kills on the board.
-            .filter(|p| p.controller == w3_game::types::map_control::USER && p.slot_state != w3_game::types::slot_state::EMPTY)
-            .map(|p| Player {
-                id: p.id,
-                color: p.color,
-                name: w.player_name(p.id),
-                kills: vm.global_elem("udg_Ladderboard", p.id as usize + 1).map_or(0, |v| v.int()),
-                left: p.slot_state == w3_game::types::slot_state::LEFT,
-            })
-            .collect();
+        let creeps = w.handles.iter().filter(|(_, o)| matches!(o, Obj::Unit(u) if u.owner == CREEP_PLAYER && !u.dead)).count() as u32;
         let levels = (1..=LEVELS as u32)
             .map(|n| {
                 let enemy = vm.global_elem("udg_RoundEnemy", n as usize).map_or(0, |v| v.int());
@@ -242,25 +229,37 @@ impl Dashboard {
                 }
             })
             .collect();
+        let lives = int("udg_Lives");
+        let fight = vm.global("udg_Fight").is_some_and(|v| matches!(v, Value::Bool(true)));
+        // Losing life defeats everyone as the lives reach 0 (any leak on level 40 takes
+        // them all); End Round runs Ending, the victory, once level 40's last creep dies.
+        let outcome = if self.lives_max > 0 && lives <= 0 {
+            Some("defeat")
+        } else if level >= LEVELS as u32 && !fight {
+            Some("victory")
+        } else {
+            None
+        };
         Snapshot {
             map: w.localized(&g.info.name),
             time: w.time,
             level,
-            lives: int("udg_Lives"),
+            lives,
             lives_max: self.lives_max,
-            fight: vm.global("udg_Fight").is_some_and(|v| matches!(v, Value::Bool(true))),
+            fight,
             countdown: timer.filter(|t| t.running).map(|t| t.remaining_now()),
             creeps,
-            health,
-            players,
+            outcome,
             levels,
-            hsbc: self.hsbc.clone(),
+            unlocks: &self.unlocks,
+            tech: &self.tech,
+            hsbc: &self.hsbc,
         }
     }
 }
 
 #[derive(Serialize)]
-struct Snapshot {
+struct Snapshot<'a> {
     map: String,
     /// Game seconds, which stop with the game, for the page to tell a paused game.
     time: f32,
@@ -273,35 +272,58 @@ struct Snapshot {
     /// Game seconds until the next level, while its timer runs.
     countdown: Option<f32>,
     creeps: u32,
-    health: Health,
-    players: Vec<Player>,
+    /// "victory" or "defeat" once the game has ended.
+    outcome: Option<&'static str>,
     levels: Vec<Level>,
-    hsbc: Hsbc,
+    unlocks: &'a [Unlock],
+    tech: &'a [Node],
+    hsbc: &'a Hsbc,
 }
 
 /// The HSBCs finished this game, and the name and color of who finished the last.
-#[derive(Serialize, Clone, Default)]
+#[derive(Serialize, Default)]
 struct Hsbc {
     built: u32,
     by: Option<(String, i32)>,
 }
 
-/// The creeps alive's life, summed, and each one's (life, most) when few are left
-/// (a boss level's, a level's stragglers).
-#[derive(Serialize)]
-struct Health {
-    life: f64,
-    max: f64,
-    units: Vec<(u32, u32)>,
+/// A tower (or builder, or town hall) as the tech tree shows it.
+#[derive(Serialize, Clone)]
+struct Tower {
+    name: String,
+    gold: i32,
+    /// Its attack's base damage, and whether it hits "air", "ground", or "both" (none
+    /// for what does not attack).
+    damage: i32,
+    hits: Option<&'static str>,
+    /// What it requires besides what it is built by or upgraded from: each by name, and
+    /// a fantas's level for a fantas.
+    needs: Vec<Need>,
 }
 
-#[derive(Serialize)]
-struct Player {
-    id: u8,
-    color: i32,
+#[derive(Serialize, Clone)]
+struct Need {
     name: String,
-    kills: i32,
-    left: bool,
+    fantas: Option<u32>,
+}
+
+/// A node of the tech tree: a unit, how it is had from its parent ("build", "upgrade",
+/// or "train" for a builder a building trains), and what comes from it.
+#[derive(Serialize)]
+struct Node {
+    #[serde(flatten)]
+    tower: Tower,
+    via: &'static str,
+    next: Vec<Node>,
+}
+
+/// A tower a fantas unlocks: the fantas's level, the tower, and what it comes from.
+#[derive(Serialize)]
+struct Unlock {
+    level: u32,
+    #[serde(flatten)]
+    tower: Tower,
+    from: String,
 }
 
 #[derive(Serialize)]
@@ -338,6 +360,72 @@ fn tagged_levels(g: &Game) -> (Vec<u32>, Vec<u32>) {
     };
     let or = |v: Vec<u32>, d: &[u32]| if v.is_empty() { d.to_vec() } else { v };
     (or(find("boss"), &[11, 18, 30, 40]), or(find("fantas"), &[2, 19, 28, 33, 38]))
+}
+
+/// The towers' tech tree from the players' starting builders (a peasant): what each
+/// builds and upgrades into, and the builders its buildings train (the wisp the town
+/// hall trains, which builds the towers of vengeance), with what each fantas unlocks
+/// gathered on the way.  All from the map's object data (Builds, Upgrade, Trains,
+/// Requires, goldcost, the first attack), so each edit of the map shows its own.
+fn tech_tree(g: &Game) -> (Vec<Node>, Vec<Unlock>) {
+    use w3_game::objects::Id;
+    let w = &g.world;
+    let id_of = |s: &str| -> Option<Id> { s.trim().as_bytes().try_into().ok() };
+    let name_of = |id: Id| w.objects.units.get(id).map_or_else(|| String::from_utf8_lossy(&id).into_owned(), |o| w.localized(&o.str("Name")).trim().to_string());
+    let fantas_of = |id: Id| FANTAS.iter().find(|(_, f)| **f == id).map(|(l, _)| *l);
+    let tower = |id: Id| -> Tower {
+        let o = w.objects.units.get(id);
+        let int = |k: &str| o.map_or(0, |o| o.int(k));
+        let targs = o.map_or(String::new(), |o| o.str("targs1").to_ascii_lowercase());
+        let hits = match (targs.contains("air"), targs.contains("ground")) {
+            (true, true) => Some("both"),
+            (true, false) => Some("air"),
+            (false, true) => Some("ground"),
+            _ => None,
+        };
+        let needs = o.map_or(Vec::new(), |o| o.list("Requires")).iter().filter_map(|r| id_of(r)).map(|r| Need { name: name_of(r), fantas: fantas_of(r) }).collect();
+        Tower { name: name_of(id), gold: int("goldcost"), damage: if hits.is_some() { int("dmgplus1") + int("dice1") } else { 0 }, hits, needs }
+    };
+    let list = |id: Id, k: &str| -> Vec<Id> { w.objects.units.get(id).map_or(Vec::new(), |o| o.list(k)).iter().filter_map(|s| id_of(s)).collect() };
+    let builder = |id: Id| !list(id, "Builds").is_empty();
+    // The units the players start with that build: the roots.
+    let mut roots: Vec<Id> = Vec::new();
+    for (_, o) in w.handles.iter() {
+        if let Obj::Unit(u) = o {
+            if u.owner < CREEP_PLAYER && builder(u.type_id) && !roots.contains(&u.type_id) {
+                roots.push(u.type_id);
+            }
+        }
+    }
+    roots.sort();
+    fn walk(id: Id, via: &'static str, from: &str, seen: &mut Vec<Id>, unlocks: &mut Vec<Unlock>, ctx: &dyn Fn(Id) -> (Tower, Vec<(Id, &'static str)>)) -> Node {
+        seen.push(id);
+        let (tower, children) = ctx(id);
+        for n in &tower.needs {
+            if let Some(level) = n.fantas {
+                unlocks.push(Unlock { level, tower: tower.clone(), from: from.to_string() });
+            }
+        }
+        let mut next = Vec::new();
+        for (c, how) in children {
+            if !seen.contains(&c) {
+                next.push(walk(c, how, &tower.name, seen, unlocks, ctx));
+            }
+        }
+        Node { tower, via, next }
+    }
+    let ctx = |id: Id| -> (Tower, Vec<(Id, &'static str)>) {
+        let mut children: Vec<(Id, &'static str)> = list(id, "Builds").into_iter().map(|c| (c, "build")).collect();
+        // Of what a building trains, only builders lead on (not the Sell button); before
+        // its upgrades, so a builder shows under the first building that trains it.
+        children.extend(list(id, "Trains").into_iter().filter(|&c| builder(c)).map(|c| (c, "train")));
+        children.extend(list(id, "Upgrade").into_iter().map(|c| (c, "upgrade")));
+        (tower(id), children)
+    };
+    let (mut seen, mut unlocks) = (Vec::new(), Vec::new());
+    let tree = roots.into_iter().map(|r| walk(r, "start", "", &mut seen, &mut unlocks, &ctx)).collect();
+    unlocks.sort_by_key(|u| u.level);
+    (tree, unlocks)
 }
 
 /// This computer's address on its LAN, as the route to an outside address picks it
@@ -400,11 +488,10 @@ fn respond(mut s: TcpStream, shared: &Shared) -> std::io::Result<()> {
         return websocket(s, shared);
     }
     std::io::copy(&mut (&mut s).take(head.len() as u64), &mut std::io::sink())?;
-    // /sound/<name>, with any extension: the page asks for the nuke by its name alone.
-    let sound = path.strip_prefix("/sound/").map(|n| n.split('.').next().unwrap_or(n)).and_then(|n| shared.sounds.iter().find(|(k, ..)| *k == n));
+    let sound = path.strip_prefix("/sound/").and_then(|n| shared.sounds.iter().find(|(k, _)| *k == n));
     // The sounds never change within a game; the page and its state always may.
     let (status, kind, cache, body): (&str, &str, &str, Arc<[u8]>) = match (method, path, sound) {
-        ("GET", _, Some((_, t, b))) => ("200 OK", *t, "max-age=3600", b.clone()),
+        ("GET", _, Some((n, b))) => ("200 OK", if n.ends_with(".mp3") { "audio/mpeg" } else { "audio/wav" }, "max-age=3600", b.clone()),
         ("GET", "/" | "/index.html", _) => ("200 OK", "text/html; charset=utf-8", "no-store", Arc::from(PAGE.as_bytes())),
         ("GET", "/state", _) => ("200 OK", "application/json", "no-store", Arc::from(shared.state.lock().unwrap().1.as_bytes())),
         ("GET", _, _) => ("404 Not Found", "text/plain", "no-store", Arc::from(&b"not found"[..])),

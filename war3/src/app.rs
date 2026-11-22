@@ -342,8 +342,9 @@ impl ApplicationHandler for App {
                     if event.physical_key == PhysicalKey::Code(KeyCode::PrintScreen) {
                         r.capture.requested = true;
                     }
-                    // The performance overlay (F11 being the allies' panel).
-                    if event.physical_key == PhysicalKey::Code(KeyCode::F7) {
+                    // The performance overlay (F11 being the allies' panel), once a press: a
+                    // key held repeats, which would turn it off and on again.
+                    if event.physical_key == PhysicalKey::Code(KeyCode::F7) && !event.repeat {
                         r.perf.shown = !r.perf.shown;
                     }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F12) {

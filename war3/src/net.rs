@@ -242,6 +242,8 @@ pub struct Session {
     pub played: u32,
     /// Game time owed to frames not yet played.
     pub owed: f32,
+    /// The length of the frame played last (a turn's, before any).
+    span: f32,
     /// The host's time toward its next turn.
     clock: f32,
     /// The connection to the host is gone.
@@ -290,6 +292,33 @@ pub fn leave_word(w: &World, over: bool) -> u32 {
 /// 175 after turns of 100 and 99, and 100, 200, 300 where the port's host sent 113, 203,
 /// 314), which the port's does not yet, so the port's turns are 100 ms each.
 pub const TURN: f32 = 0.1;
+
+/// The frames of `queue` whose time has come after `dt` more (`Session::due`), at most
+/// `room` of them.  `owed` is also the time the frame played last has been shown
+/// (`Presentation::elapsed`), so time passing with no frame to play is not kept past
+/// that frame's length (`span`): kept, it was never spent, the next frames played as
+/// they came with the last shown a whole turn at once from then on (after a wait on
+/// players loading, or a few slow frames, units moved ten times a second).
+fn take_due(owed: &mut f32, span: &mut f32, queue: &mut VecDeque<Frame>, dt: f32, room: Option<u32>) -> Vec<Frame> {
+    *owed = (*owed + dt).min(TURN * 4.0);
+    let mut out = Vec::new();
+    while let Some(f) = queue.front() {
+        if room.is_some_and(|r| out.len() as u32 >= r) {
+            break;
+        }
+        let behind = queue.len() > 3;
+        if f.dt > *owed && !behind {
+            break;
+        }
+        *owed = (*owed - f.dt).max(0.0);
+        *span = f.dt;
+        out.push(queue.pop_front().unwrap());
+    }
+    if queue.is_empty() {
+        *owed = owed.min(*span);
+    }
+    out
+}
 /// The players a desync leaves out go as anything more comes from them, or after 2 s
 /// (`FUN_6f998880`, `Host::drop_after`).
 const DESYNC_DROP: Duration = Duration::from_millis(2000);
@@ -310,6 +339,7 @@ impl Session {
             next: 0,
             played: 0,
             owed: 0.0,
+            span: TURN,
             clock: 0.0,
             lost: false,
             gone: Vec::new(),
@@ -473,19 +503,8 @@ impl Session {
     /// The frames whose time has come, each as its length of game time passes, faster
     /// while frames pile up.
     pub fn due(&mut self, dt: f32) -> Vec<Frame> {
-        self.owed = (self.owed + dt).min(TURN * 4.0);
-        let mut out = Vec::new();
-        while let Some(f) = self.queue.front() {
-            if self.limit.is_some_and(|l| self.played + out.len() as u32 >= l) {
-                break;
-            }
-            let behind = self.queue.len() > 3;
-            if f.dt > self.owed && !behind {
-                break;
-            }
-            self.owed = (self.owed - f.dt).max(0.0);
-            out.push(self.queue.pop_front().unwrap());
-        }
+        let room = self.limit.map(|l| l.saturating_sub(self.played));
+        let out = take_due(&mut self.owed, &mut self.span, &mut self.queue, dt, room);
         self.played += out.len() as u32;
         out
     }
@@ -646,5 +665,44 @@ mod tests {
         server.close();
         assert!(finished, "the final packet did not arrive");
         assert_eq!(sums, [(0, 0x1234), (4, 0x5678)]);
+    }
+
+    /// A host's frames at 60 a second: a turn made each TURN, played as `take_due` lets.
+    /// Returns `owed` after each frame's turn was taken, for the frames after `skip`.
+    fn host(stall: f32, skip: usize) -> Vec<f32> {
+        let (mut owed, mut span, mut queue) = (0.0, TURN, VecDeque::new());
+        // The wait on players loading: time passes, and no turn is made.
+        take_due(&mut owed, &mut span, &mut queue, stall, None);
+        let (dt, mut clock, mut seen) = (1.0 / 60.0, 0.0, Vec::new());
+        for i in 0..600 {
+            clock += dt;
+            if clock >= TURN {
+                clock -= TURN;
+                queue.push_back(Frame { dt: TURN, ..Default::default() });
+            }
+            take_due(&mut owed, &mut span, &mut queue, dt, None);
+            if i >= skip {
+                seen.push(owed);
+            }
+        }
+        seen
+    }
+
+    #[test]
+    fn time_with_no_frame_to_play_is_not_kept_past_the_shown_turn() {
+        for stall in [0.0, 0.25, 5.0] {
+            let seen = host(stall, 30);
+            assert!(seen.iter().all(|&o| o <= TURN + 0.001), "after a wait of {stall}: {seen:?}");
+            // Each turn is shown from its start: the time owed falls near none as one plays.
+            assert!(seen.iter().any(|&o| o < 0.02), "after a wait of {stall}");
+        }
+    }
+
+    #[test]
+    fn frames_piled_up_still_play_at_once() {
+        let (mut owed, mut span) = (0.0, TURN);
+        let mut queue: VecDeque<Frame> = (0..5).map(|_| Frame { dt: TURN, ..Default::default() }).collect();
+        assert_eq!(take_due(&mut owed, &mut span, &mut queue, 0.016, None).len(), 2);
+        assert_eq!(take_due(&mut owed, &mut span, &mut queue, 0.016, Some(0)).len(), 0);
     }
 }

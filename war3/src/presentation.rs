@@ -24,7 +24,6 @@ struct UnitPose {
 pub(crate) struct Snapshot {
     time: f32,
     ms: u32,
-    turn_left: u32,
     units: HashMap<u32, UnitPose>,
     pub missiles: HashMap<u32, Missile>,
 }
@@ -34,7 +33,6 @@ impl Snapshot {
         Self {
             time: w.time,
             ms: w.game_ms,
-            turn_left: w.turn_left,
             units: w.unit_order.iter().filter_map(|&h| {
                 let u = w.unit(h)?;
                 Some((h, UnitPose {

@@ -257,13 +257,24 @@ pub struct Browser {
     version: u32,
     last_search: Option<std::time::Instant>,
     pub games: Vec<(SocketAddr, GameInfo, std::time::Instant)>,
+    /// Hosts asked directly as well, past the network's broadcast (the port's own: a
+    /// host on another network, which answers a search from anywhere).
+    pub direct: Vec<SocketAddr>,
 }
 
 impl Browser {
     pub fn new(port: u16, product: [u8; 4], version: u32) -> std::io::Result<Browser> {
         // On the game port when it is free, as the original browses (measured: its UDP
         // socket bound to 0.0.0.0:6112), hearing games created, refreshed, and gone.
-        Ok(Browser { discovery: Discovery::new(port)?, product, version, last_search: None, games: Vec::new() })
+        Ok(Browser { discovery: Discovery::new(port)?, product, version, last_search: None, games: Vec::new(), direct: Vec::new() })
+    }
+
+    /// Asks a host directly from now on, the first time at once.
+    pub fn add_direct(&mut self, to: SocketAddr) {
+        if !self.direct.contains(&to) {
+            self.direct.push(to);
+        }
+        self.discovery.send_to(&Packet::SearchGame { product: self.product, version: self.version, game: 0 }, to);
     }
 
     /// Returns whether the list changed.
@@ -271,7 +282,11 @@ impl Browser {
         let now = std::time::Instant::now();
         if self.last_search.is_none_or(|t| now - t >= std::time::Duration::from_secs(3)) {
             self.last_search = Some(now);
-            self.discovery.broadcast(&Packet::SearchGame { product: self.product, version: self.version, game: 0 });
+            let search = Packet::SearchGame { product: self.product, version: self.version, game: 0 };
+            self.discovery.broadcast(&search);
+            for &to in &self.direct {
+                self.discovery.send_to(&search, to);
+            }
         }
         let before = self.games.len();
         let mut changed = false;
@@ -308,5 +323,63 @@ impl Browser {
         }
         self.games.retain(|e| now - e.2 < std::time::Duration::from_secs(10));
         changed || self.games.len() != before
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::{Host, HostMap};
+    use crate::slot::{DOWNLOAD_UNKNOWN, Slot, layout, race, status};
+    use crate::{GameStat, packet};
+    use std::time::{Duration, Instant};
+
+    /// A free port, UDP and TCP alike (as far as can be told).
+    fn free_port() -> u16 {
+        let u = std::net::UdpSocket::bind(("0.0.0.0", 0)).unwrap();
+        let port = u.local_addr().unwrap().port();
+        std::net::TcpListener::bind(("0.0.0.0", port)).map(|_| port).unwrap_or_else(|_| free_port())
+    }
+
+    fn host(port: u16) -> Host {
+        let stat = GameStat { settings: 0x0006_4802, map_width: 64, map_height: 64, map_xoro: 0, map_path: "Maps\\Test.w3m".into(), host: "Host".into(), map_sha1: [0; 20] };
+        let info = GameInfo { product: packet::TFT, version: packet::VERSION, host_counter: 1, entry_key: 0, name: "direct".into(), stat, slots_total: 2, game_type: 1, players: 1, player_slots: 2, uptime: 0, port: 0 };
+        let slot = |pid, st| Slot { pid, download: if pid == 1 { 100 } else { DOWNLOAD_UNKNOWN }, status: st, computer: false, team: pid, color: pid, race: race::RANDOM | race::SELECTABLE, ai: 1, handicap: 100 };
+        let slots = SlotTable { slots: vec![slot(1, status::OCCUPIED), slot(0, status::OPEN)], seed: 0, layout: layout::MELEE, player_slots: 2 };
+        let map = HostMap { path: "Maps\\Test.w3m".into(), bytes: Vec::new(), checksums: crate::map::Checksums::compute(&[], &[], &[], |_| None) };
+        Host::new(port, info, map, slots, "Host".into()).unwrap()
+    }
+
+    #[test]
+    fn a_host_named_directly_is_found_and_joined_without_broadcast() {
+        // The browser searches on another port than the host's, so its broadcasts do not
+        // reach the host: only the direct search does.
+        let port = free_port();
+        let mut h = host(port);
+        let mut b = Browser::new(free_port(), packet::TFT, packet::VERSION).unwrap();
+        b.direct = vec![SocketAddr::from(([127, 0, 0, 1], port))];
+        let since = Instant::now();
+        while b.games.is_empty() && since.elapsed() < Duration::from_secs(5) {
+            h.poll();
+            b.poll();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let (from, game, _) = b.games.first().cloned().expect("the host's game is listed");
+        assert_eq!((game.name.as_str(), game.port), ("direct", h.port()));
+
+        let mut c = Client::join(from, &game, "Joiner", 0).unwrap();
+        let mut joined = None;
+        while joined.is_none() && since.elapsed() < Duration::from_secs(10) {
+            h.poll();
+            joined = c.poll().into_iter().find_map(|e| match e {
+                Event::Joined { pid } => Some(pid),
+                _ => None,
+            });
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(joined, Some(2));
+        assert!(h.has_player(2));
+        // The host goes first, so the player's leaving does not wait on its answer.
+        drop(h);
     }
 }

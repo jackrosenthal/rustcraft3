@@ -88,6 +88,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     // wants one.  Polling instead spins a core wherever redraws wait on the compositor
     // (Wayland's frame callbacks) rather than on the presentation.
     event_loop.set_control_flow(ControlFlow::Wait);
+    crate::lan::set_direct(args.connect.clone());
     let mut app = App { args, data, running: None, error: None };
     event_loop.run_app(&mut app)?;
     match app.error {

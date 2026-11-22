@@ -412,6 +412,24 @@ impl FrameTree {
         Some(self.instantiate(db, &d, parent, scope))
     }
 
+    /// Instantiates the frame `like`'s definition again (or, with no such frame, the
+    /// template `like`), and its children, under `parent` as `name`, its children's names
+    /// with `name` appended, and without the properties `without` (its points, a shortcut
+    /// key): a frame the original's screens lack, made as one they have.
+    pub fn create_like(&mut self, db: &FrameDb, like: &str, parent: usize, name: &str, without: &[&str]) -> Option<usize> {
+        let def = match self.get(like) {
+            Some(i) => self.frames[i].def.clone(),
+            None => db.resolve(db.templates.get(like)?),
+        };
+        let mut d = (*def).clone();
+        d.props.retain(|p| !without.iter().any(|w| p.key.eq_ignore_ascii_case(w)));
+        let i = self.instantiate(db, &Rc::new(d), parent, name);
+        self.by_name.remove(&self.frames[i].name);
+        self.frames[i].name = name.to_string();
+        self.by_name.insert(name.to_string(), i);
+        Some(i)
+    }
+
     fn instantiate(&mut self, db: &FrameDb, d: &Rc<Def>, parent: usize, scope: &str) -> usize {
         let d = db.resolve(d);
         let i = self.frames.len();

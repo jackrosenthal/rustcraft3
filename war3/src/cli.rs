@@ -59,6 +59,12 @@ pub struct Args {
     /// Disable vertical sync.
     #[arg(long)]
     pub no_vsync: bool,
+
+    /// A host whose game the Local Area Network screen lists though it is on another
+    /// network (repeatable).  Its game port is asked for its game (UDP), and the game is
+    /// joined at the port named here, or else at the one the game gives (TCP).
+    #[arg(long, value_name = "HOST[:PORT]")]
+    pub connect: Vec<String>,
 }
 
 const LEGACY_SWITCHES: &[&str] = &[

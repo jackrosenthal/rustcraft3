@@ -201,6 +201,8 @@ pub struct Glue {
     dialog: Option<DialogAction>,
     /// The score screen's Save Replay panel.
     save_replay: crate::savereplay::SaveReplayPanel,
+    /// The main menu's Direct Connect popup.
+    direct: crate::direct::DirectConnect,
     /// The local network screens.
     pub lan: crate::lan::Lan,
     /// A network game's players (name and race) for its loading screen.
@@ -248,74 +250,13 @@ enum DialogAction {
     Notice,
 }
 
-/// How far the main menu's panel bottom rises, in the panel model's units: one button's
-/// slot, measured so the gap under Credits matches the one under the original's last
-/// button.
-const MAIN_MENU_PANEL_LIFT: f32 = 0.0575;
-
-/// Shortens the TopRight panel model's main menu panel by one button, for the Battle.net
-/// button that is not shown.  That panel (bone Plane02) is also the Single Player menu's,
-/// so its lower half is moved onto a new bone that lifts it only in the MainMenu
-/// sequences.  The frame's lower corners move with its edge, so only its middle shrinks.
-fn shorten_main_menu_panel(m: &mut w3_formats::mdx::Model) {
-    use w3_formats::mdx::{Bone, Interp, Key, Node, Track};
-    let Some(panel) = m.bones.iter().find(|b| b.node.name == "Plane02").map(|b| b.node.object_id) else {
-        log::warn!("TopRight panel model has no Plane02; the main menu panel keeps its size");
-        return;
-    };
-    let id = m.nodes().len() as u32;
-    let pivot = m.pivots.get(panel as usize).copied().unwrap_or_default();
-    m.pivots.resize(id as usize + 1, [0.0; 3]);
-    m.pivots[id as usize] = pivot;
-    // The panel's middle in model space: everything of it below is its lower half.
-    let middle = pivot[1];
-    let keys: Vec<_> = m
-        .sequences
-        .iter()
-        .filter(|s| s.name.starts_with("MainMenu "))
-        .map(|s| Key { frame: s.start as i32, value: [0.0, MAIN_MENU_PANEL_LIFT, 0.0], in_tan: [0.0; 3], out_tan: [0.0; 3] })
-        .collect();
-    let mut tracks = w3_formats::mdx::Tracks::default();
-    tracks.vec3s.push((*b"KGTR", Track { interp: Interp::None, global_seq: None, keys }));
-    m.bones.push(Bone {
-        node: Node { name: "Plane02 Bottom".into(), object_id: id, parent: Some(panel), flags: 0x100, tracks },
-        geoset_id: None,
-        geoset_anim_id: None,
-    });
-    for g in &mut m.geosets {
-        let mut groups = Vec::new();
-        let mut k = 0;
-        for &n in &g.group_sizes {
-            groups.push(g.matrix_indices[k..k + n as usize].to_vec());
-            k += n as usize;
-        }
-        let Some(own) = groups.iter().position(|grp| grp == &[panel]) else { continue };
-        let mut lifted = None;
-        for (vi, v) in g.vertices.iter().enumerate() {
-            if g.vertex_groups[vi] as usize == own && v[1] < middle {
-                let gi = *lifted.get_or_insert_with(|| {
-                    g.group_sizes.push(1);
-                    g.matrix_indices.push(id);
-                    g.group_sizes.len() as u8 - 1
-                });
-                g.vertex_groups[vi] = gi;
-            }
-        }
-    }
-}
-
 impl Glue {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets) -> Glue {
         // CGlueMgr's sprite layers: war3skins.txt GlueSpriteLayerBackground_V<n> (the 3D
         // scene, through its own camera) and the TopLeft and TopRight panel models.
         let layer = |assets: &mut Assets, key: &str| {
             let path = assets.frames.skin_value(key)?;
-            let m = if key == "GlueSpriteLayerTopRight" {
-                assets.model_edited(device, queue, &path, "short-main-menu", shorten_main_menu_panel)?
-            } else {
-                assets.model(device, queue, &path)?
-            };
-            let mut i = ModelInstance::new(m);
+            let mut i = ModelInstance::new(assets.model(device, queue, &path)?);
             i.sequence = w3_render::anim::find_sequence(&i.model.mdx, "Stand");
             Some(i)
         };
@@ -381,6 +322,7 @@ impl Glue {
             profile,
             dialog: None,
             save_replay: Default::default(),
+            direct: Default::default(),
             lan,
             lan_players: None,
             cinematic: None,
@@ -456,11 +398,22 @@ impl Glue {
                     self.tree.set_model("WarCraftIIILogo", &logo);
                 }
                 self.tree.set_visible("RealmSelect", false);
-                // Battle.net's servers are gone, so its button (and the realm picker beside
-                // it) is dropped and Local Area Network moves up into its slot.
-                self.tree.set_visible("BattleNetBackdrop", false);
+                // Battle.net's servers are gone: its slot, over Local Area Network, holds
+                // Direct Connect (crate::direct), without the realm button beside it, as
+                // wide as the other buttons, and its shortcut D.
+                self.tree.set_visible("RealmButton", false);
                 use w3_ui::FramePoint as P;
-                self.tree.set_point("LocalAreaNetworkBackdrop", P::TopRight, "SinglePlayerBackdrop", P::BottomRight, 0.0, 0.005);
+                self.tree.set_point("BattleNetButton", P::TopRight, "BattleNetBackdrop", P::TopRight, -0.012, -0.0165);
+                let width = self.tree.get("LocalAreaNetworkButton").and_then(|i| self.tree.frames[i].width);
+                self.tree.set_size("BattleNetButton", width, None);
+                self.tree.set_text("BattleNetButtonText", "|cffffcc00D|rirect Connect");
+                if let Some(i) = self.tree.get("BattleNetButton") {
+                    let mut d = (*self.tree.frames[i].def).clone();
+                    d.props.retain(|p| !p.key.eq_ignore_ascii_case("ControlShortcutKey"));
+                    d.props.push(w3_ui::fdf::Prop { key: "ControlShortcutKey".into(), args: vec![w3_ui::fdf::Arg::Str("D".into())] });
+                    self.tree.frames[i].def = std::rc::Rc::new(d);
+                }
+                self.direct.open = false;
             }
             Screen::SinglePlayer => {
                 // CSinglePlayerMenu's vf55: Reign of Chaos has no custom campaigns, and
@@ -910,6 +863,10 @@ impl Glue {
             return true;
         }
         let (x, y) = self.pointer;
+        // (Before the press goes to the boxes, which are controls.)
+        if self.screen == Screen::MainMenu && self.direct.open {
+            self.direct.click(&mut self.tree, x, y);
+        }
         if let Some(hit) = self.tree.pointer_down(x, y) {
             // A press on another control takes the keyboard from the list.
             if !self.skirmish.is_bar(&self.tree, hit) {
@@ -974,6 +931,11 @@ impl Glue {
     fn lan_event(&mut self, e: crate::lan::Event, assets: &mut Assets) {
         match e {
             crate::lan::Event::Lobby => self.show(Screen::LanLobby, assets),
+            crate::lan::Event::Connected => self.back = Screen::LanJoin,
+            crate::lan::Event::Notice(message) => {
+                let text = assets.frames.string(&message);
+                self.show_dialog(&text, false, DialogAction::Notice, assets);
+            }
             crate::lan::Event::Joining(message) => {
                 self.show(Screen::LanJoin, assets);
                 if let Some(key) = message {
@@ -1029,6 +991,54 @@ impl Glue {
     }
 
     /// The Local Area Network name, kept for next time.
+    fn direct_event(&mut self, e: crate::direct::Event, assets: &mut Assets) {
+        match e {
+            crate::direct::Event::Connect(host, port) => {
+                // The game is joined under the Local Area Network screen's name, or the
+                // profile's without one.
+                if self.lan.name.is_empty() {
+                    self.lan.name = self.skirmish.player_name.chars().take(crate::lan::NAME_LEN).collect();
+                }
+                let game_port = crate::net::port(&self.options);
+                match self.lan.connect(&host, port, game_port) {
+                    Ok(()) => self.direct.wait(&mut self.tree, format!("Looking for a game at {host}...")),
+                    Err(message) => self.direct.fail(&mut self.tree, assets.frames.string(&message)),
+                }
+            }
+            crate::direct::Event::Cancel => {
+                self.lan.leave();
+                self.lan.cancel_connect(false);
+                self.direct.close(&mut self.tree);
+            }
+        }
+    }
+
+    /// The Local Area Network's events while Direct Connect waits: the lobby once its
+    /// host's game is joined, otherwise why not, in the popup.
+    fn direct_lan_event(&mut self, e: crate::lan::Event, assets: &mut Assets) {
+        match e {
+            crate::lan::Event::Connected => {
+                self.back = Screen::LanJoin;
+                self.keep_lan_name();
+                self.direct.wait(&mut self.tree, "Joining the game...".into());
+            }
+            crate::lan::Event::Lobby => {
+                self.lan.detach();
+                self.direct.open = false;
+                self.show(Screen::LanLobby, assets);
+            }
+            crate::lan::Event::Notice(message) => {
+                self.lan.cancel_connect(false);
+                self.direct.fail(&mut self.tree, assets.frames.string(&message));
+            }
+            crate::lan::Event::Joining(message) => {
+                self.lan.cancel_connect(false);
+                self.direct.fail(&mut self.tree, assets.frames.string(message.unwrap_or("NETERROR_JOINGAMEFAILED")));
+            }
+            crate::lan::Event::Start(..) | crate::lan::Event::StartSaved(..) => {}
+        }
+    }
+
     fn keep_lan_name(&self) {
         let mut o = crate::options::Options::load();
         if o.lanname != self.lan.name {
@@ -1135,6 +1145,12 @@ impl Glue {
                 return;
             }
         }
+        if self.screen == Screen::MainMenu && self.direct.open && self.dialog.is_none() {
+            if let Some(e) = self.direct.key(c, &mut self.tree) {
+                self.direct_event(e, assets);
+            }
+            return;
+        }
         if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && c != '\u{1b}' && self.lan.key(c, &mut self.tree, &assets.frames, self.screen == Screen::LanLobby) {
             return;
         }
@@ -1168,6 +1184,13 @@ impl Glue {
                     let e = self.save_replay.answer(name == "DialogButtonYes", &mut self.tree);
                     self.replay_event(e, assets);
                 }
+            }
+            return;
+        }
+        // The Direct Connect popup takes the buttons while it shows.
+        if self.screen == Screen::MainMenu && self.direct.open {
+            if let Some(e) = self.direct.button(name, &mut self.tree) {
+                self.direct_event(e, assets);
             }
             return;
         }
@@ -1280,6 +1303,7 @@ impl Glue {
             }
             (Screen::Score, _) => self.score_button(name, assets),
             (Screen::MainMenu, "LocalAreaNetworkButton") => self.show(Screen::LanJoin, assets),
+            (Screen::MainMenu, "BattleNetButton") => self.direct.open(&mut self.tree, &assets.frames),
             (Screen::LanJoin, "CancelButton") => {
                 self.lan.detach();
                 self.show(Screen::MainMenu, assets);
@@ -1450,6 +1474,12 @@ impl Glue {
                 } else {
                     self.end_cinematic(assets);
                 }
+            }
+        }
+        // Direct Connect: its host's game awaited, then joined.
+        if self.screen == Screen::MainMenu && self.direct.open {
+            if let Some(e) = self.lan.update(&mut self.tree, &assets.frames) {
+                self.direct_lan_event(e, assets);
             }
         }
         // The local network: games found, and the lobby's messages.

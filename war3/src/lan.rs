@@ -4,7 +4,10 @@
 //! chat, which the host starts).  They speak the original's protocol (`w3_net`), so the
 //! original's games are listed and joined, and it can join theirs.
 
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use w3_net::client::{self, Browser, Client};
 use w3_net::host::{self, HOST_PID, Host, HostMap};
@@ -16,11 +19,35 @@ use crate::net::{self, Holder, NetSlot, Setup};
 
 const ROW: f32 = 0.0195;
 /// CLocalMultiplayerJoin's name box takes 15 characters (FUN_6f104350).
-const NAME_LEN: usize = 15;
+pub const NAME_LEN: usize = 15;
 /// A GAMEINFO's game type: a custom map, one of Blizzard's (8), a saved game (0x200).
 const GAME_CUSTOM: u32 = 1;
 const GAME_BLIZZARD: u32 = 8;
 const GAME_SAVED: u32 = 0x200;
+
+/// The hosts named on the command line (`--connect`), as typed: listed though on
+/// another network.
+static DIRECT: OnceLock<Vec<String>> = OnceLock::new();
+
+pub fn set_direct(hosts: Vec<String>) {
+    let _ = DIRECT.set(hosts);
+}
+
+/// A host named on the command line: its address (at the game port when it names
+/// none), and whether it named its port, which the game is then joined at (a router's
+/// forwarded port, which the host's GAMEINFO does not know).
+fn resolve(host: &str, game_port: u16) -> Option<(SocketAddr, bool)> {
+    let (name, port) = match host.rsplit_once(':') {
+        Some((name, port)) => (name, Some(port.parse::<u16>().ok()?)),
+        None => (host, None),
+    };
+    // The game port's socket is IPv4's (0.0.0.0).
+    let addr = (name, port.unwrap_or(game_port)).to_socket_addrs().ok()?.find(|a| a.is_ipv4())?;
+    Some((addr, port.is_some()))
+}
+
+/// How long Direct Connect waits for its host's game.
+const CONNECT_WAIT: Duration = Duration::from_secs(5);
 
 /// What the screens ask of the glue.
 pub enum Event {
@@ -28,6 +55,10 @@ pub enum Event {
     Lobby,
     /// Back to the game list, with a message to show (a NETERROR key), if any.
     Joining(Option<&'static str>),
+    /// Direct Connect found its host's game and asked to join it.
+    Connected,
+    /// A message to show (a string's key, or the text itself).
+    Notice(String),
     /// The game begins: its map, the setup for this computer, how it plays, and its
     /// speed.
     Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role, u8, u32),
@@ -42,6 +73,10 @@ pub struct Lan {
     port: u16,
     game_dir: PathBuf,
     browser: Option<Browser>,
+    /// The hosts named on the command line or connected to, resolved (`resolve`).
+    direct: Vec<(SocketAddr, bool)>,
+    /// Direct Connect's host, while its game is awaited, and since when.
+    connecting: Option<(SocketAddr, Instant)>,
     pub selected: Option<usize>,
     list: Option<Rect>,
     /// The lobby: as host, or joined to one; this computer's player id in it.
@@ -84,6 +119,8 @@ impl Lan {
             port: net::DEFAULT_PORT,
             game_dir: game_dir.to_path_buf(),
             browser: None,
+            direct: Vec::new(),
+            connecting: None,
             selected: None,
             list: None,
             host: None,
@@ -120,12 +157,65 @@ impl Lan {
 
     /// The game list screen: searching starts.
     pub fn attach_join(&mut self, tree: &mut FrameTree, db: &FrameDb, port: u16) {
+        self.search(port);
+        self.selected = None;
+        self.connecting = None;
+        self.sync_join(tree, db);
+    }
+
+    /// Searching for games on the game port `port`, and at the hosts named on the
+    /// command line, unless it goes on already.
+    fn search(&mut self, port: u16) {
         self.port = port;
         if self.browser.is_none() {
+            self.direct = DIRECT.get().into_iter().flatten().filter_map(|h| resolve(h, port).or_else(|| {
+                log::warn!("lan: no address for {h}");
+                None
+            })).collect();
             self.browser = Browser::new(port, TFT, VERSION).map_err(|e| log::warn!("lan: {e}")).ok();
+            if let Some(b) = self.browser.as_mut() {
+                b.direct = self.direct.iter().map(|d| d.0).collect();
+            }
         }
-        self.selected = None;
-        self.sync_join(tree, db);
+    }
+
+    /// Direct Connect (the main menu's): the host at `host` (with `port`, if one is
+    /// given) is asked for its game, which is joined once it answers (`update`), searching
+    /// on the game port `game_port`.  Err is a message to show (a string's key, or the
+    /// text itself).
+    pub fn connect(&mut self, host: &str, port: Option<u16>, game_port: u16) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("NETERROR_NOPLAYERNAMESPECIFIED".into());
+        }
+        let host = host.trim();
+        if host.is_empty() {
+            return Err("Type the address of the computer hosting the game.".into());
+        }
+        let typed = match port {
+            Some(p) => format!("{host}:{p}"),
+            None => host.to_string(),
+        };
+        let Some(direct) = resolve(&typed, game_port) else { return Err(format!("No address was found for {host}.")) };
+        self.search(game_port);
+        let Some(b) = self.browser.as_mut() else { return Err("NETERROR_JOINGAMEFAILED".into()) };
+        b.add_direct(direct.0);
+        if !self.direct.contains(&direct) {
+            self.direct.push(direct);
+        }
+        self.connecting = Some((direct.0, Instant::now()));
+        Ok(())
+    }
+
+    /// Direct Connect no longer waits on its host; off the game list, searching stops.
+    pub fn cancel_connect(&mut self, searching: bool) {
+        self.connecting = None;
+        if !searching {
+            self.browser = None;
+        }
+    }
+
+    pub fn connecting(&self) -> bool {
+        self.connecting.is_some()
     }
 
     pub fn detach(&mut self) {
@@ -152,6 +242,18 @@ impl Lan {
                 let n = b.games.len();
                 self.selected = self.selected.filter(|&k| k < n);
                 self.sync_join(tree, db);
+            }
+        }
+        if let Some((addr, since)) = self.connecting {
+            if let Some(k) = self.games().iter().position(|g| g.0.ip() == addr.ip()) {
+                self.connecting = None;
+                self.selected = Some(k);
+                self.sync_join(tree, db);
+                return Some(self.join().map_or_else(|key| Event::Notice(key.into()), |()| Event::Connected));
+            }
+            if since.elapsed() >= CONNECT_WAIT {
+                self.connecting = None;
+                return Some(Event::Notice(format!("No game answered at {addr}.")));
             }
         }
         if self.host.is_some() {
@@ -381,7 +483,11 @@ impl Lan {
     pub fn join(&mut self) -> Result<(), &'static str> {
         self.local_map = None;
         self.table = None;
-        let Some((addr, game, _)) = self.selected.and_then(|k| self.games().get(k)).cloned() else { return Err("NETERROR_NOGAMESPECIFIED") };
+        let Some((addr, mut game, _)) = self.selected.and_then(|k| self.games().get(k)).cloned() else { return Err("NETERROR_NOGAMESPECIFIED") };
+        // A host named with its port is joined there.
+        if let Some(d) = self.direct.iter().find(|d| d.1 && d.0.ip() == addr.ip()) {
+            game.port = d.0.port();
+        }
         // A loaded game is joined with this computer's own copy of its save.
         let saved = game.game_type & GAME_SAVED != 0;
         self.save = None;
@@ -1143,6 +1249,13 @@ fn move_to(setup: &mut net::Setup, k: usize, to: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_direct_host_is_at_the_game_port_unless_it_names_one() {
+        assert_eq!(resolve("127.0.0.1", 6112), Some((SocketAddr::from(([127, 0, 0, 1], 6112)), false)));
+        assert_eq!(resolve("localhost:7000", 6112), Some((SocketAddr::from(([127, 0, 0, 1], 7000)), true)));
+        assert_eq!(resolve("127.0.0.1:port", 6112), None);
+    }
 
     fn slot(player: u8, holder: Holder, team: i32) -> NetSlot {
         NetSlot { player, holder, name: if let Holder::Human(_) = holder { format!("p{player}") } else { String::new() }, race: 1, team, color: player as i32, handicap: 0, locked: false }

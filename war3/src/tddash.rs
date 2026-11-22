@@ -79,7 +79,15 @@ struct Shared {
     /// The page's sounds, by the name it asks for them under, read from the game's
     /// archives at the start.
     sounds: Vec<(&'static str, Arc<[u8]>)>,
+    /// Sounds for the pages to play as they come (`lobby_sound`), each with its number,
+    /// the last few kept; and other sounds' files they ask for (`/sound/x/<number>`).
+    events: Mutex<std::collections::VecDeque<(u64, Arc<str>)>>,
+    files: Mutex<std::collections::VecDeque<(u64, Arc<[u8]>)>>,
+    next_event: std::sync::atomic::AtomicU64,
 }
+
+/// Sounds kept for pages to fetch, the oldest given up past this many.
+const KEPT_SOUNDS: usize = 32;
 
 /// The page's sounds, all the game's own (PCM WAV and MP3, which browsers play as is):
 /// the name the page asks for, and the file.
@@ -134,7 +142,14 @@ fn read_sounds(chain: &w3_mpq::Chain) -> Vec<(&'static str, Arc<[u8]>)> {
 fn serve_on(port: u16, sounds: Vec<(&'static str, Arc<[u8]>)>) -> std::io::Result<(Arc<Shared>, String)> {
     let listener = TcpListener::bind(("0.0.0.0", port))?;
     listener.set_nonblocking(true)?;
-    let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false), sounds });
+    let shared = Arc::new(Shared {
+        state: Mutex::new((0, Arc::from("{}"))),
+        stop: AtomicBool::new(false),
+        sounds,
+        events: Mutex::new(Default::default()),
+        files: Mutex::new(Default::default()),
+        next_event: std::sync::atomic::AtomicU64::new(1),
+    });
     {
         let shared = shared.clone();
         std::thread::Builder::new().name("tddash".into()).spawn(move || serve(listener, shared))?;
@@ -187,6 +202,38 @@ pub struct LobbyState {
     pub countdown: Option<u32>,
     /// The countdown is over and the game loads.
     pub loading: bool,
+}
+
+/// A sound for the lobby's pages to play.
+pub enum PageSound {
+    /// One of the page's own (`SOUNDS`, or "nuke.mp3"), by its name.
+    Named(&'static str),
+    /// Any other sound file's bytes.
+    File(Arc<[u8]>),
+}
+
+/// Plays a sound on the lobby's pages connected (a lobby chat line's /nuke or /play).
+pub fn lobby_sound(sound: PageSound) {
+    let lobby = LOBBY.lock().unwrap();
+    let Some(l) = lobby.as_ref() else { return };
+    let n = l.shared.next_event.fetch_add(1, Ordering::Relaxed);
+    let url = match sound {
+        PageSound::Named(name) => format!("/sound/{name}"),
+        PageSound::File(bytes) => {
+            let mut files = l.shared.files.lock().unwrap();
+            files.push_back((n, bytes));
+            while files.len() > KEPT_SOUNDS {
+                files.pop_front();
+            }
+            format!("/sound/x/{n}")
+        }
+    };
+    let Ok(json) = serde_json::to_string(&serde_json::json!({ "sound": url })) else { return };
+    let mut events = l.shared.events.lock().unwrap();
+    events.push_back((n, Arc::from(json)));
+    while events.len() > KEPT_SOUNDS {
+        events.pop_front();
+    }
 }
 
 /// Pushes the lobby's state to the pages connected, if it changed.
@@ -582,10 +629,16 @@ fn respond(mut s: TcpStream, shared: &Shared) -> std::io::Result<()> {
         return websocket(s, shared);
     }
     std::io::copy(&mut (&mut s).take(head.len() as u64), &mut std::io::sink())?;
-    let sound = path.strip_prefix("/sound/").and_then(|n| shared.sounds.iter().find(|(k, _)| *k == n));
+    let sound = path
+        .strip_prefix("/sound/")
+        .and_then(|n| match n.strip_prefix("x/") {
+            // A played file is a WAV (RIFF) or else an MP3, whatever its name said.
+            Some(k) => k.parse::<u64>().ok().and_then(|k| shared.files.lock().unwrap().iter().find(|f| f.0 == k).map(|f| f.1.clone())).map(|b| (if b.starts_with(b"RIFF") { "x.wav" } else { "x.mp3" }, b)),
+            None => shared.sounds.iter().find(|(k, _)| *k == n).map(|(k, b)| (*k, b.clone())),
+        });
     // The sounds never change within a game; the page and its state always may.
     let (status, kind, cache, body): (&str, &str, &str, Arc<[u8]>) = match (method, path, sound) {
-        ("GET", _, Some((n, b))) => ("200 OK", if n.ends_with(".mp3") { "audio/mpeg" } else { "audio/wav" }, "max-age=3600", b.clone()),
+        ("GET", _, Some((n, b))) => ("200 OK", if n.ends_with(".mp3") { "audio/mpeg" } else { "audio/wav" }, "max-age=3600", b),
         ("GET", "/" | "/index.html", _) => ("200 OK", "text/html; charset=utf-8", "no-store", Arc::from(PAGE.as_bytes())),
         ("GET", "/state", _) => ("200 OK", "application/json", "no-store", Arc::from(shared.state.lock().unwrap().1.as_bytes())),
         ("GET", _, _) => ("404 Not Found", "text/plain", "no-store", Arc::from(&b"not found"[..])),
@@ -606,6 +659,8 @@ fn websocket(s: TcpStream, shared: &Shared) -> std::io::Result<()> {
     ws.get_mut().set_read_timeout(Some(WS_TICK))?;
     ws.get_mut().set_nodelay(true)?;
     let mut sent = 0u64;
+    // Sounds from before the page came are not its to play.
+    let mut heard = shared.events.lock().unwrap().back().map_or(0, |e| e.0);
     let result = loop {
         if shared.stop.load(Ordering::Relaxed) {
             break ws.close(None);
@@ -622,6 +677,13 @@ fn websocket(s: TcpStream, shared: &Shared) -> std::io::Result<()> {
             if let Err(e) = ws.send(tungstenite::Message::text(msg.to_string())) {
                 break Err(e);
             }
+        }
+        let new: Vec<(u64, Arc<str>)> = shared.events.lock().unwrap().iter().filter(|e| e.0 > heard).cloned().collect();
+        if let Some(e) = new.iter().find_map(|(k, json)| {
+            heard = *k;
+            ws.send(tungstenite::Message::text(json.to_string())).err()
+        }) {
+            break Err(e);
         }
     };
     // A close the page began is answered by tungstenite as its read; this flushes it.

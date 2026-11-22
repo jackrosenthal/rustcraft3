@@ -346,6 +346,23 @@ impl Audio {
         v
     }
 
+    /// Which of a label's files a play of it takes, by its index, at random as
+    /// `play_label` chooses; with the file.
+    pub fn choose_variant(&mut self, label: &str) -> Option<(usize, String)> {
+        let files = self.def(label)?.files.clone();
+        if files.is_empty() {
+            return None;
+        }
+        let i = (self.random() % files.len() as u64) as usize;
+        Some((i, files[i].clone()))
+    }
+
+    /// A sound file's bytes as the sound reads it (a .wav named that ships as .mp3, and
+    /// the reverse; the program's own files too).
+    pub fn file_bytes(&mut self, path: &str) -> Option<Arc<[u8]>> {
+        self.file(path)
+    }
+
     /// A sound file of the program's own, not in the game's archives, playable by `name`
     /// as if it were.
     pub fn add_file(&mut self, name: &str, data: Vec<u8>) {

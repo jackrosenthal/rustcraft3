@@ -435,6 +435,8 @@ function connect() {
   ws.onmessage = ev => {
     let s;
     try { s = JSON.parse(ev.data); } catch (e) { return; }
+    // A lobby chat line's sound (/nuke, /play): the page plays it as it comes.
+    if (s.sound) { new Audio(s.sound).play().catch(() => {}); return; }
     if (s.lobby) { lastMsg = 0; renderLobby(s.lobby); return; }
     if (!s.levels) return;
     const now = performance.now();

@@ -758,11 +758,23 @@ impl ApplicationHandler for App {
                             r.scene_sound = a.play_label(&label, None);
                         }
                         // (Not the scene's sound: a cinematic's end must not stop them.)
+                        // Each plays on the dashboard's pages too (while this computer's
+                        // lobby serves them): the same file this computer plays.
                         for s in glue.chat_sounds.drain(..) {
                             match s {
-                                crate::lan::ChatSound::File(f) => a.play_file(f, 1.0, 1.0, None, (0.0, 0.0, 0.0), false),
-                                crate::lan::ChatSound::Label(l) => a.play_label(&l, None),
-                            };
+                                crate::lan::ChatSound::File(page, f) => {
+                                    a.play_file(f, 1.0, 1.0, None, (0.0, 0.0, 0.0), false);
+                                    crate::tddash::lobby_sound(crate::tddash::PageSound::Named(page));
+                                }
+                                crate::lan::ChatSound::Label(l) => {
+                                    if let Some((i, file)) = a.choose_variant(&l) {
+                                        a.play_label_variant(&l, i, None);
+                                        if let Some(b) = a.file_bytes(&file) {
+                                            crate::tddash::lobby_sound(crate::tddash::PageSound::File(b));
+                                        }
+                                    }
+                                }
+                            }
                         }
                         // The lobby's /play and /sounds take the game's labels; the
                         // soundboard's nuke is the program's own file.

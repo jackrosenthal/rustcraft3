@@ -134,7 +134,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = scene.game.as_mut() {
                     let (u, id) = (hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
                     let (x, y) = g.world.snap_placement(id, num(&a[i + 3]), num(&a[i + 4]));
-                    let r = g.apply(w3_game::replay::Command::Build { worker: u, id, x, y });
+                    let r = g.apply(w3_game::replay::Command::Build { worker: u, id, x, y, queue: false });
                     eprintln!("build {} at {x} {y}: {r:?} gold {} lumber {}", a[i + 2], g.world.players[0].get_state(1), g.world.players[0].get_state(2));
                 }
                 i += 5;

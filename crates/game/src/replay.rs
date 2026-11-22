@@ -24,7 +24,16 @@ pub enum Command {
     Order { unit: u32, order: i32, x: f32, y: f32, target: u32 },
     /// An order that queues behind the current ones when `queue`.
     Issue { unit: u32, order: i32, x: f32, y: f32, target: u32, queue: bool },
-    Build { worker: u32, id: Id, x: f32, y: f32 },
+    /// A structure placed; with `queue` (Shift held) built after the worker's orders
+    /// under way.
+    Build {
+        worker: u32,
+        id: Id,
+        x: f32,
+        y: f32,
+        #[serde(default)]
+        queue: bool,
+    },
     Train { building: u32, id: Id },
     Research { building: u32, id: Id },
     Upgrade { building: u32, id: Id },

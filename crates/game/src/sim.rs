@@ -3571,6 +3571,16 @@ impl World {
                 let next = self.unit_mut(h).unwrap().extra.order_queue.pop_front();
                 match next {
                     Some((crate::aiposts::AI_IDLE_ORDER, ..)) => self.ai_unit_idle(h),
+                    Some(next @ (order, x, y, _)) if self.queued_structure(order).is_some() => {
+                        let id = self.queued_structure(order).unwrap();
+                        let ok = self.can_place(id, x, y) && self.order_build(h, id, x, y).is_ok();
+                        if ok {
+                            self.player_build_objects(h);
+                            if let Some(u) = self.unit_mut(h) {
+                                u.extra.queued_current = Some(next);
+                            }
+                        }
+                    }
                     Some(next @ (order, x, y, target)) => {
                         self.order_unit(h, order, x, y, target);
                         if let Some(u) = self.unit_mut(h) {
@@ -4052,6 +4062,43 @@ impl World {
         }
         self.paid_builds.push((h, owner, id));
         Ok(())
+    }
+
+    /// Whether a worker is carrying out an order or has some queued, so that one given
+    /// with Shift waits behind them (as `issue_order` judges it).
+    pub fn worker_busy(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| !matches!(u.action, Action::Idle) || !u.extra.order_queue.is_empty())
+    }
+
+    /// A build order given with Shift to a busy worker: queued behind its orders, its
+    /// order the structure's id, as the order it becomes (`order_build`).  A place the
+    /// structure cannot take now, or a cost the player cannot meet now, refuses it at
+    /// once.  (Provisional: paid as the worker takes it up, not as it is queued; a cost
+    /// not met then, or a place taken since, drops it and the worker goes on to the
+    /// next.)
+    pub fn queue_build(&mut self, h: u32, id: Id, x: f32, y: f32) -> Result<(), &'static str> {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return Err("") };
+        if !self.can_place(id, x, y) {
+            return Err("Cantplace");
+        }
+        let (g, l, _) = self.cost(id);
+        let p = &self.players[owner as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("Nogold");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("Nolumber");
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_queue.push_back((crate::objects::id_to_int(id), x, y, 0));
+        }
+        Ok(())
+    }
+
+    /// A queued order that is a structure's id (`queue_build`).
+    fn queued_structure(&self, order: i32) -> Option<Id> {
+        let id = crate::objects::id_from_int(order);
+        self.objects.units.get(id).is_some_and(|o| o.bool("isbldg")).then_some(id)
     }
 
     /// Refunds a worker's paid build order whether or not it still stands.

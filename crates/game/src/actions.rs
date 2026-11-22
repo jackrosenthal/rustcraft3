@@ -120,8 +120,8 @@ impl Codec {
             Command::Train { building, id } if self.subgroup.get(&player) == Some(building) => {
                 acts.push(Action::Order { flags: 0x42, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
             }
-            Command::Build { worker, id, x, y } if self.subgroup.get(&player) == Some(worker) => {
-                acts.push(Action::OrderPoint { flags: 4, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX, x: *x, y: *y });
+            Command::Build { worker, id, x, y, queue } if self.subgroup.get(&player) == Some(worker) => {
+                acts.push(Action::OrderPoint { flags: 4 | *queue as u16, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX, x: *x, y: *y });
             }
             Command::CancelQueue { building, slot } if self.subgroup.get(&player) == Some(building) && *slot < 256 => {
                 let kind = w.unit(*building).and_then(|u| u.queue.get(*slot)).map_or(0, |id| crate::objects::id_to_int(*id) as u32);
@@ -391,7 +391,7 @@ impl Codec {
                             out.push(Command::DropItemAt { unit: first, slot, x: target.x, y: target.y });
                         }
                         Action::Order { flags, ability, .. } => out.push(order(ability, flags, None, 0)),
-                        Action::OrderPoint { flags: 4, ability, x, y, .. } => out.push(Command::Build { worker: first, id: id(ability), x, y }),
+                        Action::OrderPoint { flags: f @ (4 | 5), ability, x, y, .. } => out.push(Command::Build { worker: first, id: id(ability), x, y, queue: f & 1 != 0 }),
                         Action::OrderPoint { flags, ability, x, y, .. } => out.push(order(ability, flags, Some((x, y)), 0)),
                         Action::Dequeue { slot, .. } => out.push(Command::CancelQueue { building: first, slot: slot as usize }),
                         Action::Signal { x, y, .. } => out.push(Command::Signal { player, x, y }),

@@ -3202,10 +3202,15 @@ impl Scene {
                 return true;
             }
             // The placing ends; a cost the player cannot meet is told then (the builder's
-            // check, vf0x244, its error shown and the mode left).
-            self.placing = None;
+            // check, vf0x244, its error shown and the mode left).  With Shift the order
+            // queues behind the worker's and the placing goes on, for the next one.
+            let queue = self.shift_held;
+            if !queue {
+                self.placing = None;
+            }
             if let Some(&worker) = self.selection.first() {
-                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Build { worker, id, x, y }).ok() {
+                if let Err(e) = selected_command(g, &self.selection, w3_game::replay::Command::Build { worker, id, x, y, queue }).ok() {
+                    self.placing = None;
                     self.error(e);
                 }
             }

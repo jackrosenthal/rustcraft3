@@ -1385,13 +1385,19 @@ impl Game {
                 self.formation(player, units);
                 O::Done
             }
-            C::Build { worker, id, x, y } => {
+            C::Build { worker, id, x, y, queue: true } if self.world.worker_busy(worker) => res(self.world.queue_build(worker, id, x, y)),
+            C::Build { worker, id, x, y, .. } => {
                 // A place the structure cannot take refuses the order at once, nothing
                 // paid (traced over LAN: Mafarazzo TD's peasant sent to build an Arrow
                 // Tower beside the road, its order and block made and freed, no walk;
                 // the port had taken the gold and refused it as the peasant arrived).
                 let r = if self.world.can_place(id, x, y) { self.world.order_build(worker, id, x, y) } else { Err("Cantplace") };
                 if r.is_ok() {
+                    // An order given without Shift drops those queued, as any other's.
+                    if let Some(u) = self.world.unit_mut(worker) {
+                        u.extra.order_queue.clear();
+                        u.extra.queued_current = None;
+                    }
                     self.world.player_build_objects(worker);
                 } else if self.world.unit(worker).is_some() {
                     // One refused makes its order and a block, both freed in the next

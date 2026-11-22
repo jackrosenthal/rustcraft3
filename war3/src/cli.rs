@@ -65,6 +65,11 @@ pub struct Args {
     /// joined at the port named here, or else at the one the game gives (TCP).
     #[arg(long, value_name = "HOST[:PORT]")]
     pub connect: Vec<String>,
+
+    /// Bring back the tower clone bug: double-clicking a structure's upgrade hires a copy
+    /// of what it becomes.  Every player in a network game needs it, or the game desyncs.
+    #[arg(long)]
+    pub tower_clone_bug: bool,
 }
 
 const LEGACY_SWITCHES: &[&str] = &[

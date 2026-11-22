@@ -149,6 +149,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
     crate::lan::set_direct(args.connect.clone());
+    w3_game::structupgrade::TOWER_CLONE_BUG.store(args.tower_clone_bug, std::sync::atomic::Ordering::Relaxed);
     let mut app = App { args, data, running: None, error: None };
     event_loop.run_app(&mut app)?;
     match app.error {

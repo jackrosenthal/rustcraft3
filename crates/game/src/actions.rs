@@ -451,7 +451,7 @@ impl Codec {
 fn upgrade_order(w: &World, h: u32, id: crate::objects::Id) -> bool {
     let Some(u) = w.unit(h) else { return false };
     let lists = |t: crate::objects::Id| w.objects.units.get(t).is_some_and(|o| o.list("Upgrade").iter().any(|s| crate::objects::id_from_str(s.trim()) == id));
-    lists(u.type_id) || u.extra.upgrading.as_ref().is_some_and(|g| g.to == id || lists(g.from))
+    lists(u.type_id) || (!crate::structupgrade::tower_clone_bug() && u.extra.upgrading.as_ref().is_some_and(|g| g.to == id || lists(g.from)))
 }
 
 /// The commands a network game's save under way leaves undone (`world::SaveWait`):

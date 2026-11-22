@@ -15,6 +15,17 @@ use crate::types::*;
 use crate::world::{Request, World};
 use w3_jass::Vm;
 
+/// The tower clone bug brought back (`--tower-clone-bug`): a second click on a
+/// structure's upgrade, once its type has changed, hires a copy of the new type from
+/// it.  The simulation's, so each computer in a network game needs it alike, or they
+/// part ways at the first clone.
+pub static TOWER_CLONE_BUG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the tower clone bug is on.
+pub fn tower_clone_bug() -> bool {
+    TOWER_CLONE_BUG.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 impl World {
     /// Starts upgrading a structure into another type from its Upgrade list.
     pub fn upgrade_structure(&mut self, h: u32, id: Id) -> Result<(), &'static str> {

@@ -607,12 +607,12 @@ pub struct World {
     /// The players' teams came from a setup screen.
     #[serde(default)]
     pub lobby_teams: bool,
-    /// Communism mode: the human players' gold is one pool (`communism`), and what the
-    /// pool last stood at.
+    /// Communism mode: the human players' gold and lumber are pools (`communism`), and
+    /// what the pools last stood at.
     #[serde(default)]
-    pub shared_gold: bool,
+    pub communism: bool,
     #[serde(default)]
-    pub gold_pool: Option<i32>,
+    pub resource_pools: Option<[i32; 2]>,
     /// SetResourceDensity and SetCreatureDensity (MAP_DENSITY_*).
     #[serde(default = "light2")]
     pub densities: (i32, i32),
@@ -1213,8 +1213,8 @@ impl World {
             save_copies: 0,
             local_text_tags: Vec::new(),
             lobby_teams: false,
-            shared_gold: false,
-            gold_pool: None,
+            communism: false,
+            resource_pools: None,
             densities: (1, 1),
             stacked_sounds: Vec::new(),
             integer_states: [0; 2],

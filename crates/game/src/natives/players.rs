@@ -227,6 +227,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // A player state event on it fires at once (`World::check_player_states`).
         SetPlayerState => |w, vm, a| {
             let (s, mut v) = (a.h(1) as i32, a.i(2));
+            // In communism mode a script sets its share of a pool (`communism`).
+            if let Some(p) = player_arg(w, a, 0) {
+                v = w.script_write(p, s, v);
+            }
             if matches!(s, crate::types::player_state::RESOURCE_GOLD | crate::types::player_state::RESOURCE_LUMBER) && !(0..=1_000_000).contains(&v) {
                 v = if v < 0 { 0 } else { 1_000_000 };
             }
@@ -246,7 +250,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             int(match a.h(1) as i32 {
                 crate::types::player_state::GOLD_UPKEEP_RATE => w.upkeep_tax(p).0,
                 crate::types::player_state::LUMBER_UPKEEP_RATE => w.upkeep_tax(p).1,
-                s => w.players[p as usize].get_state(s),
+                // In communism mode a script reads its share of a pool (`communism`).
+                s => w.script_read(p, s),
             })
         },
         SetPlayerTaxRate => |w, _, a| {

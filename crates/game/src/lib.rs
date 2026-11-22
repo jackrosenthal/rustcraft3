@@ -391,7 +391,7 @@ impl Game {
     /// explored (0x2) lifts the fog or its mask.
     pub fn start_lobby(&mut self, slots: &[LobbySlot], flags: u32) -> anyhow::Result<()> {
         // Communism mode is the lobby's, not one of the map's flags the script reads.
-        self.world.shared_gold = flags & communism::COMMUNISM != 0;
+        self.world.communism = flags & communism::COMMUNISM != 0;
         let flags = flags & !communism::COMMUNISM;
         self.world.map_flags = flags as i32;
         self.world.lobby_teams = true;
@@ -1039,7 +1039,7 @@ impl Game {
         }
         let steps = [3, 4, 5][self.world.game_speed.clamp(0, 2) as usize];
         self.world.tick(&mut self.vm, (ticks * steps * 5) as f32 / 1000.0);
-        self.world.pool_gold();
+        self.world.pool_resources();
     }
 
     /// Plays one frame (of a replay or from a network game's host): its commands, then
@@ -1290,11 +1290,11 @@ impl Game {
         self.world.form_group(&mine);
     }
 
-    /// Carries out a command; in communism mode the gold pool then takes in what it paid
-    /// or earned, before the next command is carried out.
+    /// Carries out a command; in communism mode the pools then take in what it paid or
+    /// earned, before the next command is carried out.
     fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         let o = self.execute_command(player, c);
-        self.world.pool_gold();
+        self.world.pool_resources();
         o
     }
 

@@ -44,6 +44,8 @@ const LEVELS: usize = 40;
 const SPAWNS: u32 = 6;
 /// The creeps' owner, Player(11).
 const CREEP_PLAYER: u8 = 11;
+/// At most this many creeps left get a health bar each.
+const HEALTH_BARS: usize = 12;
 /// How often the page's state is remade, in real seconds.
 const PUBLISH_EVERY: f32 = 0.25;
 
@@ -58,7 +60,25 @@ pub fn is_mafarazzo(g: &Game) -> bool {
 struct Shared {
     state: Mutex<(u64, Arc<str>)>,
     stop: AtomicBool,
+    /// The page's sounds, by the name it asks for them under, read from the game's
+    /// archives at the start.
+    sounds: Vec<(&'static str, Arc<[u8]>)>,
 }
+
+/// The page's sounds, all the game's own (PCM WAV, which browsers play as is): the name
+/// the page asks for, and the file.
+const SOUNDS: &[(&str, &str)] = &[
+    // The level before an air or boss level begins.
+    ("heads-up", "Sound\\Interface\\Hint.wav"),
+    // The countdown to a boss level: an Infernal landing (levels 30 and 40's bosses).
+    ("boss", "Units\\Demon\\Infernal\\InfernalBirth1.wav"),
+    // The countdown to an air level: a dragon's roar.
+    ("air", "Units\\Creeps\\AzureDragon\\DragonWhat1.wav"),
+    // Its last three seconds: the lobby's countdown tick.
+    ("tick", "Sound\\Interface\\BattleNetTick.wav"),
+    // A life lost.
+    ("death", "Units\\Human\\Footman\\FootmanDeath.wav"),
+];
 
 /// The running server.  Dropping it stops its threads and frees the port, for the next
 /// game to bind.
@@ -69,6 +89,9 @@ pub struct Dashboard {
     /// The map's tagged levels, read from its `-boss` and `-fantas` help text once.
     boss: Vec<u32>,
     fantas: Vec<u32>,
+    /// The most lives the game has had: the map's start (30 or 40, by its edit), or more
+    /// should a script give them.
+    lives_max: i32,
 }
 
 impl Drop for Dashboard {
@@ -81,14 +104,24 @@ impl Dashboard {
     pub fn start(g: &Game, port: u16) -> std::io::Result<Dashboard> {
         let listener = TcpListener::bind(("0.0.0.0", port))?;
         listener.set_nonblocking(true)?;
-        let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false) });
+        let sounds = SOUNDS
+            .iter()
+            .filter_map(|&(name, file)| match g.world.chain.read(file) {
+                Ok(b) => Some((name, Arc::from(b))),
+                Err(e) => {
+                    log::warn!("tddash: {file}: {e}");
+                    None
+                }
+            })
+            .collect();
+        let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false), sounds });
         {
             let shared = shared.clone();
             std::thread::Builder::new().name("tddash".into()).spawn(move || serve(listener, shared))?;
         }
         let url = format!("http://{}:{port}/", lan_address().unwrap_or_else(|| "localhost".into()));
         let (boss, fantas) = tagged_levels(g);
-        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas };
+        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0 };
         d.update(g, 0.0);
         Ok(d)
     }
@@ -101,6 +134,7 @@ impl Dashboard {
             return;
         }
         self.since = 0.0;
+        self.lives_max = self.lives_max.max(g.vm.global("udg_Lives").map_or(0, |v| v.int()));
         if let Ok(json) = serde_json::to_string(&self.snapshot(g)) {
             let mut s = self.shared.state.lock().unwrap();
             *s = (s.0 + 1, Arc::from(json));
@@ -118,7 +152,20 @@ impl Dashboard {
             },
             _ => None,
         });
-        let creeps = w.handles.iter().filter(|(_, o)| matches!(o, Obj::Unit(u) if u.owner == CREEP_PLAYER && !u.dead)).count() as u32;
+        let alive: Vec<_> = w
+            .handles
+            .iter()
+            .filter_map(|(_, o)| match o {
+                Obj::Unit(u) if u.owner == CREEP_PLAYER && !u.dead => Some(u),
+                _ => None,
+            })
+            .collect();
+        let health = Health {
+            life: alive.iter().map(|u| u.life.max(0.0) as f64).sum(),
+            max: alive.iter().map(|u| u.max_life.max(0.0) as f64).sum(),
+            units: if alive.len() <= HEALTH_BARS { alive.iter().map(|u| (u.life.max(0.0).round() as u32, u.max_life.max(0.0).round() as u32)).collect() } else { Vec::new() },
+        };
+        let creeps = alive.len() as u32;
         let players = (0..CREEP_PLAYER)
             .filter_map(|p| w.players.get(p as usize))
             // Those who left (or lost) keep their kills on the board.
@@ -159,9 +206,11 @@ impl Dashboard {
             time: w.time,
             level,
             lives: int("udg_Lives"),
+            lives_max: self.lives_max,
             fight: vm.global("udg_Fight").is_some_and(|v| matches!(v, Value::Bool(true))),
             countdown: timer.filter(|t| t.running).map(|t| t.remaining_now()),
             creeps,
+            health,
             players,
             levels,
         }
@@ -176,13 +225,24 @@ struct Snapshot {
     /// The level last begun (0 before the first).
     level: u32,
     lives: i32,
+    lives_max: i32,
     /// A level's creeps are out; End Round clears it when the last dies.
     fight: bool,
     /// Game seconds until the next level, while its timer runs.
     countdown: Option<f32>,
     creeps: u32,
+    health: Health,
     players: Vec<Player>,
     levels: Vec<Level>,
+}
+
+/// The creeps alive's life, summed, and each one's (life, most) when few are left
+/// (a boss level's, a level's stragglers).
+#[derive(Serialize)]
+struct Health {
+    life: f64,
+    max: f64,
+    units: Vec<(u32, u32)>,
 }
 
 #[derive(Serialize)]
@@ -290,15 +350,18 @@ fn respond(mut s: TcpStream, shared: &Shared) -> std::io::Result<()> {
         return websocket(s, shared);
     }
     std::io::copy(&mut (&mut s).take(head.len() as u64), &mut std::io::sink())?;
-    let (status, kind, body): (&str, &str, Arc<str>) = match (method, path) {
-        ("GET", "/") | ("GET", "/index.html") => ("200 OK", "text/html; charset=utf-8", Arc::from(PAGE)),
-        ("GET", "/state") => ("200 OK", "application/json", shared.state.lock().unwrap().1.clone()),
-        ("GET", _) => ("404 Not Found", "text/plain", Arc::from("not found")),
-        _ => ("405 Method Not Allowed", "text/plain", Arc::from("method not allowed")),
+    let sound = path.strip_prefix("/sound/").and_then(|n| n.strip_suffix(".wav")).and_then(|n| shared.sounds.iter().find(|(k, _)| *k == n));
+    // The sounds never change within a game; the page and its state always may.
+    let (status, kind, cache, body): (&str, &str, &str, Arc<[u8]>) = match (method, path, sound) {
+        ("GET", _, Some((_, b))) => ("200 OK", "audio/wav", "max-age=3600", b.clone()),
+        ("GET", "/" | "/index.html", _) => ("200 OK", "text/html; charset=utf-8", "no-store", Arc::from(PAGE.as_bytes())),
+        ("GET", "/state", _) => ("200 OK", "application/json", "no-store", Arc::from(shared.state.lock().unwrap().1.as_bytes())),
+        ("GET", _, _) => ("404 Not Found", "text/plain", "no-store", Arc::from(&b"not found"[..])),
+        _ => ("405 Method Not Allowed", "text/plain", "no-store", Arc::from(&b"method not allowed"[..])),
     };
-    let head = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", body.len());
+    let head = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: {cache}\r\nConnection: close\r\n\r\n", body.len());
     s.write_all(head.as_bytes())?;
-    s.write_all(body.as_bytes())?;
+    s.write_all(&body)?;
     s.flush()
 }
 

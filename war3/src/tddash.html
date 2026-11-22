@@ -14,61 +14,73 @@
 --gold:#fcd20d;--trim:#b08a2e;--trim-dark:#4a3810;--bevel:#2b313b;
 --air:#63c8ff;--boss:#ff4b3a;--fan:#49e04f;
 --display:"Cinzel","Palatino Linotype",Palatino,Georgia,serif;--body:"Alegreya Sans","Trebuchet MS","Segoe UI",sans-serif;
-font-size:min(1.48vh,0.833vw)}
+font-size:min(1.7vh,0.96vw)}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:radial-gradient(120% 90% at 50% 0%,#1a212b 0%,var(--bg) 70%) var(--bg);color:var(--fg);font:500 1rem/1.25 var(--body);font-variant-numeric:lining-nums}
 .wrap{height:100%;padding-block:1rem;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-rows:auto minmax(0,1fr);gap:.8rem}
 header{display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;border-bottom:.15rem solid var(--trim);box-shadow:0 .15rem 0 var(--trim-dark);padding:0 .4rem .5rem}
 h1{font:900 2.5rem/1 var(--display);margin:0;color:var(--gold);letter-spacing:.03em;text-shadow:0 .12rem 0 #000,0 0 1rem rgba(252,210,13,.25)}
-header .map{color:var(--muted);font-size:1.15rem;flex:1;min-width:0}
-.status{font:700 .95rem var(--body);letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border:.1rem solid currentColor;background:#000}
+header .map{color:var(--muted);font-size:1.3rem;flex:1;min-width:0}
+/* Our health: the lives left of the most the game has had, green to gold to red. */
+.health{display:flex;align-items:center;gap:.6rem;flex:0 1 32rem;min-width:16rem;--hp:var(--fan)}
+.health.mid{--hp:var(--gold)} .health.low{--hp:var(--boss)}
+.health .hl{font:700 1.2rem/1 var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--hp)}
+.health .bar{flex:1;height:1.7rem;background:#000;border:.14rem solid var(--trim);outline:.07rem solid #000;position:relative;overflow:hidden}
+.health .bar i{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(180deg,rgba(255,255,255,.35),transparent 55%) var(--hp);box-shadow:0 0 .8rem var(--hp);transition:width .4s ease-out}
+.health b{font:900 2rem/1 var(--display);color:var(--hp);font-variant-numeric:tabular-nums lining-nums;min-width:4.5ch;text-align:right;text-shadow:0 .1rem 0 #000}
+.health.hit .bar{animation:hit .9s ease-out}
+@keyframes hit{0%{box-shadow:0 0 1.6rem .3rem var(--boss);border-color:var(--boss)}100%{box-shadow:none}}
+.status{font:700 1.05rem var(--body);letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border:.1rem solid currentColor;background:#000}
 .status.live{color:var(--fan)} .status.paused{color:var(--gold)} .status.down{color:var(--boss)}
 button{font:700 1.05rem var(--body);color:var(--fg);background:linear-gradient(180deg,#2a303a,#11151b);border:.14rem solid var(--trim);padding:.35rem .8rem;cursor:pointer}
 button:hover{border-color:var(--gold)} button[aria-pressed="true"]{color:var(--gold);box-shadow:inset 0 0 .6rem rgba(252,210,13,.35)}
 main{display:grid;grid-template-columns:minmax(0,34fr) minmax(0,66fr);gap:.9rem;min-height:0}
-.side{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:.7rem;min-height:0}
-.box{background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 30%) var(--panel);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 1.2rem #000;padding:.7rem .9rem;min-width:0;min-height:0;display:flex;flex-direction:column;gap:.45rem}
+.side{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:.6rem;min-height:0;overflow-y:auto}
+/* The panels above Kills keep their content's height; Kills takes what is left. */
+.side>.box:not(:last-child){min-height:auto}
+.box{background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 30%) var(--panel);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 1.2rem #000;padding:.6rem .9rem;min-width:0;min-height:0;display:flex;flex-direction:column;gap:.4rem}
 h2{font:700 1.2rem/1 var(--display);letter-spacing:.09em;text-transform:uppercase;margin:0;color:var(--gold);text-shadow:0 .08rem 0 #000}
 .lvl{display:flex;gap:1rem;align-items:center}
-.big{font:900 5rem/.85 var(--display);color:#cfd5df;text-shadow:0 .15rem 0 #000;min-width:3.2ch;text-align:center}
+.big{font:900 4.4rem/.85 var(--display);color:#cfd5df;text-shadow:0 .15rem 0 #000;min-width:3.2ch;text-align:center}
 .lvl .info{min-width:0;flex:1;display:flex;flex-direction:column;gap:.25rem}
 .unit{font:700 1.7rem/1.05 var(--body)}
-.line{color:var(--muted);font-size:1.15rem}
+.line{color:var(--muted);font-size:1.3rem}
 .line b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums}
-.stats{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.1rem;color:var(--muted)}
+.stats{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.25rem;color:var(--muted)}
 .stats b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums} .stats .gold b{color:var(--gold)}
 .tags{display:flex;gap:.3rem;flex-wrap:wrap}
-.tag{font:700 .85rem/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:.2rem .35rem;background:#000;border:.07rem solid currentColor}
+.tag{font:700 .95rem/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:.2rem .35rem;background:#000;border:.07rem solid currentColor}
 .air{color:var(--air)} .boss{color:var(--boss)} .fan{color:var(--fan)}
 .big.air{color:var(--air)} .big.boss{color:var(--boss)} .big.fan{color:var(--fan)}
 .count{font:900 3rem/1 var(--display);color:var(--gold);font-variant-numeric:tabular-nums lining-nums}
 .warn{display:none;align-items:center;gap:.8rem;padding:.55rem .8rem;border:.14rem solid currentColor;background:#000;font:900 1.5rem/1.05 var(--display);letter-spacing:.05em;text-transform:uppercase}
-.warn.on{display:flex} .warn small{font:600 1rem var(--body);letter-spacing:0;text-transform:none;color:var(--muted);display:block}
+.warn.on{display:flex} .warn small{font:600 1.15rem var(--body);letter-spacing:0;text-transform:none;color:var(--muted);display:block}
 .warn.boss{color:var(--boss);box-shadow:0 0 1.4rem rgba(255,75,58,.45),inset 0 0 1rem rgba(255,75,58,.3)}
 .warn.air{color:var(--air);box-shadow:0 0 1.4rem rgba(99,200,255,.4),inset 0 0 1rem rgba(99,200,255,.25)}
 .warn.urgent{animation:pulse .8s ease-in-out infinite}
 @keyframes pulse{50%{filter:brightness(1.6)}}
-@media (prefers-reduced-motion:reduce){.warn.urgent,.cell.next{animation:none}}
+@media (prefers-reduced-motion:reduce){.warn.urgent,.cell.next,.health.hit .bar{animation:none}}
 .ahead{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
 .ahead div{background:#000;border:.1rem solid currentColor;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.15rem}
-.ahead span{font:700 .8rem var(--body);letter-spacing:.1em;text-transform:uppercase}
+.ahead span{font:700 .95rem var(--body);letter-spacing:.1em;text-transform:uppercase}
 .ahead b{font:900 1.7rem/1 var(--display);font-variant-numeric:lining-nums}
-.ahead em{font-style:normal;color:var(--muted);font-size:.95rem}
-table{border-collapse:collapse;width:100%;font-size:1.12rem}
-th{font:700 .8rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .4rem .15rem}
+.ahead em{font-style:normal;color:var(--muted);font-size:1.1rem}
+table{border-collapse:collapse;width:100%;font-size:1.25rem}
+th{font:700 .95rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .4rem .15rem}
 td{padding:.2rem .4rem;border-top:.07rem solid var(--bevel)}
 .n{text-align:right;font-variant-numeric:tabular-nums lining-nums} th.n{text-align:right}
 .sw{display:inline-block;width:.8rem;height:.8rem;margin-right:.5rem;border:.07rem solid #000;vertical-align:-.05rem}
 .scroll{overflow:auto;min-height:0}
 .grid{list-style:none;margin:0;padding:.55rem;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:.45rem;min-height:0;
 background:var(--stone);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 2rem #000}
-.cell{position:relative;background:linear-gradient(160deg,#1c222b,#0b0e12 60%);border:.14rem solid var(--bevel);border-top-color:#444c59;border-left-color:#444c59;border-bottom-color:#06080a;border-right-color:#06080a;padding:.45rem .55rem;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden}
+.cell{position:relative;background:linear-gradient(160deg,#1c222b,#0b0e12 60%);border:.14rem solid var(--bevel);border-top-color:#444c59;border-left-color:#444c59;border-bottom-color:#06080a;border-right-color:#06080a;padding:.35rem .55rem;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden}
 .cell .top{display:flex;justify-content:space-between;align-items:flex-start;gap:.3rem}
-.cell b{font:900 2.3rem/.9 var(--display);color:#7d8697;text-shadow:0 .1rem 0 #000}
-.marks{display:flex;flex-direction:column;align-items:flex-end;gap:.2rem}
-.cell .name{font:700 1.08rem/1.05 var(--body);color:var(--fg)}
-dl{margin:0;display:grid;font-size:.95rem;line-height:1.15}
+.cell b{font:900 2.1rem/.9 var(--display);color:#7d8697;text-shadow:0 .1rem 0 #000}
+.marks{display:flex;flex-direction:column;align-items:flex-end;gap:.15rem}
+.cell .tag{font-size:.78rem;padding:.15rem .25rem;letter-spacing:.04em}
+.cell .name{font:700 1.25rem/1.05 var(--body);color:var(--fg)}
+dl{margin:0;display:grid;font-size:1.15rem;line-height:1.1}
 dl div{display:flex;justify-content:space-between;gap:.4rem}
 dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums} dd.gold{color:var(--gold)}
 .cell.air{border-color:var(--air);box-shadow:inset 0 0 1.1rem rgba(99,200,255,.28)}
@@ -78,20 +90,17 @@ dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums
 .cell.air b{color:var(--air)} .cell.fan b{color:var(--fan)} .cell.air.fan b{color:var(--air)} .cell.boss b{color:var(--boss)}
 .cell.done{opacity:.32;filter:saturate(.4)}
 .cell.now{outline:.22rem solid var(--gold);outline-offset:-.05rem;box-shadow:0 0 1.4rem rgba(252,210,13,.55),inset 0 0 1.2rem rgba(252,210,13,.25)}
-/* Now and Next sit as a badge on the cell's bottom edge, clear of its tags and numbers. */
-.cell.now::after,.cell.next::after{position:absolute;bottom:0;left:50%;transform:translateX(-50%);font:700 .75rem/1 var(--display);letter-spacing:.1em;text-transform:uppercase;padding:.15rem .4rem .2rem}
-.cell.now::after{content:"Now";background:var(--gold);color:#000}
-.cell.next{animation:nextglow 1.6s ease-in-out infinite}
-.cell.next::after{content:"Next";background:var(--fg);color:#000}
+/* Next: a dashed outline that pulses, beside Now's solid gold one; no label to cover a cell's numbers. */
+.cell.next{outline:.18rem dashed var(--fg);outline-offset:-.05rem;animation:nextglow 1.6s ease-in-out infinite}
 @keyframes nextglow{50%{filter:brightness(1.35)}}
-.empty{color:var(--muted)} .gone{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.08em;margin-left:.3rem}
+.empty{color:var(--muted)} .gone{color:var(--muted);font-size:.95rem;text-transform:uppercase;letter-spacing:.08em;margin-left:.3rem}
 /* Portrait and small screens: stack and scroll instead of fitting one screen. */
 @media (max-aspect-ratio:5/4),(max-width:820px){
-:root{font-size:14px} html,body{height:auto} .wrap{height:auto;display:flex;flex-direction:column}
+:root{font-size:16px} html,body{height:auto} .wrap{height:auto;display:flex;flex-direction:column}
 main{display:flex;flex-direction:column} .side{display:flex;flex-direction:column}
 .grid{grid-template-columns:repeat(auto-fill,minmax(8.6rem,1fr));grid-template-rows:none} .cell{gap:.5rem;min-height:8rem}
 .big{font-size:4rem}
-header .map{order:5;flex-basis:100%} header .status{margin-left:auto}
+header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .status{margin-left:auto}
 }
 </style>
 </head>
@@ -100,9 +109,12 @@ header .map{order:5;flex-basis:100%} header .status{margin-left:auto}
 <header>
   <h1>Mafarazzo TD</h1>
   <span class="map" id="map">Connecting…</span>
+  <div class="health" id="health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+    <span class="hl">Health</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">–</b>
+  </div>
   <span class="status down" id="status">Offline</span>
-  <button id="sound" aria-pressed="false" title="Sound warnings before air and boss levels">Sound: off</button>
-  <button id="test" title="Play the boss and air warnings">Test</button>
+  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, and when a life is lost">Sound: off</button>
+  <button id="test" title="Play the boss, air, countdown, and life-lost sounds">Test</button>
 </header>
 <main>
 <div class="side">
@@ -147,53 +159,69 @@ const kinds = l => [l.boss && "boss", l.air && "air", l.fantas && "fan"].filter(
 const tagsHtml = l => (l.fantas ? '<span class="tag fan">Fantas</span>' : "") + (l.air ? '<span class="tag air">Air</span>' : "") + (l.boss ? '<span class="tag boss">Boss</span>' : "");
 const danger = l => l && (l.boss ? "boss" : l.air ? "air" : null);
 
-// ---- Sound: synthesized, so it needs no files; browsers allow it only after a click.
+// ---- Sound: the game's own files, served by the game (/sound/<name>.wav), decoded
+// once; browsers allow sound only after a click.
+const SOUNDS = ["heads-up", "boss", "air", "tick", "death"];
 let ctx = null, soundOn = false;
+const buffers = {};
 try { soundOn = localStorage.getItem("tddash.sound") === "1"; } catch (e) {}
 function audio() {
-  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    for (const name of SOUNDS) {
+      fetch(`/sound/${name}.wav`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+        .then(b => ctx.decodeAudioData(b)).then(buf => { buffers[name] = buf; })
+        .catch(e => console.warn("sound", name, e));
+    }
+  }
   if (ctx.state === "suspended") ctx.resume();
   return ctx;
 }
-function tone(t, f0, f1, dur, type, vol) {
-  const a = audio(), o = a.createOscillator(), g = a.createGain(), lp = a.createBiquadFilter();
-  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-  lp.type = "lowpass"; lp.frequency.value = type === "sawtooth" ? 900 : 6000;
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(lp).connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.05);
+function play(name, force) {
+  if (!soundOn && !force) return;
+  const a = audio(), buf = buffers[name];
+  if (!buf) return;
+  const src = a.createBufferSource();
+  src.buffer = buf; src.connect(a.destination); src.start();
 }
-// Boss: two low war-horn blasts.  Air: rising whistles.  Tick: a short click for the last seconds.
-function play(kind) {
+// One death cry per life lost, each starting as the last ends: lives lost together play
+// back to back.
+let deathsEnd = 0;
+function playDeaths(n) {
   if (!soundOn) return;
-  const t = audio().currentTime + 0.02;
-  if (kind === "boss") { tone(t, 98, 92, 0.7, "sawtooth", 0.5); tone(t, 147, 138, 0.7, "sawtooth", 0.25); tone(t + 0.85, 98, 82, 1.1, "sawtooth", 0.5); tone(t + 0.85, 147, 123, 1.1, "sawtooth", 0.25); }
-  else if (kind === "air") { for (let i = 0; i < 3; i++) tone(t + i * 0.28, 700, 1600, 0.24, "sine", 0.3); }
-  else if (kind === "boss-tick") tone(t, 220, 200, 0.18, "square", 0.18);
-  else if (kind === "air-tick") tone(t, 1320, 1320, 0.12, "sine", 0.22);
-  else if (kind === "soft") { tone(t, 660, 660, 0.25, "triangle", 0.25); tone(t + 0.3, 880, 880, 0.35, "triangle", 0.25); }
-}
-function say(text) {
-  if (!soundOn || !("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);
+  const a = audio(), buf = buffers.death;
+  if (!buf) return;
+  for (let i = 0; i < n; i++) {
+    const src = a.createBufferSource(), at = Math.max(a.currentTime, deathsEnd);
+    src.buffer = buf; src.connect(a.destination); src.start(at);
+    deathsEnd = at + buf.duration;
+  }
 }
 function showSound() { $("sound").textContent = "Sound: " + (soundOn ? "on" : "off"); $("sound").setAttribute("aria-pressed", soundOn); }
-$("sound").onclick = () => { soundOn = !soundOn; try { localStorage.setItem("tddash.sound", soundOn ? "1" : "0"); } catch (e) {} if (soundOn) { audio(); play("soft"); } showSound(); };
-$("test").onclick = () => { const was = soundOn; soundOn = true; audio(); play("boss"); setTimeout(() => play("air"), 2200); soundOn = was; };
+$("sound").onclick = () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem("tddash.sound", soundOn ? "1" : "0"); } catch (e) {}
+  if (soundOn) { audio(); setTimeout(() => play("heads-up"), 300); }
+  showSound();
+};
+$("test").onclick = () => {
+  audio();
+  [["boss", 300], ["air", 2600], ["tick", 4300], ["death", 5000]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
+};
 showSound();
 
-// ---- Warnings: each said once per level and stage, however often the state comes.
+// ---- Warnings: each sounded once per level and stage, however often the state comes.
 const warned = new Set();
 function warnOnce(key, fn) { if (!warned.has(key)) { warned.add(key); fn(); } }
 function alerts(s, next) {
   const kind = danger(next);
   if (!kind) return;
-  const what = kind === "boss" ? `Boss level ${next.n}, ${next.name}` : `Air level ${next.n}, ${next.name}`;
   // While the level before is still being fought: a first heads-up.
-  if (s.fight && s.level === next.n - 1) warnOnce(next.n + ":early", () => { play("soft"); setTimeout(() => say(`${what}, is next`), 700); });
+  if (s.fight && s.level === next.n - 1) warnOnce(next.n + ":early", () => play("heads-up"));
   if (!s.fight && s.countdown != null) {
     const secs = Math.ceil(s.countdown);
-    warnOnce(next.n + ":count", () => { play(kind); setTimeout(() => say(`${what}, in ${secs} seconds`), kind === "boss" ? 2100 : 1000); });
-    if (secs <= 3 && secs >= 1) warnOnce(next.n + ":tick" + secs, () => play(kind + "-tick"));
+    warnOnce(next.n + ":count", () => play(kind));
+    if (secs <= 3 && secs >= 1) warnOnce(next.n + ":tick" + secs, () => play("tick"));
   }
 }
 
@@ -205,13 +233,27 @@ function renderGrid(s) {
     gridKey = key;
     $("grid").innerHTML = s.levels.map(l => `<li class="cell ${kinds(l).join(" ")}" id="c${l.n}"><div class="top"><b>${l.n}</b><span class="marks">${tagsHtml(l)}</span></div><div class="name">${esc(l.name || "?")}</div><dl><div><dt>Count</dt><dd>${l.count} &times; ${l.spawns}</dd></div><div><dt>HP</dt><dd>${fmt(l.hp)}</dd></div><div><dt>Gold</dt><dd class="gold">${goldText(l.gold)}</dd></div></dl></li>`).join("");
   }
-  const upcoming = s.fight ? s.level + 1 : s.level + 1;
+  const upcoming = s.level + 1;
   for (const l of s.levels) {
     const c = $("c" + l.n);
     c.classList.toggle("done", l.n < s.level || (l.n === s.level && !s.fight));
     c.classList.toggle("now", l.n === s.level && s.fight);
     c.classList.toggle("next", l.n === upcoming);
   }
+}
+// The header's health bar; a lost life flashes it.
+let lastLives = null;
+function renderHealth(s) {
+  const max = Math.max(s.lives_max, s.lives, 1), pct = Math.max(0, s.lives) / max, h = $("health");
+  $("hpFill").style.width = (pct * 100) + "%";
+  $("hpText").textContent = `${s.lives}/${max}`;
+  h.setAttribute("aria-valuemax", max); h.setAttribute("aria-valuenow", s.lives);
+  h.classList.toggle("mid", pct <= 0.6 && pct > 0.3); h.classList.toggle("low", pct <= 0.3);
+  if (lastLives !== null && s.lives < lastLives) {
+    h.classList.remove("hit"); void h.offsetWidth; h.classList.add("hit");
+    playDeaths(lastLives - s.lives);
+  }
+  lastLives = s.lives;
 }
 function render(s) {
   $("map").textContent = s.map;
@@ -226,7 +268,8 @@ function render(s) {
     $("nowName").textContent = cur.name; $("nowTags").innerHTML = tagsHtml(cur);
   }
   const total = cur ? cur.count * cur.spawns : 0;
-  $("nowLine").innerHTML = (s.fight ? `<b>${s.creeps}</b> of ${total} creeps left · ` : "") + `<b>${s.lives}</b> lives`;
+  $("nowLine").innerHTML = s.fight ? `<b>${s.creeps}</b> of ${total} creeps left` : cur ? "All creeps down" : "";
+  renderHealth(s);
   // The next level, its countdown, and its warning.
   if (!next) {
     $("nextN").textContent = "–"; $("nextN").className = "big"; $("nextName").textContent = s.level >= lv.length && !s.fight ? "All levels cleared" : "Last level";

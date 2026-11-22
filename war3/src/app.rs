@@ -120,11 +120,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let data = GameData::open(&dir, args.classic)?;
     log::info!("game data: {} ({:?})", dir.display(), data.version);
     let event_loop = EventLoop::new()?;
-    // Each frame asks for the next (about_to_wait), so the loop sleeps until the display
-    // wants one, or until the game's next step is due (`IDLE_STEP`).  Polling instead spins
-    // a core wherever redraws wait on the compositor (Wayland's frame callbacks) rather
-    // than on the presentation.
-    event_loop.set_control_flow(ControlFlow::Wait);
+    event_loop.set_control_flow(ControlFlow::Poll);
     crate::lan::set_direct(args.connect.clone());
     let mut app = App { args, data, running: None, error: None };
     event_loop.run_app(&mut app)?;
@@ -938,6 +934,5 @@ impl ApplicationHandler for App {
         if !r.hidden() {
             r.window.request_redraw();
         }
-        el.set_control_flow(ControlFlow::WaitUntil(r.last + IDLE_STEP));
     }
 }

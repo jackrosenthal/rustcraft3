@@ -1620,6 +1620,13 @@ impl Scene {
         for inst in &mut self.instances {
             drain(inst);
         }
+        // A missile's impact sounds from its model's death, an effect's from its own.
+        for v in self.missiles.values_mut() {
+            drain(&mut v.inst);
+        }
+        for v in self.effects.values_mut() {
+            drain(&mut v.inst);
+        }
         for (code, pos) in events {
             let code = String::from_utf8_lossy(&code).to_ascii_uppercase();
             if let Some(label) = audio.anim_lookups.get(&code).cloned() {
@@ -4363,7 +4370,9 @@ impl Scene {
             if !self.missiles.contains_key(&m.id) {
                 let Some(model) = assets.model(device, queue, &m.model) else { continue };
                 let mut inst = ModelInstance::new(model);
-                inst.play("stand");
+                // Its birth first, which sounds its launch, then its stand.
+                let birth = w3_render::anim::find_sequence(&inst.model.mdx, "birth").is_some();
+                inst.play(if birth { "birth" } else { "stand" });
                 inst.team = w.unit(m.source).map_or(0, |u| world_color(w, u.owner, w.players.get(u.owner as usize).map_or(0, |p| p.color)));
                 self.missiles.insert(m.id, EffectView { inst, props: String::new(), dying: false, done: false });
             }
@@ -4383,6 +4392,13 @@ impl Scene {
             let slope = (target_z - m.z) / total + m.arc * 4.0 * (1.0 - 2.0 * t);
             let yaw = (target.1 - position.y).atan2(target.0 - position.x);
             let v = self.missiles.get_mut(&m.id).unwrap();
+            if !v.dying && (v.inst.finished || v.inst.looped) {
+                let stand = w3_render::anim::find_sequence(&v.inst.model.mdx, "stand");
+                if stand.is_some() && stand != v.inst.sequence {
+                    v.inst.set_sequence(stand);
+                }
+                v.inst.looped = false;
+            }
             v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-slope.atan()), Vec3::new(position.x, position.y, z));
             v.inst.visible = w.fog_state(position.x, position.y, local) == w3_game::fog::FOG_VISIBLE;
         }

@@ -5632,7 +5632,16 @@ impl Scene {
             inst.light_cell = cell(inst);
             self.models.submit(inst, eye, rot);
         }
+        // Units and effects out of view are neither animated nor drawn: on a map with
+        // its units spread wide (a tower defense's lanes), posing and drawing them all
+        // took most of the frame.  Their particles start over as they come back.
+        let frustum = w3_render::camera::Frustum::new(view_proj);
         for v in self.units.values_mut() {
+            if !v.inst.in_view(&frustum) {
+                v.inst.particles.clear();
+                v.children.iter_mut().for_each(|(_, c)| c.particles.clear());
+                continue;
+            }
             v.inst.light_cell = cell(&v.inst);
             for (_, c) in &mut v.children {
                 c.light_cell = v.inst.light_cell;
@@ -5650,6 +5659,10 @@ impl Scene {
             self.models.submit(inst, eye, rot);
         }
         for v in self.effects.values_mut().filter(|v| v.inst.visible) {
+            if !v.inst.in_view(&frustum) {
+                v.inst.particles.clear();
+                continue;
+            }
             v.inst.light_cell = cell(&v.inst);
             self.models.submit(&mut v.inst, eye, rot);
         }

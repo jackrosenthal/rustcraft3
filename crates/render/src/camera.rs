@@ -1,6 +1,6 @@
 //! The game camera: a target point viewed from a distance at an angle of attack.
 
-use glam::{Mat4, Quat, Vec3};
+use glam::{Mat4, Quat, Vec3, Vec4};
 
 /// Vertical position of the camera target in normalized device coordinates (fitted to
 /// the original at camera distances of 1650 and 2500 and angles of 304 and 320).
@@ -95,5 +95,40 @@ impl Camera {
         let a = inv.project_point3(Vec3::new(ndc_x, ndc_y, 0.0));
         let b = inv.project_point3(Vec3::new(ndc_x, ndc_y, 1.0));
         (a, (b - a).normalize())
+    }
+}
+
+/// A view's six clipping planes, each facing inward, for telling what lies outside it.
+#[derive(Clone, Copy, Debug)]
+pub struct Frustum([Vec4; 6]);
+
+impl Frustum {
+    /// The planes of a view and projection (wgpu's clip space: depth from 0 to 1).
+    pub fn new(view_proj: Mat4) -> Frustum {
+        let (x, y, z, w) = (view_proj.row(0), view_proj.row(1), view_proj.row(2), view_proj.row(3));
+        Frustum([w + x, w - x, w + y, w - y, z, w - z].map(|p| p / p.truncate().length().max(f32::MIN_POSITIVE)))
+    }
+
+    /// Whether any of the sphere at `center` lies within the view.
+    pub fn sees(&self, center: Vec3, radius: f32) -> bool {
+        self.0.iter().all(|p| p.truncate().dot(center) + p.w >= -radius)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_frustum_sees_what_the_camera_looks_at_and_not_far_aside() {
+        let cam = Camera { target: Vec3::new(1000.0, 2000.0, 0.0), ..Camera::default() };
+        let f = Frustum::new(cam.view_proj(16.0 / 9.0));
+        assert!(f.sees(cam.target, 1.0));
+        // Well to either side, and behind the eye.
+        assert!(!f.sees(cam.target + Vec3::new(20_000.0, 0.0, 0.0), 100.0));
+        assert!(!f.sees(cam.target - Vec3::new(20_000.0, 0.0, 0.0), 100.0));
+        assert!(!f.sees(cam.eye() + (cam.eye() - cam.target), 10.0));
+        // A sphere big enough reaches back in.
+        assert!(f.sees(cam.target + Vec3::new(20_000.0, 0.0, 0.0), 30_000.0));
     }
 }

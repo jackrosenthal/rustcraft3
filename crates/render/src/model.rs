@@ -38,6 +38,41 @@ pub struct ModelGpu {
     pub textures: Vec<Option<Arc<Texture>>>,
     /// Geoset id -> geoset animation index.
     pub geoset_anims: HashMap<u32, usize>,
+    /// How far from its origin, in its own units, its geometry can reach (`reach`),
+    /// and its particles (`particle_reach`).
+    pub reach: f32,
+    pub particle_reach: f32,
+}
+
+/// How far from a model's origin its geometry can reach: the farthest of its extents
+/// (the model's, its sequences', its geosets'; an empty one, min above max, as the
+/// files leave unused ones, counts for none).  Infinite for a model without one.
+fn reach(mdx: &Model) -> f32 {
+    let far = |e: &w3_formats::mdx::Extent| {
+        let (min, max) = (Vec3::from_array(e.min), Vec3::from_array(e.max));
+        let empty = min.cmpgt(max).any() || !min.is_finite() || !max.is_finite();
+        let r = if empty { 0.0 } else { min.length().max(max.length()) };
+        if e.radius.is_finite() { r.max(e.radius) } else { r }
+    };
+    let extents = std::iter::once(&mdx.extent).chain(mdx.sequences.iter().map(|s| &s.extent)).chain(mdx.geosets.iter().flat_map(|g| std::iter::once(&g.extent).chain(&g.sequence_extents)));
+    let r = extents.map(far).fold(0.0f32, f32::max);
+    if r > 0.0 { r * 1.1 + 32.0 } else { f32::INFINITY }
+}
+
+/// How far from a model's origin its particles can be drawn: from their emitter, as far
+/// as they fly in their lives (or as long as their tails stretch back) under gravity,
+/// at their size.
+fn particle_reach(mdx: &Model) -> f32 {
+    let mut r = 0.0f32;
+    for e in &mdx.particle_emitters2 {
+        let pivot = mdx.pivots.get(e.node.object_id as usize).map_or(0.0, |p| Vec3::from_array(*p).length());
+        let life = e.lifespan.max(0.0);
+        let speed = e.speed.abs() * (1.0 + e.variation.abs());
+        let flight = speed * life.max(e.tail_length) + 0.5 * e.gravity.abs() * life * life;
+        let size = e.segment_scaling.iter().fold(0.0f32, |m, v| m.max(v.abs())) + e.width.abs().max(e.length.abs());
+        r = r.max(pivot + flight + size);
+    }
+    if r.is_finite() { r * 1.1 + 32.0 } else { f32::INFINITY }
 }
 
 impl ModelGpu {
@@ -140,12 +175,14 @@ impl ModelGpu {
             .collect();
         ModelGpu {
             path: path.to_string(),
-            mdx,
             vertices,
             indices,
             geosets,
             textures: tex,
             geoset_anims,
+            reach: reach(&mdx),
+            particle_reach: particle_reach(&mdx),
+            mdx,
         }
     }
 }
@@ -185,6 +222,14 @@ pub struct ModelInstance {
 }
 
 impl ModelInstance {
+    /// Whether anything it draws may lie within the view: its geometry, and its
+    /// particles while it has any.
+    pub fn in_view(&self, frustum: &crate::camera::Frustum) -> bool {
+        let reach = if self.particles.is_empty() { self.model.reach } else { self.model.reach.max(self.model.particle_reach) };
+        let scale = self.transform.x_axis.truncate().length().max(self.transform.y_axis.truncate().length()).max(self.transform.z_axis.truncate().length());
+        frustum.sees(self.transform.w_axis.truncate(), reach * scale)
+    }
+
     pub fn new(model: Arc<ModelGpu>) -> Self {
         let skeleton = Skeleton::new(&model.mdx);
         let blend_ms = model.mdx.blend_time as f32;

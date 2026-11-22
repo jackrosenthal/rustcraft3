@@ -214,6 +214,17 @@ impl Particles {
     pub fn is_empty(&self) -> bool {
         self.particles.is_empty()
     }
+
+    /// Drops the live particles and what the emitters had toward their next, to start
+    /// over (a model out of view, not animated, would otherwise come back to particles
+    /// hanging where it left them).
+    pub fn clear(&mut self) {
+        self.particles.clear();
+        self.last_time = None;
+        for e in &mut self.emitters {
+            e.accumulated = 0.0;
+        }
+    }
 }
 
 /// Color, alpha, and size at fraction `t` of life: start to middle over the first `time`

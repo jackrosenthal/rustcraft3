@@ -38,7 +38,16 @@ impl Assets {
     }
 
     pub fn model(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Option<Arc<ModelGpu>> {
-        let key = path.to_ascii_lowercase();
+        self.load_model(device, queue, path, path.to_ascii_lowercase(), |_| {})
+    }
+
+    /// A model changed by `edit` before it is uploaded, cached apart from the unchanged
+    /// one under `tag`.
+    pub fn model_edited(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str, tag: &str, edit: impl FnOnce(&mut w3_formats::mdx::Model)) -> Option<Arc<ModelGpu>> {
+        self.load_model(device, queue, path, format!("{}#{tag}", path.to_ascii_lowercase()), edit)
+    }
+
+    fn load_model(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str, key: String, edit: impl FnOnce(&mut w3_formats::mdx::Model)) -> Option<Arc<ModelGpu>> {
         if let Some(m) = self.models.get(&key) {
             return m.clone();
         }
@@ -49,10 +58,16 @@ impl Assets {
         } else if !lower.ends_with(".mdx") {
             names.insert(0, format!("{path}.mdx"));
         }
+        let mut edit = Some(edit);
         let m = names.iter().find_map(|n| {
             let bytes = self.textures.chain.read(n).ok()?;
             match w3_formats::mdx::Model::parse(&bytes) {
-                Ok(mdx) => Some(Arc::new(ModelGpu::new(device, queue, &mut self.textures, n, mdx))),
+                Ok(mut mdx) => {
+                    if let Some(edit) = edit.take() {
+                        edit(&mut mdx);
+                    }
+                    Some(Arc::new(ModelGpu::new(device, queue, &mut self.textures, n, mdx)))
+                }
                 Err(e) => {
                     log::warn!("{n}: {e}");
                     None

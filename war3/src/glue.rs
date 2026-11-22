@@ -248,13 +248,73 @@ enum DialogAction {
     Notice,
 }
 
+/// How far the main menu's panel bottom rises, in the panel model's units: one button's
+/// slot, measured so the gap under Credits matches the one under the original's last
+/// button.
+const MAIN_MENU_PANEL_LIFT: f32 = 0.0575;
+
+/// Shortens the TopRight panel model's main menu panel by one button, for the Battle.net
+/// button that is not shown.  That panel (bone Plane02) is also the Single Player menu's,
+/// so its lower half is moved onto a new bone that lifts it only in the MainMenu
+/// sequences.  The frame's lower corners move with its edge, so only its middle shrinks.
+fn shorten_main_menu_panel(m: &mut w3_formats::mdx::Model) {
+    use w3_formats::mdx::{Bone, Interp, Key, Node, Track};
+    let Some(panel) = m.bones.iter().find(|b| b.node.name == "Plane02").map(|b| b.node.object_id) else {
+        log::warn!("TopRight panel model has no Plane02; the main menu panel keeps its size");
+        return;
+    };
+    let id = m.nodes().len() as u32;
+    let pivot = m.pivots.get(panel as usize).copied().unwrap_or_default();
+    m.pivots.resize(id as usize + 1, [0.0; 3]);
+    m.pivots[id as usize] = pivot;
+    // The panel's middle in model space: everything of it below is its lower half.
+    let middle = pivot[1];
+    let keys: Vec<_> = m
+        .sequences
+        .iter()
+        .filter(|s| s.name.starts_with("MainMenu "))
+        .map(|s| Key { frame: s.start as i32, value: [0.0, MAIN_MENU_PANEL_LIFT, 0.0], in_tan: [0.0; 3], out_tan: [0.0; 3] })
+        .collect();
+    let mut tracks = w3_formats::mdx::Tracks::default();
+    tracks.vec3s.push((*b"KGTR", Track { interp: Interp::None, global_seq: None, keys }));
+    m.bones.push(Bone {
+        node: Node { name: "Plane02 Bottom".into(), object_id: id, parent: Some(panel), flags: 0x100, tracks },
+        geoset_id: None,
+        geoset_anim_id: None,
+    });
+    for g in &mut m.geosets {
+        let mut groups = Vec::new();
+        let mut k = 0;
+        for &n in &g.group_sizes {
+            groups.push(g.matrix_indices[k..k + n as usize].to_vec());
+            k += n as usize;
+        }
+        let Some(own) = groups.iter().position(|grp| grp == &[panel]) else { continue };
+        let mut lifted = None;
+        for (vi, v) in g.vertices.iter().enumerate() {
+            if g.vertex_groups[vi] as usize == own && v[1] < middle {
+                let gi = *lifted.get_or_insert_with(|| {
+                    g.group_sizes.push(1);
+                    g.matrix_indices.push(id);
+                    g.group_sizes.len() as u8 - 1
+                });
+                g.vertex_groups[vi] = gi;
+            }
+        }
+    }
+}
+
 impl Glue {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets) -> Glue {
         // CGlueMgr's sprite layers: war3skins.txt GlueSpriteLayerBackground_V<n> (the 3D
         // scene, through its own camera) and the TopLeft and TopRight panel models.
         let layer = |assets: &mut Assets, key: &str| {
             let path = assets.frames.skin_value(key)?;
-            let m = assets.model(device, queue, &path)?;
+            let m = if key == "GlueSpriteLayerTopRight" {
+                assets.model_edited(device, queue, &path, "short-main-menu", shorten_main_menu_panel)?
+            } else {
+                assets.model(device, queue, &path)?
+            };
             let mut i = ModelInstance::new(m);
             i.sequence = w3_render::anim::find_sequence(&i.model.mdx, "Stand");
             Some(i)
@@ -396,6 +456,11 @@ impl Glue {
                     self.tree.set_model("WarCraftIIILogo", &logo);
                 }
                 self.tree.set_visible("RealmSelect", false);
+                // Battle.net's servers are gone, so its button (and the realm picker beside
+                // it) is dropped and Local Area Network moves up into its slot.
+                self.tree.set_visible("BattleNetBackdrop", false);
+                use w3_ui::FramePoint as P;
+                self.tree.set_point("LocalAreaNetworkBackdrop", P::TopRight, "SinglePlayerBackdrop", P::BottomRight, 0.0, 0.005);
             }
             Screen::SinglePlayer => {
                 // CSinglePlayerMenu's vf55: Reign of Chaos has no custom campaigns, and

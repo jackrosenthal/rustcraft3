@@ -1,6 +1,7 @@
 //! A live web dashboard for Mafarazzo TD, served over HTTP by the game's host while a
 //! game of the map runs: the level being fought, the countdown to the next, the 40
-//! levels' creeps, and warnings (with sound, in the page) before air and boss levels.
+//! levels' creeps, and warnings (with sound, in the page) before air and boss levels,
+//! and gold's ring as an HSBC is finished.
 //!
 //! The map is recognized by its script's globals rather than its name, so its edits
 //! (the 2.x originals, the RELAXED versions with their larger counts) all read right:
@@ -46,6 +47,8 @@ const SPAWNS: u32 = 6;
 const CREEP_PLAYER: u8 = 11;
 /// At most this many creeps left get a health bar each.
 const HEALTH_BARS: usize = 12;
+/// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
+const HSBC: &[u8; 4] = b"o008";
 /// How often the page's state is remade, in real seconds.
 const PUBLISH_EVERY: f32 = 0.25;
 
@@ -78,6 +81,8 @@ const SOUNDS: &[(&str, &str)] = &[
     ("tick", "Sound\\Interface\\BattleNetTick.wav"),
     // A life lost.
     ("death", "Units\\Human\\Footman\\FootmanDeath.wav"),
+    // An HSBC finished: gold received.
+    ("kaching", "Sound\\Interface\\ReceiveGold.wav"),
 ];
 
 /// The running server.  Dropping it stops its threads and frees the port, for the next
@@ -92,6 +97,10 @@ pub struct Dashboard {
     /// The most lives the game has had: the map's start (30 or 40, by its edit), or more
     /// should a script give them.
     lives_max: i32,
+    /// The HSBCs standing finished as last seen, and how many have been finished this
+    /// game (built, or upgraded into) with who finished the last.
+    hsbcs: Vec<u32>,
+    hsbc: Hsbc,
 }
 
 impl Drop for Dashboard {
@@ -121,7 +130,7 @@ impl Dashboard {
         }
         let url = format!("http://{}:{port}/", lan_address().unwrap_or_else(|| "localhost".into()));
         let (boss, fantas) = tagged_levels(g);
-        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0 };
+        let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0, hsbcs: Vec::new(), hsbc: Hsbc::default() };
         d.update(g, 0.0);
         Ok(d)
     }
@@ -135,10 +144,32 @@ impl Dashboard {
         }
         self.since = 0.0;
         self.lives_max = self.lives_max.max(g.vm.global("udg_Lives").map_or(0, |v| v.int()));
+        self.count_hsbcs(g);
         if let Ok(json) = serde_json::to_string(&self.snapshot(g)) {
             let mut s = self.shared.state.lock().unwrap();
             *s = (s.0 + 1, Arc::from(json));
         }
+    }
+
+    /// Counts each HSBC newly finished: one standing, not still rising as a peasant
+    /// builds it or as the bank below upgrades into it.
+    fn count_hsbcs(&mut self, g: &Game) {
+        let w = &g.world;
+        let now: Vec<u32> = w
+            .handles
+            .iter()
+            .filter_map(|(h, o)| match o {
+                Obj::Unit(u) if u.type_id == *HSBC && !u.dead && u.constructing.is_none() && u.extra.upgrading.is_none() => Some(*h),
+                _ => None,
+            })
+            .collect();
+        for h in now.iter().filter(|h| !self.hsbcs.contains(h)) {
+            self.hsbc.built += 1;
+            if let Some(Obj::Unit(u)) = w.handles.get(*h) {
+                self.hsbc.by = w.players.get(u.owner as usize).map(|p| (w.player_name(p.id), p.color));
+            }
+        }
+        self.hsbcs = now;
     }
 
     fn snapshot(&self, g: &Game) -> Snapshot {
@@ -213,6 +244,7 @@ impl Dashboard {
             health,
             players,
             levels,
+            hsbc: self.hsbc.clone(),
         }
     }
 }
@@ -234,6 +266,14 @@ struct Snapshot {
     health: Health,
     players: Vec<Player>,
     levels: Vec<Level>,
+    hsbc: Hsbc,
+}
+
+/// The HSBCs finished this game, and the name and color of who finished the last.
+#[derive(Serialize, Clone, Default)]
+struct Hsbc {
+    built: u32,
+    by: Option<(String, i32)>,
 }
 
 /// The creeps alive's life, summed, and each one's (life, most) when few are left

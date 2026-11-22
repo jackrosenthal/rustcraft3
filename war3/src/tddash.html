@@ -93,6 +93,9 @@ dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums
 /* Next: a dashed outline that pulses, beside Now's solid gold one; no label to cover a cell's numbers. */
 .cell.next{outline:.18rem dashed var(--fg);outline-offset:-.05rem;animation:nextglow 1.6s ease-in-out infinite}
 @keyframes nextglow{50%{filter:brightness(1.35)}}
+/* An HSBC finished: a gold banner over the page's top for a few seconds. */
+.kaching{position:fixed;left:50%;top:1rem;transform:translate(-50%,-150%);z-index:10;display:flex;align-items:center;gap:.8rem;padding:.7rem 1.4rem;background:#000;border:.18rem solid var(--gold);box-shadow:0 0 2rem rgba(252,210,13,.6),inset 0 0 1rem rgba(252,210,13,.3);font:900 2rem/1 var(--display);color:var(--gold);letter-spacing:.04em;text-shadow:0 .12rem 0 #000;transition:transform .35s ease-out;pointer-events:none;max-width:calc(100vw - 32px)}
+.kaching.on{transform:translate(-50%,0)} .kaching small{font:600 1.2rem var(--body);color:var(--fg);letter-spacing:0}
 .empty{color:var(--muted)} .gone{color:var(--muted);font-size:.95rem;text-transform:uppercase;letter-spacing:.08em;margin-left:.3rem}
 /* Portrait and small screens: stack and scroll instead of fitting one screen. */
 @media (max-aspect-ratio:5/4),(max-width:820px){
@@ -105,6 +108,7 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
 </style>
 </head>
 <body>
+<div class="kaching" id="kaching" role="status" aria-live="polite"></div>
 <div class="wrap">
 <header>
   <h1>Mafarazzo TD</h1>
@@ -113,8 +117,8 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
     <span class="hl">Health</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">–</b>
   </div>
   <span class="status down" id="status">Offline</span>
-  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, and when a life is lost">Sound: off</button>
-  <button id="test" title="Play the boss, air, countdown, and life-lost sounds">Test</button>
+  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, when a life is lost, and when an HSBC is built">Sound: off</button>
+  <button id="test" title="Play the boss, air, countdown, life-lost, and HSBC sounds">Test</button>
 </header>
 <main>
 <div class="side">
@@ -161,7 +165,7 @@ const danger = l => l && (l.boss ? "boss" : l.air ? "air" : null);
 
 // ---- Sound: the game's own files, served by the game (/sound/<name>.wav), decoded
 // once; browsers allow sound only after a click.
-const SOUNDS = ["heads-up", "boss", "air", "tick", "death"];
+const SOUNDS = ["heads-up", "boss", "air", "tick", "death", "kaching"];
 let ctx = null, soundOn = false;
 const buffers = {};
 try { soundOn = localStorage.getItem("tddash.sound") === "1"; } catch (e) {}
@@ -206,7 +210,7 @@ $("sound").onclick = () => {
 };
 $("test").onclick = () => {
   audio();
-  [["boss", 300], ["air", 2600], ["tick", 4300], ["death", 5000]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
+  [["boss", 300], ["air", 2600], ["tick", 4300], ["death", 5000], ["kaching", 6200]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
 };
 showSound();
 
@@ -255,6 +259,20 @@ function renderHealth(s) {
   }
   lastLives = s.lives;
 }
+// An HSBC finished since the last state: its banner and ka-ching.  (None for those
+// finished before the page opened.)
+let lastHsbc = null, kachingHide = 0;
+function renderHsbc(s) {
+  const n = s.hsbc ? s.hsbc.built : 0;
+  if (lastHsbc !== null && n > lastHsbc) {
+    const by = s.hsbc.by, k = $("kaching");
+    k.innerHTML = `<span>Ka-ching! HSBC built</span>${by ? `<small><span class="sw" style="background:${COLORS[by[1]] || "#888"}"></span>${esc(by[0])}</small>` : ""}`;
+    k.classList.add("on");
+    clearTimeout(kachingHide); kachingHide = setTimeout(() => k.classList.remove("on"), 5000);
+    play("kaching");
+  }
+  lastHsbc = n;
+}
 function render(s) {
   $("map").textContent = s.map;
   const lv = s.levels, cur = lv[s.level - 1], next = lv[s.level];
@@ -297,6 +315,7 @@ function render(s) {
   $("players").innerHTML = s.players.length ? s.players.slice().sort((a, b) => b.kills - a.kills).map(p => `<tr><td><span class="sw" style="background:${COLORS[p.color] || "#888"}"></span>${esc(p.name)}${p.left ? ' <span class="gone">left</span>' : ""}</td><td class="n">${p.kills.toLocaleString()}</td></tr>`).join("") : `<tr><td class="empty" colspan="2">No players</td></tr>`;
   renderGrid(s);
   alerts(s, next);
+  renderHsbc(s);
 }
 
 // ---- Live state over a WebSocket, pushed by the game four times a second.  A game time

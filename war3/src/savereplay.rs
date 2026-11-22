@@ -6,12 +6,14 @@ use std::path::PathBuf;
 
 use w3_ui::{Draw, FrameDb, FrameTree, Justify, Rect};
 
+use crate::editline::{EditKey, EditLine};
+
 const ROW: f32 = 0.0195;
 
 #[derive(Default)]
 pub struct SaveReplayPanel {
     pub open: bool,
-    pub text: String,
+    pub text: EditLine,
     /// The replays in the Replay folder, by name.
     names: Vec<String>,
     selected: Option<usize>,
@@ -65,7 +67,8 @@ impl SaveReplayPanel {
 
     pub fn sync(&self, tree: &mut FrameTree) {
         tree.set_visible("SaveReplayPanel", self.open);
-        tree.set_text("SaveReplayFileEditBoxText", &format!("{}|", self.text));
+        tree.set_text("SaveReplayFileEditBoxText", &self.text);
+        tree.set_caret("SaveReplayFileEditBoxText", Some(self.text.caret()));
         tree.set_enabled("SaveReplaySaveButton", !self.text.trim().is_empty());
         tree.set_enabled("SaveReplayDeleteButton", self.selected.is_some());
         tree.layout();
@@ -80,14 +83,29 @@ impl SaveReplayPanel {
                 self.sync(tree);
                 return e;
             }
-            '\u{8}' => {
-                self.text.pop();
-            }
-            c if !c.is_control() && !"\\/:*?\"<>|".contains(c) && self.text.chars().count() < 64 => self.text.push(c),
+            '\u{8}' => self.text.backspace(),
+            c if !c.is_control() && !"\\/:*?\"<>|".contains(c) && self.text.chars().count() < 64 => self.text.insert(c),
             _ => {}
         }
         self.sync(tree);
         None
+    }
+
+    /// Left, Right, Home, End, or Delete in the name.
+    pub fn edit_key(&mut self, key: EditKey, tree: &mut FrameTree) {
+        self.text.key(key);
+        self.sync(tree);
+    }
+
+    /// A press in the name's box puts its cursor there.
+    pub fn edit_click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) {
+        let inside = tree.get("SaveReplayFileEditBox").and_then(|i| tree.frames[i].rect).is_some_and(|r| r.contains(x, y));
+        if self.open && inside {
+            if let Some(k) = tree.caret_at(db, "SaveReplayFileEditBoxText", x) {
+                self.text.set_caret(k);
+                self.sync(tree);
+            }
+        }
     }
 
     /// Saving over a replay of the same name asks first (FUN_6f2f8640).
@@ -164,7 +182,7 @@ impl SaveReplayPanel {
         let k = ((r.y1 - y) / ROW) as usize;
         if k < self.names.len() {
             self.selected = Some(k);
-            self.text = self.names[k].clone();
+            self.text.set(self.names[k].clone());
             self.sync(tree);
         }
     }

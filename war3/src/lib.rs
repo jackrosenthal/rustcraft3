@@ -11,6 +11,7 @@ pub mod chatdialog;
 pub mod cli;
 pub mod data;
 pub mod direct;
+pub mod editline;
 pub mod glue;
 pub mod skirmish;
 pub mod hud;

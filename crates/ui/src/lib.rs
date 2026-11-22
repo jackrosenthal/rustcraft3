@@ -111,6 +111,31 @@ impl FrameDb {
         line_width(f, size, line) * scale
     }
 
+    /// The byte offset in `line` whose gap between characters is nearest `dx` from the
+    /// text's left: where a click puts an edit box's cursor.
+    pub fn caret_index(&self, font: &str, size: f32, line: &str, dx: f32) -> usize {
+        let mut best = (0, dx.abs());
+        for (k, c) in line.char_indices() {
+            let end = k + c.len_utf8();
+            let d = (self.text_width(font, size, &line[..end]) - dx).abs();
+            if d < best.1 {
+                best = (end, d);
+            }
+        }
+        best.0
+    }
+
+    /// An edit box's cursor: a '|' of its own just past the text before byte `caret`,
+    /// short of it by 0.0026 of text shrunk by the screen's stretch (from the original's
+    /// lobby at 1272x686; provisional at other sizes), so the text does not move as the
+    /// cursor does.
+    pub fn caret_draw(&self, font: &str, size: f32, rect: Rect, text: &str, caret: usize, color: [f32; 4], shadow: Option<([f32; 4], f32, f32)>) -> Draw {
+        let back = 0.0026 * if self.text_scale.get() > 0.0 { self.text_scale.get() } else { 1.0 };
+        let before = text.get(..caret).unwrap_or(text);
+        let x0 = (rect.x0 + self.text_width(font, size, before) - back).max(rect.x0);
+        Draw::Text { font: font.to_string(), size, rect: Rect { x0, ..rect }, text: "|".to_string(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow }
+    }
+
     /// Breaks text at its line breaks, then words to `max_w` (as the renderer does).
     pub fn wrap(&self, font: &str, size: f32, text: &str, max_w: f32) -> Vec<String> {
         let mut lines = Vec::new();
@@ -303,6 +328,9 @@ pub struct Frame {
     /// the rows past the first page), in place of its definition's; a bar with one takes
     /// the pointer.
     pub range: Option<(f32, f32, f32)>,
+    /// An edit box's cursor, as a byte offset into its text, drawn as a '|' of its own
+    /// at that point (CEditBox's +0x258).
+    pub caret: Option<usize>,
 }
 
 #[derive(Default)]
@@ -380,6 +408,7 @@ impl FrameTree {
             press_only: false,
             fitted: false,
             range: None,
+            caret: None,
         });
         t
     }
@@ -466,6 +495,7 @@ impl FrameTree {
             press_only: false,
             fitted: false,
             range: None,
+            caret: None,
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -1113,6 +1143,32 @@ impl FrameTree {
         }
     }
 
+    /// Shows (at a byte offset into its text) or hides an edit box's cursor.
+    pub fn set_caret(&mut self, name: &str, caret: Option<usize>) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].caret = caret;
+        }
+    }
+
+    /// Where in its text a click at `x` puts an edit box's cursor, if the frame shows
+    /// text: an edit box's text frame (its font, from its left past any
+    /// FontJustificationOffset) or an edit box without one (MasterFont 0.015, past
+    /// EditBorderSize), as they draw.
+    pub fn caret_at(&self, db: &FrameDb, name: &str, x: f32) -> Option<usize> {
+        let i = self.get(name)?;
+        let f = &self.frames[i];
+        let (r, text, d) = (f.rect?, f.text.as_deref().unwrap_or(""), &f.def);
+        let (font, size, x0) = if matches!(d.kind.as_str(), "EDITBOX" | "GLUEEDITBOX" | "SLASHCHATBOX") {
+            let border = d.prop("EditBorderSize").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+            (db.decorate("MasterFont"), 0.015, r.x0 + border)
+        } else {
+            let (font, size) = text_font(db, d);
+            let dx = d.prop("FontJustificationOffset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+            (font, size, r.x0 + dx)
+        };
+        Some(db.caret_index(&font, size, text, x - x0))
+    }
+
     /// Replaces a frame's anchors with one point (FUN_6f111600 after clearing).
     pub fn set_point(&mut self, name: &str, point: FramePoint, relative: &str, relative_point: FramePoint, x: f32, y: f32) {
         let rel = self.get(relative);
@@ -1513,14 +1569,7 @@ impl FrameTree {
             }
             (_, "TEXT") | ("String", _) => {
                 let Some(text) = &f.text else { return };
-                let font = d.prop("FrameFont").or_else(|| d.prop("Font"));
-                let (font, size) = match font {
-                    Some(p) => (
-                        db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")),
-                        p.args.get(1).map_or(0.012, Arg::num),
-                    ),
-                    None => (db.decorate("MasterFont"), 0.012),
-                };
+                let (font, size) = text_font(db, d);
                 let justify = |k: &str, def: Justify| match d.str(k) {
                     Some("JUSTIFYLEFT") | Some("JUSTIFYTOP") => Justify::Start,
                     Some("JUSTIFYRIGHT") | Some("JUSTIFYBOTTOM") => Justify::End,
@@ -1579,6 +1628,9 @@ impl FrameTree {
                     let c = color_prop(d.prop("FontShadowColor"), [0.0, 0.0, 0.0, 1.0]);
                     (c, p.args.first().map_or(0.0, Arg::num), p.args.get(1).map_or(0.0, Arg::num))
                 });
+                if let Some(k) = f.caret {
+                    out.push(db.caret_draw(&font, size, r, text, k, color, shadow));
+                }
                 out.push(Draw::Text {
                     font,
                     size,
@@ -1644,10 +1696,14 @@ impl FrameTree {
                 // (CEditBox's +0x254): MasterFont, white, from its left past EditBorderSize,
                 // 0.015 high as measured from the original's Game Port box.
                 if matches!(d.kind.as_str(), "EDITBOX" | "GLUEEDITBOX" | "SLASHCHATBOX") && d.str("EditTextFrame").is_none() {
-                    if let Some(text) = f.text.as_deref().filter(|t| !t.is_empty()) {
-                        let border = d.prop("EditBorderSize").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
-                        let rect = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: r.y0, y1: r.y1 };
-                        out.push(Draw::Text { font: db.decorate("MasterFont"), size: 0.015, rect, text: text.to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+                    let border = d.prop("EditBorderSize").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+                    let rect = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: r.y0, y1: r.y1 };
+                    let (font, text) = (db.decorate("MasterFont"), f.text.as_deref().unwrap_or(""));
+                    if let Some(k) = f.caret {
+                        out.push(db.caret_draw(&font, 0.015, rect, text, k, [1.0; 4], None));
+                    }
+                    if !text.is_empty() {
+                        out.push(Draw::Text { font, size: 0.015, rect, text: text.to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
                     }
                 }
             }
@@ -1852,6 +1908,14 @@ pub fn line_width_px(font: &fontdue::Font, px: f32, line: &str) -> f32 {
 
 /// A line's width in interface units, in text `size` high, on the screen text is
 /// measured for (unstretched: see FrameDb::text_width).
+/// A text frame's font and height (its FrameFont or Font, else MasterFont 0.012).
+fn text_font(db: &FrameDb, d: &Def) -> (String, f32) {
+    match d.prop("FrameFont").or_else(|| d.prop("Font")) {
+        Some(p) => (db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.012, Arg::num)),
+        None => (db.decorate("MasterFont"), 0.012),
+    }
+}
+
 pub fn line_width(font: &fontdue::Font, size: f32, line: &str) -> f32 {
     line_width_px(font, text_px(size), line) / text_px_per_unit()
 }

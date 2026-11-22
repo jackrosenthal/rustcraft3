@@ -3768,6 +3768,30 @@ impl Scene {
         }
     }
 
+    /// Left, Right, Home, End, or Delete for the save panel's name or the chat bar's
+    /// line, whichever has the keyboard.
+    pub fn edit_key(&mut self, key: crate::editline::EditKey) {
+        let Some(h) = self.hud.as_mut() else { return };
+        if let Some(p) = h.save_panel.as_mut() {
+            if !p.load && p.confirm.is_none() {
+                p.text.key(key);
+            }
+        } else if let Some(line) = h.chat.as_mut() {
+            line.key(key);
+        }
+    }
+
+    /// A press in the save panel's name box or on the open chat bar, which puts its
+    /// cursor there.  Returns whether it was taken.
+    pub fn edit_click(&mut self, sx: f32, sy: f32, size: (u32, u32), db: &w3_ui::FrameDb) -> bool {
+        let (x, y) = self.to_ui(sx, sy, size);
+        let Some(h) = self.hud.as_mut() else { return false };
+        if let (Some(p), Some(m)) = (h.save_panel.as_mut(), h.menu.as_ref()) {
+            return p.edit_click(m, db, x, y);
+        }
+        h.chat_click(db, x, y)
+    }
+
     pub fn key(&mut self, c: char) {
         if let Some(h) = self.hud.as_mut().filter(|h| h.chat.is_none() && h.menu.is_none()) {
             if h.replay.as_mut().is_some_and(|r| r.key(c)) {
@@ -3781,10 +3805,8 @@ impl Scene {
                 match c {
                     '\u{1b}' => return self.menu_button(if load { "LoadGameCancelButton" } else { "SaveGameCancelButton" }),
                     '\r' | '\n' => return self.menu_button(if load { "LoadGameLoadButton" } else { "SaveGameSaveButton" }),
-                    '\u{8}' if !p.load => {
-                        p.text.pop();
-                    }
-                    c if !p.load && !c.is_control() && !"\\/:*?\"<>|".contains(c) => p.text.push(c),
+                    '\u{8}' if !p.load => p.text.backspace(),
+                    c if !p.load && !c.is_control() && !"\\/:*?\"<>|".contains(c) => p.text.insert(c),
                     _ => {}
                 }
             } else if c == '\u{1b}' {
@@ -3799,15 +3821,13 @@ impl Scene {
                     self.hud.as_mut().unwrap().chat = None;
                 }
                 '\r' | '\n' => {
-                    let line = self.hud.as_mut().unwrap().chat.take().unwrap_or_default();
+                    let line = self.hud.as_mut().unwrap().chat.take().unwrap_or_default().take();
                     if !line.trim().is_empty() {
                         self.send_chat(&line);
                     }
                 }
-                '\u{8}' => {
-                    text.pop();
-                }
-                c if !c.is_control() && text.chars().count() < 127 => text.push(c),
+                '\u{8}' => text.backspace(),
+                c if !c.is_control() && text.chars().count() < 127 => text.insert(c),
                 _ => {}
             }
             return;
@@ -3835,7 +3855,7 @@ impl Scene {
             };
             let prompt = self.game.as_ref().map(|g| g.world.localized(key)).unwrap_or_default();
             if let Some(h) = self.hud.as_mut() {
-                h.chat = Some(String::new());
+                h.chat = Some(Default::default());
                 h.chat_to = if network { to } else { 0 };
                 h.chat_prompt = prompt;
             }

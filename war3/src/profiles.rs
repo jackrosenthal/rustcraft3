@@ -5,6 +5,7 @@
 use w3_ui::{Draw, FrameDb, FrameTree, Justify, Rect};
 
 use crate::data::{PROFILE_NAME_MAX, Profiles};
+use crate::editline::{EditKey, EditLine};
 
 /// The menu's choices that need a profile, with the panel's own.
 const NEEDS_PROFILE: [&str; 8] = ["SelectProfileButton", "DeleteProfileButton", "ProfileButton", "CampaignButton", "LoadSavedButton", "ViewReplayButton", "SkirmishButton", "CustomCampaignButton"];
@@ -18,7 +19,7 @@ const SIDE: f32 = 0.0125;
 pub struct ProfilePanel {
     pub open: bool,
     /// What has been typed in NewProfileEditBox.
-    pub text: String,
+    pub text: EditLine,
     pub profiles: Profiles,
     /// The list's rows' rectangle.
     list: Option<Rect>,
@@ -40,7 +41,7 @@ pub enum Event {
 
 impl ProfilePanel {
     pub fn new() -> ProfilePanel {
-        ProfilePanel { open: false, text: String::new(), profiles: Profiles::load(), list: None, scroll: 0, wheel_lines: 0.0 }
+        ProfilePanel { open: false, text: EditLine::default(), profiles: Profiles::load(), list: None, scroll: 0, wheel_lines: 0.0 }
     }
 
     /// The chosen profile's name.
@@ -75,7 +76,8 @@ impl ProfilePanel {
     /// The panel's visibility, the typed name, and which buttons may be pressed.
     pub fn sync(&self, tree: &mut FrameTree) {
         tree.set_visible("ProfilePanel", self.open);
-        tree.set_text("NewProfileEditBoxText", &if self.open { format!("{}|", self.text) } else { self.text.clone() });
+        tree.set_text("NewProfileEditBoxText", &self.text);
+        tree.set_caret("NewProfileEditBoxText", self.open.then(|| self.text.caret()));
         let any = !self.profiles.entries.is_empty();
         for n in NEEDS_PROFILE {
             tree.set_enabled(n, any);
@@ -93,20 +95,40 @@ impl ProfilePanel {
             return None;
         }
         match c {
-            '\u{8}' => {
-                self.text.pop();
-            }
+            '\u{8}' => self.text.backspace(),
             '\r' | '\n' => {
                 // With nothing typed the original says a name is needed (FUN_6f2e4c40).
                 let e = if self.text.is_empty() { Some(Event::NeedsName) } else { self.create() };
                 self.sync(tree);
                 return Some(e);
             }
-            c if !c.is_control() && self.text.chars().count() < PROFILE_NAME_MAX => self.text.push(c),
+            c if !c.is_control() && self.text.chars().count() < PROFILE_NAME_MAX => self.text.insert(c),
             _ => return Some(None),
         }
         self.sync(tree);
         Some(None)
+    }
+
+    /// Left, Right, Home, End, or Delete while the panel is open.  Returns whether the
+    /// key was taken.
+    pub fn edit_key(&mut self, key: EditKey, tree: &mut FrameTree) -> bool {
+        if !self.open {
+            return false;
+        }
+        self.text.key(key);
+        self.sync(tree);
+        true
+    }
+
+    /// A press in the name's box puts its cursor there.
+    pub fn edit_click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) {
+        let inside = tree.get("NewProfileEditBox").and_then(|i| tree.frames[i].rect).is_some_and(|r| r.contains(x, y));
+        if self.open && inside {
+            if let Some(k) = tree.caret_at(db, "NewProfileEditBoxText", x) {
+                self.text.set_caret(k);
+                self.sync(tree);
+            }
+        }
     }
 
     /// Create (FUN_6f2e4c40): a new profile by the typed name, chosen at once, and the

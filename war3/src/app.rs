@@ -397,10 +397,25 @@ impl ApplicationHandler for App {
                             scene.open_menu((r.gpu.config.width, r.gpu.config.height));
                         }
                     }
+                    // An edit box's cursor keys.
+                    use crate::editline::EditKey as E;
+                    let edit = match event.physical_key {
+                        PhysicalKey::Code(KeyCode::ArrowLeft) => Some(E::Left),
+                        PhysicalKey::Code(KeyCode::ArrowRight) => Some(E::Right),
+                        PhysicalKey::Code(KeyCode::Home) => Some(E::Home),
+                        PhysicalKey::Code(KeyCode::End) => Some(E::End),
+                        PhysicalKey::Code(KeyCode::Delete) => Some(E::Delete),
+                        _ => None,
+                    };
+                    if let (Some(k), Some(scene)) = (edit, r.scene.as_mut()) {
+                        scene.edit_key(k);
+                    }
                     if let Some(glue) = r.glue.as_mut().filter(|g| g.interactive()) {
                         // A list's keys (game.dll's FUN_6f090a80 names them).
                         use crate::skirmish::ListKey as L;
+                        let edited = edit.is_some_and(|k| glue.edit_key(k, &r.assets));
                         let list = match event.physical_key {
+                            _ if edited => None,
                             PhysicalKey::Code(KeyCode::ArrowUp) => Some(L::Up),
                             PhysicalKey::Code(KeyCode::ArrowDown) => Some(L::Down),
                             PhysicalKey::Code(KeyCode::PageUp) => Some(L::PageUp),
@@ -510,7 +525,8 @@ impl ApplicationHandler for App {
                 if let Some(scene) = r.scene.as_mut() {
                     match (button, state) {
                         (MouseButton::Left, ElementState::Pressed) => {
-                            if !scene.left_click(p.0, p.1, size) {
+                            // (A press on an edit box puts its cursor there.)
+                            if !scene.edit_click(p.0, p.1, size, &r.assets.frames) && !scene.left_click(p.0, p.1, size) {
                                 scene.drag = Some((p, p));
                             }
                         }
@@ -562,7 +578,10 @@ impl ApplicationHandler for App {
                     let edge = 2.0;
                     let (mut k, mut m) = (glam::Vec2::ZERO, glam::Vec2::ZERO);
                     let key = |c: KeyCode| r.keys.contains(&c);
-                    k.x += key(KeyCode::ArrowRight) as i32 as f32 - key(KeyCode::ArrowLeft) as i32 as f32;
+                    // (Left and Right move the cursor of a line being typed instead.)
+                    if scene.hud.as_ref().is_none_or(|h| h.chat.is_none() && h.save_panel.is_none()) {
+                        k.x += key(KeyCode::ArrowRight) as i32 as f32 - key(KeyCode::ArrowLeft) as i32 as f32;
+                    }
                     k.y += key(KeyCode::ArrowUp) as i32 as f32 - key(KeyCode::ArrowDown) as i32 as f32;
                     if wasd_pans(scene) {
                         k.x += key(KeyCode::KeyD) as i32 as f32 - key(KeyCode::KeyA) as i32 as f32;

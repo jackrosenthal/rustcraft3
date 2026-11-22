@@ -44,7 +44,7 @@ pub struct SavePanel {
     pub entries: Vec<(String, PathBuf)>,
     pub hover: Option<usize>,
     pub selected: Option<usize>,
-    pub text: String,
+    pub text: crate::editline::EditLine,
     pub confirm: Option<Confirm>,
     list: Option<Rect>,
 }
@@ -69,7 +69,7 @@ pub fn saved_games(dir: &Path) -> Vec<(String, PathBuf)> {
 impl SavePanel {
     pub fn new(load: bool, dir: PathBuf) -> SavePanel {
         let entries = saved_games(&dir);
-        SavePanel { load, dir, entries, hover: None, selected: None, text: String::new(), confirm: None, list: None }
+        SavePanel { load, dir, entries, hover: None, selected: None, text: Default::default(), confirm: None, list: None }
     }
 
     pub fn refresh(&mut self) {
@@ -106,7 +106,19 @@ impl SavePanel {
         let Some(i) = self.row_at(x, y) else { return false };
         self.selected = Some(i);
         if !self.load {
-            self.text = self.entries[i].0.clone();
+            self.text.set(self.entries[i].0.clone());
+        }
+        true
+    }
+
+    /// A press in the name's box (saving) puts its cursor there; whether it was in it.
+    pub fn edit_click(&mut self, tree: &FrameTree, db: &FrameDb, x: f32, y: f32) -> bool {
+        let inside = tree.get("SaveGameFileEditBox").filter(|&i| tree.is_visible(i)).and_then(|i| tree.frames[i].rect).is_some_and(|r| r.contains(x, y));
+        if self.load || self.confirm.is_some() || !inside {
+            return false;
+        }
+        if let Some(k) = tree.caret_at(db, "SaveGameFileEditBoxText", x) {
+            self.text.set_caret(k);
         }
         true
     }
@@ -128,7 +140,8 @@ impl SavePanel {
             Some(Confirm::Delete(p)) => tree.set_text("DeleteMessageText", &db.string("DELETE_MESSAGE").replace("%s", &name(p))),
             None => {}
         }
-        tree.set_text("SaveGameFileEditBoxText", &format!("{}|", self.text));
+        tree.set_text("SaveGameFileEditBoxText", &self.text);
+        tree.set_caret("SaveGameFileEditBoxText", Some(self.text.caret()));
         tree.set_enabled("SaveGameSaveButton", !self.text.trim().is_empty());
         tree.set_enabled("SaveGameDeleteButton", self.selected.is_some());
         tree.set_enabled("LoadGameLoadButton", self.selected.is_some());

@@ -15,6 +15,7 @@ use w3_net::packet::{TFT, ROC, VERSION, leave};
 use w3_net::{Chat, GameInfo, GameStat, SlotTable};
 use w3_ui::{Draw, FrameDb, FramePoint as P, FrameTree, Justify, Rect};
 
+use crate::editline::{EditKey, EditLine};
 use crate::net::{self, Holder, NetSlot, Setup};
 
 const ROW: f32 = 0.0195;
@@ -68,8 +69,12 @@ pub enum Event {
     StartSaved(PathBuf, Vec<u8>, Vec<w3_game::LobbySlot>, net::Role, u8, u8),
 }
 
+/// The heights of the game list's name box and the lobby's chat line.
+const NAME_SIZE: f32 = 0.012;
+const CHAT_SIZE: f32 = 0.015;
+
 pub struct Lan {
-    pub name: String,
+    pub name: EditLine,
     port: u16,
     game_dir: PathBuf,
     browser: Option<Browser>,
@@ -97,7 +102,7 @@ pub struct Lan {
     wheel_lines: f32,
     /// Since the lobby's chat line took the focus: its cursor blinks from then.
     cursor_clock: std::time::Instant,
-    pub line: String,
+    pub line: EditLine,
     /// The lobby's frames need rebuilding (the setup changed).
     pub rebuild: bool,
     /// The game list's selection changed, and its map's details are due.
@@ -119,7 +124,7 @@ pub struct Lan {
 impl Lan {
     pub fn new(game_dir: &Path, name: String) -> Lan {
         Lan {
-            name,
+            name: EditLine::new(name),
             port: net::DEFAULT_PORT,
             game_dir: game_dir.to_path_buf(),
             browser: None,
@@ -138,7 +143,7 @@ impl Lan {
             chat_first: None,
             wheel_lines: 0.0,
             cursor_clock: std::time::Instant::now(),
-            line: String::new(),
+            line: EditLine::default(),
             rebuild: false,
             summary_due: None,
             local_map: None,
@@ -277,22 +282,52 @@ impl Lan {
     pub fn key(&mut self, c: char, tree: &mut FrameTree, db: &FrameDb, lobby: bool) -> bool {
         let (text, max) = if lobby { (&mut self.line, 255) } else { (&mut self.name, NAME_LEN) };
         match c {
-            '\u{8}' => {
-                text.pop();
-            }
+            '\u{8}' => text.backspace(),
             '\r' | '\n' if lobby => {
-                let line = std::mem::take(&mut self.line);
+                let line = self.line.take();
                 if !line.trim().is_empty() {
                     self.say(&line);
                 }
             }
-            c if !c.is_control() && text.chars().count() < max => text.push(c),
+            c if !c.is_control() && text.chars().count() < max => text.insert(c),
             _ => return false,
         }
         if !lobby {
             self.sync_join(tree, db);
         }
         true
+    }
+
+    /// Left, Right, Home, End, or Delete in the name on the game list, in the chat line
+    /// in the lobby.
+    pub fn edit_key(&mut self, key: EditKey, tree: &mut FrameTree, db: &FrameDb, lobby: bool) {
+        if lobby {
+            self.line.key(key);
+        } else {
+            self.name.key(key);
+            self.sync_join(tree, db);
+        }
+    }
+
+    /// The edit box `frame`'s text area (inside its EditBorderSize), while it shows.
+    fn edit_rect(tree: &FrameTree, frame: &str) -> Option<Rect> {
+        let i = tree.get(frame).filter(|&i| tree.is_visible(i))?;
+        let r = tree.frames[i].rect?;
+        let inset = tree.frames[i].def.num("EditBorderSize").unwrap_or(0.009);
+        Some(Rect { x0: r.x0 + inset, x1: r.x1 - inset, ..r })
+    }
+
+    /// A press in the name's box (the chat line's, in the lobby) puts its cursor there.
+    pub fn edit_click(&mut self, tree: &FrameTree, db: &FrameDb, x: f32, y: f32, lobby: bool) {
+        let (frame, line, size) = if lobby { ("ChatEditBox", &mut self.line, CHAT_SIZE) } else { ("PlayerNameEditBox", &mut self.name, NAME_SIZE) };
+        let Some(i) = tree.get(frame).filter(|&i| tree.is_visible(i)) else { return };
+        if !tree.frames[i].rect.is_some_and(|r| r.contains(x, y)) {
+            return;
+        }
+        if let Some(r) = Self::edit_rect(tree, frame) {
+            line.set_caret(db.caret_index(&db.decorate("MasterFont"), size, line, x - r.x0));
+            self.cursor_clock = std::time::Instant::now();
+        }
     }
 
     /// A click in the game list chooses a game; a second on it within 0.4 s (as the
@@ -358,7 +393,7 @@ impl Lan {
         let mut setup = Lan::map_setup(summary, flags);
         let first = setup.slots.iter_mut().find(|s| s.holder == Holder::Open && s.team != OBSERVERS).ok_or("NETERROR_CREATEGAMEFAILED")?;
         first.holder = Holder::Human(HOST_PID);
-        first.name = self.name.clone();
+        first.name = self.name.to_string();
         setup.game = game.to_string();
         setup.map = self.map_name(map);
         setup.speed = speed;
@@ -381,14 +416,14 @@ impl Lan {
         let (common, blizzard) = (chain.read("Scripts\\common.j").unwrap_or_default(), chain.read("Scripts\\blizzard.j").unwrap_or_default());
         let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
         let stat = match save {
-            Some((path, id)) => GameStat { settings: net::settings(setup.flags, setup.speed), map_width: 0, map_height: 0, map_xoro: id, map_path: path, host: self.name.clone(), map_sha1: [0; 20] },
+            Some((path, id)) => GameStat { settings: net::settings(setup.flags, setup.speed), map_width: 0, map_height: 0, map_xoro: id, map_path: path, host: self.name.to_string(), map_sha1: [0; 20] },
             None => GameStat {
                 settings: net::settings(setup.flags, setup.speed),
                 map_width: summary.info.playable_width as u16,
                 map_height: summary.info.playable_height as u16,
                 map_xoro: checksums.xoro,
                 map_path: setup.map.clone(),
-                host: self.name.clone(),
+                host: self.name.to_string(),
                 map_sha1: checksums.sha1,
             },
         };
@@ -410,7 +445,7 @@ impl Lan {
         };
         // The game list's searches stop; the host answers others'.
         self.browser = None;
-        let h = Host::new(self.port, info, HostMap { path: setup.map.clone(), bytes, checksums }, table, self.name.clone()).map_err(|e| failed(&e))?;
+        let h = Host::new(self.port, info, HostMap { path: setup.map.clone(), bytes, checksums }, table, self.name.to_string()).map_err(|e| failed(&e))?;
         self.setup = setup;
         self.host = Some(Box::new(h));
         self.me = HOST_PID;
@@ -563,7 +598,7 @@ impl Lan {
     fn people(&self) -> Vec<(u8, String)> {
         match (&self.host, &self.client) {
             (Some(h), _) => h.players(),
-            (_, Some(c)) => c.players.iter().cloned().chain(std::iter::once((self.me, self.name.clone()))).collect(),
+            (_, Some(c)) => c.players.iter().cloned().chain(std::iter::once((self.me, self.name.to_string()))).collect(),
             _ => Vec::new(),
         }
     }
@@ -1204,23 +1239,15 @@ impl Lan {
         }
         crate::skirmish::color_draws(tree, self.setup.slots.iter().map(|s| s.color), out);
         // Edit boxes without a text frame of their own: their text in MasterFont, inside
-        // EditBorderSize, with the cursor.  The cursor is a "|" of its own (CEditBox's
-        // +0x258, FUN_6f101ff0) just past the text, short of the text's end by 0.0019 at
-        // 1272x686 as measured from the original's lobby, taken to be 0.0026 of text
-        // shrunk by the screen's stretch (provisional at other sizes), shown and hidden
-        // in turn each 0.5 s from the box's focus (FUN_6f103940), the typing leaving its
-        // rhythm alone.
+        // EditBorderSize, with the cursor (CEditBox's +0x258, FUN_6f101ff0; see
+        // FrameDb::caret_draw) shown and hidden in turn each 0.5 s from the box's focus
+        // (FUN_6f103940), the typing leaving its rhythm alone.
         let cursor = self.cursor_clock.elapsed().as_secs_f32() % 1.0 < 0.5;
-        let back = 0.0026 * if db.text_scale.get() > 0.0 { db.text_scale.get() } else { 1.0 };
-        for (frame, text, size) in [("PlayerNameEditBox", &self.name, 0.012), ("ChatEditBox", &self.line, 0.015)] {
-            let Some(i) = tree.get(frame).filter(|&i| tree.is_visible(i)) else { continue };
-            let Some(r) = tree.frames[i].rect else { continue };
-            let inset = tree.frames[i].def.num("EditBorderSize").unwrap_or(0.009);
-            let rect = Rect { x0: r.x0 + inset, x1: r.x1 - inset, ..r };
-            out.push(Draw::Text { font: font.clone(), size, rect, text: text.clone(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+        for (frame, line, size) in [("PlayerNameEditBox", &self.name, NAME_SIZE), ("ChatEditBox", &self.line, CHAT_SIZE)] {
+            let Some(rect) = Self::edit_rect(tree, frame) else { continue };
+            out.push(Draw::Text { font: font.clone(), size, rect, text: line.to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
             if cursor {
-                let x0 = (rect.x0 + db.text_width(&font, size, text) - back).max(rect.x0);
-                out.push(Draw::Text { font: font.clone(), size, rect: Rect { x0, ..rect }, text: "|".to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+                out.push(db.caret_draw(&font, size, rect, line, line.caret(), [1.0; 4], None));
             }
         }
     }

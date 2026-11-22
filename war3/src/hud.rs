@@ -101,7 +101,7 @@ pub struct Hud {
     pub tree: FrameTree,
     /// The chat edit bar's text, while it is open (CChatEditBar), and its recipient (0
     /// all, 1 allies, 2 observers) and prompt (COLON_MESSAGE_*).
-    pub chat: Option<String>,
+    pub chat: Option<crate::editline::EditLine>,
     pub chat_to: u8,
     pub chat_prompt: String,
     /// Scene time, for message expiry.
@@ -2018,12 +2018,38 @@ impl Hud {
     /// screen's left to 0.2 in from its right, centered 0.145 above its bottom, a
     /// ToolTipBorder/ToolTipBackground box (corners 0.01, insets 0.0019) with the line in
     /// ChatFont at [FontHeights] ChatEditBar, 0.003 in.
-    fn chat_bar_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
-        use w3_ui::fdf::{Arg, Def, Prop};
-        let Some(text) = &self.chat else { return };
+    fn chat_bar_rect(&self) -> w3_ui::Rect {
         let root = self.tree.frames[0].rect.unwrap_or_default();
         let (x0, x1, cy) = (root.x0 + 0.2, root.x1 - 0.2, root.y0 + 0.145);
-        let r = w3_ui::Rect { x0, x1, y0: cy - 0.015, y1: cy + 0.015 };
+        w3_ui::Rect { x0, x1, y0: cy - 0.015, y1: cy + 0.015 }
+    }
+
+    /// The chat bar's line: its font, height, and the rectangle it starts at, past the
+    /// prompt.
+    fn chat_line_rect(&self, db: &FrameDb) -> (String, f32, w3_ui::Rect) {
+        let r = self.chat_bar_rect();
+        let size = db.font_height("ChatEditBar", 0.013);
+        let font = db.decorate("ChatFont");
+        let x0 = r.x0 + 0.003 + db.text_width(&font, size, &self.chat_prompt) + 0.002;
+        (font, size, w3_ui::Rect { x0, x1: r.x1 - 0.0015, ..r })
+    }
+
+    /// A press on the open chat bar puts the line's cursor there; whether it was on it.
+    pub fn chat_click(&mut self, db: &FrameDb, x: f32, y: f32) -> bool {
+        if self.chat.is_none() || !self.chat_bar_rect().contains(x, y) {
+            return false;
+        }
+        let (font, size, tr) = self.chat_line_rect(db);
+        if let Some(line) = self.chat.as_mut() {
+            line.set_caret(db.caret_index(&font, size, line, x - tr.x0));
+        }
+        true
+    }
+
+    fn chat_bar_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        use w3_ui::fdf::{Arg, Def, Prop};
+        let Some(line) = &self.chat else { return };
+        let r = self.chat_bar_rect();
         let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
         let s = |v: &str| Arg::Str(v.into());
         let def = Def {
@@ -2054,8 +2080,9 @@ impl Hud {
         let pr = w3_ui::Rect { x0: r.x0 + 0.003, x1: r.x0 + 0.003 + prompt_w, y0: r.y0, y1: r.y1 };
         // (Drawn unwrapped: the renderer's whole pixel size may make it a little wider.)
         out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x1: r.x1, ..pr }, text: self.chat_prompt.clone(), color: [0xcc as f32 / 255.0, 0xac as f32 / 255.0, 0x12 as f32 / 255.0, 1.0], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
-        let tr = w3_ui::Rect { x0: pr.x1 + 0.002, x1: r.x1 - 0.0015, y0: r.y0, y1: r.y1 };
-        out.push(Draw::Text { font, size, rect: tr, text: format!("{text}|"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
+        let (_, _, tr) = self.chat_line_rect(db);
+        out.push(db.caret_draw(&font, size, tr, line, line.caret(), [1.0; 4], shadow));
+        out.push(Draw::Text { font, size, rect: tr, text: line.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
     }
 
     fn layer_draws(&self, db: &FrameDb) -> Vec<Draw> {

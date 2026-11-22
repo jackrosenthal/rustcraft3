@@ -865,7 +865,15 @@ impl Glue {
         let (x, y) = self.pointer;
         // (Before the press goes to the boxes, which are controls.)
         if self.screen == Screen::MainMenu && self.direct.open {
-            self.direct.click(&mut self.tree, x, y);
+            self.direct.click(&mut self.tree, &assets.frames, x, y);
+        }
+        if self.dialog.is_none() {
+            match self.screen {
+                Screen::Score => self.save_replay.edit_click(&mut self.tree, &assets.frames, x, y),
+                Screen::SinglePlayer => self.profile.edit_click(&mut self.tree, &assets.frames, x, y),
+                Screen::LanJoin | Screen::LanLobby => self.lan.edit_click(&self.tree, &assets.frames, x, y, self.screen == Screen::LanLobby),
+                _ => {}
+            }
         }
         if let Some(hit) = self.tree.pointer_down(x, y) {
             // A press on another control takes the keyboard from the list.
@@ -1001,7 +1009,7 @@ impl Glue {
                 // The game is joined under the Local Area Network screen's name, or the
                 // profile's without one.
                 if self.lan.name.is_empty() {
-                    self.lan.name = self.skirmish.player_name.chars().take(crate::lan::NAME_LEN).collect();
+                    self.lan.name.set(self.skirmish.player_name.chars().take(crate::lan::NAME_LEN).collect::<String>());
                 }
                 let game_port = crate::net::port(&self.options);
                 match self.lan.connect(&host, port, game_port) {
@@ -1045,8 +1053,8 @@ impl Glue {
 
     fn keep_lan_name(&self) {
         let mut o = crate::options::Options::load();
-        if o.lanname != self.lan.name {
-            o.lanname = self.lan.name.clone();
+        if o.lanname != self.lan.name.as_str() {
+            o.lanname = self.lan.name.to_string();
             o.store();
         }
     }
@@ -1126,6 +1134,22 @@ impl Glue {
         let name = self.tree.frames[clicked].name.clone();
         self.button(&name, assets);
         Some(name)
+    }
+
+    /// Left, Right, Home, End, or Delete for the edit box with the keyboard, if one has
+    /// it.  Returns whether one took it.
+    pub fn edit_key(&mut self, key: crate::editline::EditKey, assets: &Assets) -> bool {
+        if self.cinematic.is_some() || self.dialog.is_some() {
+            return false;
+        }
+        match self.screen {
+            Screen::Score if self.save_replay.open => self.save_replay.edit_key(key, &mut self.tree),
+            Screen::SinglePlayer => return self.profile.edit_key(key, &mut self.tree),
+            Screen::MainMenu if self.direct.open => self.direct.edit_key(key, &mut self.tree),
+            Screen::LanJoin | Screen::LanLobby => self.lan.edit_key(key, &mut self.tree, &assets.frames, self.screen == Screen::LanLobby),
+            _ => return false,
+        }
+        true
     }
 
     /// A key press: control shortcut keys and Escape for Cancel.

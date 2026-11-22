@@ -1418,7 +1418,28 @@ impl Game {
             }
             C::Train { building, id } => res(self.world.train(building, id)),
             C::Research { building, id } => res(self.world.research_at(building, id)),
-            C::Upgrade { building, id } => res(self.world.upgrade_structure_by(building, id, true)),
+            // An upgrade takes every structure of the building's type the player has
+            // selected and commands, each paying its own way (those the player cannot
+            // afford, or that cannot take it, left as they are); the first's refusal is
+            // the one told.
+            C::Upgrade { building, id } => {
+                let r = self.world.upgrade_structure_by(building, id, true);
+                let kind = self.world.unit(building).map(|u| u.extra.upgrading.as_ref().map_or(u.type_id, |up| up.from));
+                let others: Vec<u32> = self
+                    .world
+                    .selection
+                    .get(&player)
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .filter(|&h| h != building && natives::players::controls(&self.world, player, h))
+                    .filter(|&h| self.world.unit(h).is_some_and(|u| Some(u.type_id) == kind))
+                    .collect();
+                for h in others {
+                    let _ = self.world.upgrade_structure_by(h, id, true);
+                }
+                res(r)
+            }
             C::CancelLast { building } => {
                 self.world.cancel_last(building);
                 O::Done
@@ -1655,6 +1676,33 @@ mod turn_tests {
         assert_eq!(frames.last().unwrap().dt, 0.0);
         g.seed_generators();
         assert_eq!(g.turn_keepalive(0.0), 0, "a new game cannot reuse the previous game's checksum");
+    }
+
+    #[test]
+    fn an_upgrade_takes_every_selected_structure_of_its_type_the_player_can_pay_for() {
+        let mut g = game();
+        let object = |id: &str, fields: &[(&str, &str)]| objects::Object { id: objects::id_from_str(id), fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() };
+        for o in [
+            object("ht00", &[("isbldg", "1"), ("upgrade", "ht01"), ("goldcost", "5"), ("hp", "100")]),
+            object("ht01", &[("isbldg", "1"), ("goldcost", "10"), ("bldgtm", "10"), ("hp", "200")]),
+            object("hw00", &[("isbldg", "1"), ("upgrade", "ht01"), ("goldcost", "5"), ("hp", "100")]),
+        ] {
+            g.world.objects.units.objects.insert(o.id, o);
+        }
+        g.world.players[0].controller = types::map_control::USER;
+        g.world.players[0].slot_state = types::slot_state::PLAYING;
+        g.world.players[0].state.insert(types::player_state::RESOURCE_GOLD, 25);
+        let tower = objects::id_from_str("ht00");
+        let towers: Vec<u32> = (0..3).map(|k| natives::units::create_unit(&mut g.world, 0, tower, 128.0 * k as f32, 0.0, 0.0)).collect();
+        let other = natives::units::create_unit(&mut g.world, 0, objects::id_from_str("hw00"), 0.0, 512.0, 0.0);
+        let mut selected = towers.clone();
+        selected.push(other);
+        g.play_frame(&replay::Frame { dt: 0.0, commands: vec![(0, replay::Command::Select { player: 0, units: selected }), (0, replay::Command::Upgrade { building: towers[0], id: objects::id_from_str("ht01") })], ..Default::default() });
+        let upgrading = |h: u32| g.world.unit(h).is_some_and(|u| u.extra.upgrading.is_some());
+        // Two paid for, the third waiting on gold; the other kind of structure left be.
+        assert_eq!(towers.iter().map(|&h| upgrading(h)).collect::<Vec<_>>(), vec![true, true, false]);
+        assert!(!upgrading(other));
+        assert_eq!(g.world.players[0].get_state(types::player_state::RESOURCE_GOLD), 5);
     }
 
     #[test]

@@ -631,10 +631,56 @@ impl Lan {
         }
     }
 
+    /// Communism mode: the game's human players share one pool of gold
+    /// (`w3_game::communism`).  The host's to set, the setup's flag says it, so the game
+    /// and its record carry it; the host tells everyone, and each newcomer, as it
+    /// changes ("/communism on" or "off", heard from the host alone).
+    fn communism(&self) -> bool {
+        self.setup.flags & w3_game::communism::COMMUNISM != 0
+    }
+
+    fn set_communism(&mut self, on: bool) {
+        if on {
+            self.setup.flags |= w3_game::communism::COMMUNISM;
+        } else {
+            self.setup.flags &= !w3_game::communism::COMMUNISM;
+        }
+        let (flags, speed) = (self.setup.flags, self.setup.speed);
+        if let Some(h) = self.host.as_mut() {
+            h.info.stat.settings = net::settings(flags, speed);
+        }
+        let text = if on { "Communism mode is on: everyone's gold is one pool, anyone can spend it." } else { "Communism mode is off: each player's gold is their own." };
+        self.chat.push(format!("|cffffcc00{text}|r"));
+    }
+
+    /// The host's word on the mode, to the people given.
+    fn tell_communism(&mut self, to: &[u8]) {
+        let line = format!("/communism {}", if self.communism() { "on" } else { "off" });
+        if let Some(h) = self.host.as_mut() {
+            h.chat(to, Chat::Lobby(line));
+        }
+    }
+
     fn say(&mut self, text: &str) {
         // /sounds is this computer's alone; a /play of no sound goes nowhere.
         if let Some(lines) = crate::chatsound::local_reply(text, self.labels()) {
             self.chat.extend(lines);
+            return;
+        }
+        // /communism [on|off]: the host's to change, everyone told.
+        if let Some(arg) = crate::chatsound::command(text, "communism") {
+            if !self.is_host() {
+                self.chat.push("|cff999999Only the host can change communism mode.|r".to_string());
+                return;
+            }
+            let on = match arg.to_ascii_lowercase().as_str() {
+                "on" => true,
+                "off" => false,
+                _ => !self.communism(),
+            };
+            self.set_communism(on);
+            let to = self.others();
+            self.tell_communism(&to);
             return;
         }
         self.chat_sound(text);
@@ -675,6 +721,9 @@ impl Lan {
                         self.seat_saved(pid, &name);
                     }
                     self.notice(db, "NETMESSAGE_PLAYERJOINED", &name);
+                    if self.communism() {
+                        self.tell_communism(&[pid]);
+                    }
                     changed = true;
                 }
                 host::Event::Left { pid, .. } => {
@@ -761,6 +810,13 @@ impl Lan {
                 client::Event::PlayerLeft { pid, .. } => {
                     let name = self.setup.slot_of(pid).map(|s| s.name.clone()).unwrap_or_default();
                     self.notice(db, "NETMESSAGE_PLAYERLEFT", &name);
+                }
+                // The host's word on communism mode sets it here, told as a notice.
+                client::Event::Chat { from: HOST_PID, chat: Chat::Lobby(text) } if crate::chatsound::command(&text, "communism").is_some_and(|a| a == "on" || a == "off") => {
+                    let on = crate::chatsound::command(&text, "communism") == Some("on");
+                    if on != self.communism() {
+                        self.set_communism(on);
+                    }
                 }
                 client::Event::Chat { from, chat: Chat::Lobby(text) } => {
                     let name = self.people().into_iter().find(|p| p.0 == from).map(|p| p.1).unwrap_or_default();

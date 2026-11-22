@@ -81,6 +81,7 @@ pub mod groupwalk;
 pub mod selection;
 pub mod techreg;
 pub mod rng;
+pub mod communism;
 pub mod tags;
 pub mod score;
 pub mod sim;
@@ -389,6 +390,9 @@ impl Game {
     /// (0x40000) draws every race, and the visibility always visible (0x4) or map
     /// explored (0x2) lifts the fog or its mask.
     pub fn start_lobby(&mut self, slots: &[LobbySlot], flags: u32) -> anyhow::Result<()> {
+        // Communism mode is the lobby's, not one of the map's flags the script reads.
+        self.world.shared_gold = flags & communism::COMMUNISM != 0;
+        let flags = flags & !communism::COMMUNISM;
         self.world.map_flags = flags as i32;
         self.world.lobby_teams = true;
         self.seed_generators();
@@ -1035,6 +1039,7 @@ impl Game {
         }
         let steps = [3, 4, 5][self.world.game_speed.clamp(0, 2) as usize];
         self.world.tick(&mut self.vm, (ticks * steps * 5) as f32 / 1000.0);
+        self.world.pool_gold();
     }
 
     /// Plays one frame (of a replay or from a network game's host): its commands, then
@@ -1285,7 +1290,15 @@ impl Game {
         self.world.form_group(&mine);
     }
 
+    /// Carries out a command; in communism mode the gold pool then takes in what it paid
+    /// or earned, before the next command is carried out.
     fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
+        let o = self.execute_command(player, c);
+        self.world.pool_gold();
+        o
+    }
+
+    fn execute_command(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         use replay::{Command as C, Outcome as O};
         // A command speaks only for the player who gave it, and orders only the units
         // they command.

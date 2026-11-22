@@ -211,6 +211,8 @@ pub struct Glue {
     cinematic: Option<Cinematic>,
     /// Sound labels the glue asks the application to play.
     pub sounds: Vec<String>,
+    /// Sounds the lobby's chat played (/nuke, /play), each its own.
+    pub chat_sounds: Vec<crate::lan::ChatSound>,
     /// Stop the cinematic scene's sound (a new scene, or the cinematic's end).
     pub stop_scene_sound: bool,
     /// The background's and panels' animation sound events (e.g., ARPD, the right
@@ -327,6 +329,7 @@ impl Glue {
             lan_players: None,
             cinematic: None,
             sounds: Vec::new(),
+            chat_sounds: Vec::new(),
             stop_scene_sound: false,
             anim_sounds: Vec::new(),
             misc: data.misc.clone(),
@@ -1521,6 +1524,7 @@ impl Glue {
             if let Some(e) = self.lan.update(&mut self.tree, &assets.frames) {
                 self.lan_event(e, assets);
             }
+            self.chat_sounds.append(&mut self.lan.chat_sounds);
             if self.screen == Screen::LanLobby && self.phase == Phase::Stand {
                 if self.lan.rebuild {
                     self.build(Screen::LanLobby, assets);

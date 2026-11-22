@@ -83,7 +83,7 @@ struct Shared {
 
 /// The page's sounds, all the game's own (PCM WAV and MP3, which browsers play as is):
 /// the name the page asks for, and the file.
-const SOUNDS: &[(&str, &str)] = &[
+pub(crate) const SOUNDS: &[(&str, &str)] = &[
     // The level before an air or boss level begins.
     ("heads-up.wav", "Sound\\Interface\\Hint.wav"),
     // The countdown to a boss level: an Infernal landing (levels 30 and 40's bosses).
@@ -104,7 +104,7 @@ const SOUNDS: &[(&str, &str)] = &[
 
 /// The sound for falling under 10 lives, which the game has none fit for: MW2's tactical
 /// nuke alarm, kept beside the source.  Without it the page makes its own siren.
-const NUKE_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/nuke.mp3");
+pub(crate) const NUKE_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/nuke.mp3");
 
 /// `NUKE_FILE`, as the page's "nuke.mp3", if it can be read.
 fn nuke_sound() -> Option<(&'static str, Arc<[u8]>)> {

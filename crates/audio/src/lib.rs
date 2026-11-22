@@ -30,6 +30,8 @@ const TABLES: &[&str] = &[
 /// One label from the sound tables.
 #[derive(Clone, Debug, Default)]
 pub struct SoundDef {
+    /// The label as its table writes it.
+    pub name: String,
     pub files: Vec<String>,
     /// 0 to 127.
     pub volume: f32,
@@ -62,6 +64,7 @@ fn parse_defs(t: &Table, out: &mut HashMap<String, SoundDef>) {
             .map(|f| format!("{dir}{f}"))
             .collect();
         let def = SoundDef {
+            name: name.clone(),
             files,
             volume: num(name, "Volume", 127.0),
             pitch: num(name, "Pitch", 1.0),
@@ -334,6 +337,19 @@ impl Audio {
 
     pub fn enabled(&self) -> bool {
         self.sink.is_some()
+    }
+
+    /// The labels with sound files to play, as their tables write them, in order.
+    pub fn labels(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.defs.values().filter(|d| !d.files.is_empty()).map(|d| d.name.clone()).collect();
+        v.sort_by_key(|n| n.to_ascii_lowercase());
+        v
+    }
+
+    /// A sound file of the program's own, not in the game's archives, playable by `name`
+    /// as if it were.
+    pub fn add_file(&mut self, name: &str, data: Vec<u8>) {
+        self.files.insert(name.to_ascii_lowercase(), Some(Arc::from(data)));
     }
 
     pub fn def(&self, label: &str) -> Option<&SoundDef> {

@@ -735,6 +735,21 @@ impl ApplicationHandler for App {
                         for label in glue.sounds.drain(..) {
                             r.scene_sound = a.play_label(&label, None);
                         }
+                        // (Not the scene's sound: a cinematic's end must not stop them.)
+                        for s in glue.chat_sounds.drain(..) {
+                            match s {
+                                crate::lan::ChatSound::File(f) => a.play_file(f, 1.0, 1.0, None, (0.0, 0.0, 0.0), false),
+                                crate::lan::ChatSound::Label(l) => a.play_label(&l, None),
+                            };
+                        }
+                        // The lobby's /play and /sounds take the game's labels; the
+                        // soundboard's nuke is the program's own file.
+                        if !glue.lan.has_sound_labels() {
+                            glue.lan.set_sound_labels(a.labels());
+                            if let Ok(b) = std::fs::read(crate::tddash::NUKE_FILE) {
+                                a.add_file(crate::lan::NUKE_SOUND, b);
+                            }
+                        }
                         for code in anim_sounds {
                             let code = String::from_utf8_lossy(&code).to_ascii_uppercase();
                             if let Some(label) = a.anim_lookups.get(&code).cloned() {

@@ -212,7 +212,7 @@ pub struct Glue {
     /// Sound labels the glue asks the application to play.
     pub sounds: Vec<String>,
     /// Sounds the lobby's chat played (/nuke, /play), each its own.
-    pub chat_sounds: Vec<crate::lan::ChatSound>,
+    pub chat_sounds: Vec<crate::chatsound::ChatSound>,
     /// Stop the cinematic scene's sound (a new scene, or the cinematic's end).
     pub stop_scene_sound: bool,
     /// The background's and panels' animation sound events (e.g., ARPD, the right

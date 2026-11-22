@@ -1287,6 +1287,7 @@ impl Scene {
                         h.chat_message(&line, -1.0);
                         h.chat_history.push(line);
                     }
+                    self.chat_sound(&text);
                 }
                 // A pause or resume, told for ten seconds in the player's color (FUN_6f3719c0).
                 w3_game::world::Request::PauseNotice { player, on, left } => {
@@ -3380,7 +3381,28 @@ impl Scene {
     /// /mapname, /squelch or /ignore a player by name (SQUELCH_PLAYER_NOTIFY),
     /// /unsquelch or /unignore (UNSQUELCH_PLAYER_NOTIFY), and /showminimapsignals and
     /// /hideminimapsignals.  Returns whether the line was one.
+    /// A chat line's sound (/nuke, /play), as this computer shows the line: played here,
+    /// and on the dashboard's pages if this computer serves them.
+    fn chat_sound(&mut self, text: &str) {
+        let Some(a) = self.audio.as_mut() else { return };
+        let Some(s) = crate::chatsound::parse(text, &a.labels()) else { return };
+        if let (Some(page), Some(d)) = (crate::chatsound::play(a, s), self.tddash.as_ref()) {
+            d.sound(page);
+        }
+    }
+
     fn slash_command(&mut self, line: &str) -> bool {
+        // /sounds, and a /play of no sound, are this computer's alone.
+        let labels = self.audio.as_ref().map(|a| a.labels()).unwrap_or_default();
+        if let Some(lines) = crate::chatsound::local_reply(line, &labels) {
+            if let Some(h) = self.hud.as_mut() {
+                for l in lines {
+                    h.chat_message(&l, 15.0);
+                    h.chat_history.push(l);
+                }
+            }
+            return true;
+        }
         let Some(rest) = line.strip_prefix('/') else { return false };
         let starts = |word: &str| rest.len() >= word.len() && rest[..word.len()].eq_ignore_ascii_case(word);
         let Some(g) = self.game.as_ref() else { return false };

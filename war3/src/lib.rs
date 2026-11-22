@@ -32,6 +32,7 @@ pub mod quests;
 pub mod msglog;
 pub mod net;
 pub mod netdialog;
+pub mod chatsound;
 pub mod tddash;
 pub mod perf;
 mod presentation;

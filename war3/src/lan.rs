@@ -116,7 +116,7 @@ pub struct Lan {
     /// Sound labels for the glue to play.
     pub sounds: Vec<String>,
     /// Sounds the lobby's chat asked for (/nuke, /play), for the glue to play.
-    pub chat_sounds: Vec<ChatSound>,
+    pub chat_sounds: Vec<crate::chatsound::ChatSound>,
     /// The game's sound labels (`w3_audio::Audio::labels`), for /play and /sounds, once
     /// given.
     sound_labels: Option<Vec<String>>,
@@ -623,66 +623,19 @@ impl Lan {
         self.sound_labels.as_deref().unwrap_or_default()
     }
 
-    /// A label as the tables write it, whatever its case.
-    fn sound_label(&self, name: &str) -> Option<&String> {
-        self.labels().iter().find(|l| l.eq_ignore_ascii_case(name))
-    }
-
-    /// What a chat line plays: a soundboard sound by its own command (/nuke) or by
-    /// /play, or else, by /play, a game sound label whatever its case.
-    fn chat_sound_of(&self, text: &str) -> Option<ChatSound> {
-        let rest = text.trim_start().strip_prefix('/')?;
-        let word = rest.split(char::is_whitespace).next().unwrap_or(rest);
-        let name = chat_command(text, "play").unwrap_or(word);
-        if let Some(s) = board_sound(name) {
-            return Some(s);
-        }
-        chat_command(text, "play").and_then(|n| self.sound_label(n)).map(|l| ChatSound::Label(l.clone()))
-    }
-
     /// A chat line's sound plays on this computer: each computer plays it as the line
     /// comes, the sender's as it is said.
     fn chat_sound(&mut self, text: &str) {
-        if let Some(s) = self.chat_sound_of(text) {
+        if let Some(s) = crate::chatsound::parse(text, self.labels()) {
             self.chat_sounds.push(s);
         }
     }
 
-    /// /sounds [filter]: the soundboard, and the game's labels /play takes matching the
-    /// filter, for this computer's chat alone.
-    fn list_sounds(&mut self, filter: &str) {
-        const SHOWN: usize = 40;
-        let note = |s: &str| format!("|cff999999{s}|r");
-        let filter = filter.trim().to_ascii_lowercase();
-        if filter.is_empty() {
-            let board: Vec<String> = board().map(|b| format!("/{}", b.0)).collect();
-            self.chat.push(note(&format!("Sounds for everyone: {}", board.join(" "))));
-            self.chat.push(note(&format!("Or /play <name> for any of the game's {} sounds; /sounds <part of a name> lists those that match.", self.labels().len())));
-            return;
-        }
-        let found: Vec<&String> = self.labels().iter().filter(|l| l.to_ascii_lowercase().contains(&filter)).collect();
-        if found.is_empty() {
-            self.chat.push(note(&format!("No sound's name has \"{filter}\" in it.")));
-            return;
-        }
-        let shown: Vec<&str> = found.iter().take(SHOWN).map(|s| s.as_str()).collect();
-        let more = found.len().saturating_sub(SHOWN);
-        let tail = if more > 0 { format!(" (and {more} more)") } else { String::new() };
-        self.chat.push(note(&format!("{}{tail}", shown.join(", "))));
-    }
-
     fn say(&mut self, text: &str) {
         // /sounds is this computer's alone; a /play of no sound goes nowhere.
-        if let Some(filter) = chat_command(text, "sounds") {
-            self.list_sounds(filter);
+        if let Some(lines) = crate::chatsound::local_reply(text, self.labels()) {
+            self.chat.extend(lines);
             return;
-        }
-        if let Some(name) = chat_command(text, "play") {
-            if self.chat_sound_of(text).is_none() {
-                let line = format!("|cff999999No sound is named \"{}\" (/sounds lists them).|r", name.trim());
-                self.chat.push(line);
-                return;
-            }
         }
         self.chat_sound(text);
         let line = chat_line(&self.name, text);
@@ -1343,35 +1296,6 @@ fn chat_line(name: &str, text: &str) -> String {
     format!("|CFFFED312{name}:|R {text}")
 }
 
-/// A sound the lobby's chat plays: the soundboard's (its name on the dashboard's page,
-/// and its file), or a game sound label.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ChatSound {
-    File(&'static str, &'static str),
-    Label(String),
-}
-
-/// The nuke's file (`tddash::NUKE_FILE`, not in the game's archives) by the name the
-/// sound plays it under (`w3_audio::Audio::add_file`).
-pub const NUKE_SOUND: &str = "rustcraft3\\nuke.mp3";
-
-/// The soundboard: the dashboard's sounds, each its own command (/nuke), with its name
-/// on the dashboard's page and its file.
-fn board() -> impl Iterator<Item = (&'static str, &'static str, &'static str)> {
-    crate::tddash::SOUNDS.iter().map(|&(n, f)| (n.split('.').next().unwrap_or(n), n, f)).chain(std::iter::once(("nuke", "nuke.mp3", NUKE_SOUND)))
-}
-
-fn board_sound(name: &str) -> Option<ChatSound> {
-    board().find(|b| b.0.eq_ignore_ascii_case(name)).map(|b| ChatSound::File(b.1, b.2))
-}
-
-/// A chat line's /`command`, case aside: what follows it, if the line is that command.
-fn chat_command<'a>(text: &'a str, command: &str) -> Option<&'a str> {
-    let rest = text.trim_start().strip_prefix('/')?;
-    let (word, args) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-    word.eq_ignore_ascii_case(command).then(|| args.trim())
-}
-
 /// The speed's GlobalStrings name.
 pub fn speed_key(speed: u8) -> &'static str {
     match speed {
@@ -1447,22 +1371,16 @@ mod tests {
     }
 
     #[test]
-    fn chat_commands_play_the_soundboard_or_a_label() {
+    fn the_lobby_answers_sounds_itself_and_says_a_sound() {
         let mut lan = Lan::new(Path::new("."), "me".into());
-        lan.set_sound_labels(vec!["PeasantYesAttack".into(), "Footman".into()]);
-        assert_eq!(lan.chat_sound_of("/nuke"), Some(ChatSound::File("nuke.mp3", NUKE_SOUND)));
-        assert_eq!(lan.chat_sound_of("/KaChing please"), Some(ChatSound::File("kaching.wav", "Sound\\Interface\\ReceiveGold.wav")));
-        assert_eq!(lan.chat_sound_of("/play death"), Some(ChatSound::File("death.wav", "Units\\Human\\Footman\\FootmanDeath.wav")));
-        assert_eq!(lan.chat_sound_of("/play peasantyesattack"), Some(ChatSound::Label("PeasantYesAttack".into())));
-        // A label plays by /play alone; plain lines and unknown names play nothing.
-        assert_eq!(lan.chat_sound_of("/footman"), None);
-        assert_eq!(lan.chat_sound_of("/play nothing"), None);
-        assert_eq!(lan.chat_sound_of("nuke"), None);
+        lan.set_sound_labels(vec!["Footman".into()]);
         // /sounds is said to no one; a /play of no sound neither.
         lan.say("/sounds foot");
         lan.say("/play nothing");
         assert!(lan.chat_sounds.is_empty());
         assert!(lan.chat.iter().any(|l| l.contains("Footman")) && lan.chat.iter().any(|l| l.contains("No sound is named")));
+        lan.say("/wilhelm");
+        assert_eq!(lan.chat_sounds, vec![crate::chatsound::ChatSound::File("wilhelm", crate::chatsound::WILHELM_SOUND)]);
     }
 
     #[test]

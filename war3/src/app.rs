@@ -762,28 +762,15 @@ impl ApplicationHandler for App {
                         // Each plays on the dashboard's pages too (while this computer's
                         // lobby serves them): the same file this computer plays.
                         for s in glue.chat_sounds.drain(..) {
-                            match s {
-                                crate::lan::ChatSound::File(page, f) => {
-                                    a.play_file(f, 1.0, 1.0, None, (0.0, 0.0, 0.0), false);
-                                    crate::tddash::lobby_sound(crate::tddash::PageSound::Named(page));
-                                }
-                                crate::lan::ChatSound::Label(l) => {
-                                    if let Some((i, file)) = a.choose_variant(&l) {
-                                        a.play_label_variant(&l, i, None);
-                                        if let Some(b) = a.file_bytes(&file) {
-                                            crate::tddash::lobby_sound(crate::tddash::PageSound::File(b));
-                                        }
-                                    }
-                                }
+                            if let Some(page) = crate::chatsound::play(a, s) {
+                                crate::tddash::lobby_sound(page);
                             }
                         }
                         // The lobby's /play and /sounds take the game's labels; the
-                        // soundboard's nuke is the program's own file.
+                        // soundboard's nuke and scream are the program's own files.
                         if !glue.lan.has_sound_labels() {
                             glue.lan.set_sound_labels(a.labels());
-                            if let Ok(b) = std::fs::read(crate::tddash::NUKE_FILE) {
-                                a.add_file(crate::lan::NUKE_SOUND, b);
-                            }
+                            crate::chatsound::register_files(a);
                         }
                         for code in anim_sounds {
                             let code = String::from_utf8_lossy(&code).to_ascii_uppercase();

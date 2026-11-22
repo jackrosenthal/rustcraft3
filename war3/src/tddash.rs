@@ -123,9 +123,14 @@ fn nuke_sound() -> Option<(&'static str, Arc<[u8]>)> {
 /// beside the source as a WAV or an MP3.  Without it every cry is the footman's.
 const WILHELM_FILES: [&str; 2] = [concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/wilhelm.wav"), concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/wilhelm.mp3")];
 
-/// The first of `WILHELM_FILES` there, as the page's "wilhelm".
+/// The first of `WILHELM_FILES` there.
+pub(crate) fn wilhelm_file() -> Option<Vec<u8>> {
+    WILHELM_FILES.iter().find_map(|f| std::fs::read(f).ok())
+}
+
+/// `wilhelm_file`, as the page's "wilhelm".
 fn wilhelm_sound() -> Option<(&'static str, Arc<[u8]>)> {
-    WILHELM_FILES.iter().find_map(|f| std::fs::read(f).ok()).map(|b| ("wilhelm", Arc::from(b)))
+    wilhelm_file().map(|b| ("wilhelm", Arc::from(b)))
 }
 
 /// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
@@ -214,7 +219,7 @@ pub struct LobbyState {
     pub loading: bool,
 }
 
-/// A sound for the lobby's pages to play.
+/// A sound for the dashboard's pages to play.
 pub enum PageSound {
     /// One of the page's own (`SOUNDS`, or "nuke.mp3"), by its name.
     Named(&'static str),
@@ -225,12 +230,19 @@ pub enum PageSound {
 /// Plays a sound on the lobby's pages connected (a lobby chat line's /nuke or /play).
 pub fn lobby_sound(sound: PageSound) {
     let lobby = LOBBY.lock().unwrap();
-    let Some(l) = lobby.as_ref() else { return };
-    let n = l.shared.next_event.fetch_add(1, Ordering::Relaxed);
+    if let Some(l) = lobby.as_ref() {
+        push_sound(&l.shared, sound);
+    }
+}
+
+/// A sound for the pages connected to play once, as it comes.
+fn push_sound(shared: &Shared, sound: PageSound) {
+    let l = shared;
+    let n = l.next_event.fetch_add(1, Ordering::Relaxed);
     let url = match sound {
         PageSound::Named(name) => format!("/sound/{name}"),
         PageSound::File(bytes) => {
-            let mut files = l.shared.files.lock().unwrap();
+            let mut files = l.files.lock().unwrap();
             files.push_back((n, bytes));
             while files.len() > KEPT_SOUNDS {
                 files.pop_front();
@@ -239,7 +251,7 @@ pub fn lobby_sound(sound: PageSound) {
         }
     };
     let Ok(json) = serde_json::to_string(&serde_json::json!({ "sound": url })) else { return };
-    let mut events = l.shared.events.lock().unwrap();
+    let mut events = l.events.lock().unwrap();
     events.push_back((n, Arc::from(json)));
     while events.len() > KEPT_SOUNDS {
         events.pop_front();
@@ -290,6 +302,11 @@ impl Drop for Dashboard {
 }
 
 impl Dashboard {
+    /// Plays a sound on the game's pages connected (a game chat line's /nuke or /play).
+    pub fn sound(&self, sound: PageSound) {
+        push_sound(&self.shared, sound);
+    }
+
     /// Serves the page for a game, taking over the server its lobby opened on the port
     /// (the pages open on it go on to the game), or binding the port.
     pub fn start(g: &Game, port: u16) -> std::io::Result<Dashboard> {

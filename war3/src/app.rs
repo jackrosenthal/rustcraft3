@@ -62,6 +62,8 @@ struct Running {
     draw_after: Option<Instant>,
     /// The next RedrawRequested only steps the game and the menus (`about_to_wait`).
     update_only: bool,
+    /// The performance overlay (F7).
+    perf: crate::perf::Perf,
 }
 
 /// The longest the game goes without a step.  Redraws stop while the window is hidden
@@ -189,6 +191,7 @@ impl App {
                 Some(crate::glue::Glue::new(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets))
             }
         };
+        let perf = crate::perf::Perf::new(&gpu.device, &gpu.queue, gpu.config.format);
         self.running = Some(Running {
             window,
             gpu,
@@ -213,6 +216,7 @@ impl App {
             focused: true,
             draw_after: None,
             update_only: false,
+            perf,
         });
         Ok(())
     }
@@ -333,6 +337,10 @@ impl ApplicationHandler for App {
                     }
                     if event.physical_key == PhysicalKey::Code(KeyCode::PrintScreen) {
                         r.capture.requested = true;
+                    }
+                    // The performance overlay (F11 being the allies' panel).
+                    if event.physical_key == PhysicalKey::Code(KeyCode::F7) {
+                        r.perf.shown = !r.perf.shown;
                     }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F12) {
                         if let Some(scene) = r.scene.as_mut() {
@@ -836,6 +844,7 @@ impl ApplicationHandler for App {
                 if !draw {
                     return;
                 }
+                let mut phases = crate::perf::Phases { update: now.elapsed().as_secs_f32(), ..Default::default() };
                 let asked = Instant::now();
                 let frame = match r.gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
@@ -850,9 +859,11 @@ impl ApplicationHandler for App {
                         return;
                     }
                 };
+                phases.acquire = asked.elapsed().as_secs_f32();
                 if !r.focused && asked.elapsed() >= HIDDEN_WAIT {
                     r.draw_after = Some(Instant::now() + HIDDEN_RETRY);
                 }
+                let acquired = Instant::now();
                 let view = frame.texture.create_view(&Default::default());
                 let mut enc = r.gpu.device.create_command_encoder(&Default::default());
                 let overlay: Vec<w3_ui::Draw> = r.capture.overlay(&r.assets.frames).into_iter().collect();
@@ -892,6 +903,19 @@ impl ApplicationHandler for App {
                     }
                     (buf, stride, ok)
                 });
+                // The performance overlay, over all of it but kept out of captures.
+                if r.perf.shown {
+                    let game = r.scene.as_ref().and_then(|s| {
+                        let g = s.game.as_ref()?;
+                        let units = g.world.handles.iter().filter(|(_, o)| matches!(o, w3_game::types::Obj::Unit(u) if !u.dead)).count();
+                        let net = s.net.as_ref().map(|n| (matches!(n.role.link, crate::net::Link::Host(_)), n.queue.len(), n.played, n.lagging().len()));
+                        Some(crate::perf::GameInfo { time: g.world.time, speed: g.world.game_speed, units, net })
+                    });
+                    let adapter = r.gpu.adapter.get_info();
+                    let refresh = r.window.current_monitor().and_then(|m| m.refresh_rate_millihertz());
+                    let info = crate::perf::Info { adapter: &adapter, present_mode: r.gpu.config.present_mode, size, refresh, game };
+                    r.perf.draw(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &info);
+                }
                 r.gpu.queue.submit([enc.finish()]);
                 if let Some((buf, stride, ok)) = capture {
                     let (w, h) = size;
@@ -911,8 +935,12 @@ impl ApplicationHandler for App {
                         .flatten();
                     r.capture.save(&r.assets.frames, pixels.as_deref(), w, h, bgra);
                 }
+                phases.render = acquired.elapsed().as_secs_f32();
+                let presenting = Instant::now();
                 r.window.pre_present_notify();
                 r.gpu.queue.present(frame);
+                phases.present = presenting.elapsed().as_secs_f32();
+                r.perf.frame(now, phases);
             }
             _ => {}
         }

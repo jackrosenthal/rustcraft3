@@ -32,4 +32,5 @@ pub mod msglog;
 pub mod net;
 pub mod netdialog;
 pub mod tddash;
+pub mod perf;
 mod presentation;

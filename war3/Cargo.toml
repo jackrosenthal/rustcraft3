@@ -27,6 +27,7 @@ serde.workspace = true
 serde_json.workspace = true
 postcard.workspace = true
 dirs.workspace = true
+font8x8 = "0.3"
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 
 [dev-dependencies]

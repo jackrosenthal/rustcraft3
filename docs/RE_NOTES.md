@@ -681,6 +681,10 @@ these are the findings behind them.
   Move orders currently use the port's legacy `walk_inner` (the player-walk setup is
   restricted to Foot), so they have no mover samples. Their bounded per-turn legs
   are presented on the same display clock without changing the simulation route.
+  The port's display clock keeps the original's rate (15/20/25 ms of game time each
+  25 ms) but is not held to the 25 ms portions: stepped, it moved 40 times a second,
+  two steps in three of a 60 Hz display's frames, and units stuttered. The main clock
+  between two 5 ms ticks is taken between their readings (`Presentation::clock`).
 - An aura's scan (its in-range listener's half-second check) runs at its due among the
   tick's steps, before the first step due after it, with the detectors' looks that
   share its queue (`World::plan_aura_scans`), not at the end of the port's tick (a

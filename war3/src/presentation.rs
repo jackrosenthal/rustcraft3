@@ -3,6 +3,9 @@
 //! game.dll: FUN_6f32d670 consumes 25 ms of real time per 15/20/25 ms of
 //! game time. FUN_6f684480 -> FUN_6f05a970 -> FUN_6f161040/FUN_6f05bdd0
 //! evaluates a unit's position from its last velocity change at that clock.
+//! The port's display clock runs at the same rate but between the portions too:
+//! held to them it moved 40 times a second, which a display's 60 frames show as
+//! two steps in three frames, and motion stuttered.
 //! FUN_6f385c10 advances text tags by the consumed game time via FUN_6f9a1910.
 use std::collections::HashMap;
 use glam::{Vec2, Vec3};
@@ -75,27 +78,39 @@ impl Presentation {
         }
     }
 
-    fn ms(&self) -> u32 {
-        let ticks = (self.previous.turn_left + (self.elapsed.max(0.0) * 1000.0 + 0.0001) as u32) / w3_game::TICK_MS;
-        self.previous.ms.saturating_add(ticks.saturating_mul(self.tick_ms)).min(self.end_ms)
+    /// The game time shown, in milliseconds: the turn's start and the game time the
+    /// time shown since makes (15/20/25 ms each 25), never past the turn's end.
+    fn ms(&self) -> f64 {
+        let passed = self.elapsed.max(0.0) as f64 * 1000.0 / w3_game::TICK_MS as f64 * self.tick_ms as f64;
+        (self.previous.ms as f64 + passed).min(self.end_ms as f64)
     }
 
     pub fn alpha(&self) -> f32 {
         let span = self.end_ms.saturating_sub(self.previous.ms);
-        if span == 0 { 1.0 } else { (self.ms() - self.previous.ms) as f32 / span as f32 }
+        if span == 0 { 1.0 } else { ((self.ms() - self.previous.ms as f64) / span as f64) as f32 }
     }
 
     pub fn lag(&self) -> f32 {
         (self.end_time - self.previous.time) * (1.0 - self.alpha())
     }
 
-    /// The engine's main clock at the displayed 5 ms tick. Read the already planned
-    /// clocks; calling main_clock_at here would mutate authoritative clock state.
+    /// The engine's main clock at the displayed time, between its 5 ms ticks' readings
+    /// as the time shown lies between them. Read the already planned clocks; calling
+    /// main_clock_at here would mutate authoritative clock state.
     fn clock(&self, w: &World) -> (u32, u32) {
-        let tick = (self.ms() as i64 + 4) / 5;
-        let i = tick.saturating_sub(w.tick_clocks.0) as usize;
-        (w.tick_clocks.1.get(i).copied().unwrap_or(w.main_clock.1),
-         w.tick_wraps.get(i).copied().unwrap_or(w.main_wraps))
+        let t = (self.ms() / 5.0 - w.tick_clocks.0 as f64).max(0.0);
+        let i = t as usize;
+        let at = |i: usize| Some((f32::from_bits(*w.tick_clocks.1.get(i)?) as f64, *w.tick_wraps.get(i)?));
+        let Some((c, wraps)) = at(i) else { return (w.main_clock.1, w.main_wraps) };
+        let f = t - i as f64;
+        match at(i + 1) {
+            // (The next tick's reading may be past a wrap: 300 seconds less.)
+            Some((next, next_wraps)) if f > 0.0 => {
+                let next = next + next_wraps.saturating_sub(wraps) as f64 * 300.0;
+                (((c + (next - c) * f) as f32).to_bits(), wraps)
+            }
+            _ => ((c as f32).to_bits(), wraps),
+        }
     }
 
     pub fn unit(&self, w: &World, u: &Unit) -> (Vec3, f32) {
@@ -123,7 +138,7 @@ impl Presentation {
         if samples.is_none() && !u.steps_walker() {
             return (position, facing);
         }
-        let sample = samples.and_then(|v| v.iter().rev().find(|(tick, _, _)| *tick * 5 <= self.ms() as i64));
+        let sample = samples.and_then(|v| v.iter().rev().find(|(tick, _, _)| (*tick * 5) as f64 <= self.ms()));
         let state = sample.map(|(_, wraps, m)| (*m, *wraps)).or(old.mover.map(|m| (m, old.wraps)));
         let Some((m, wraps)) = state else {
             return if samples.is_some() { (old.position, old.facing) } else { (position, facing) };
@@ -255,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn original_clock_consumes_turn_time_in_25_ms_portions_at_each_speed() {
+    fn the_display_clock_runs_at_the_originals_rate_without_its_steps() {
         for (speed, game_tick) in [(0, 15), (1, 20), (2, 25)] {
             let mut w = world();
             w.game_speed = speed;
@@ -266,10 +281,10 @@ mod tests {
             view.turn(before, &w, 0.1);
             for ms in 0..=100 {
                 view.elapsed = ms as f32 / 1000.0;
-                assert_eq!(view.ms(), ms / 25 * game_tick);
+                assert!((view.ms() - (ms * game_tick) as f64 / 25.0).abs() < 0.001);
             }
             view.elapsed = 5.0;
-            assert_eq!(view.ms(), w.game_ms, "a silent host must not allow extrapolation");
+            assert_eq!(view.ms(), w.game_ms as f64, "a silent host must not allow extrapolation");
         }
     }
 
@@ -306,6 +321,36 @@ mod tests {
         assert_eq!(view.unit(&w, w.unit(h).unwrap()).0.x, 16.0);
         assert_eq!(w.unit(h).unwrap().x, 16.0);
         assert_eq!(w.keepalive(), checksum, "render sampling must not change authoritative state");
+    }
+
+    #[test]
+    fn a_walker_moves_the_same_distance_each_frame_at_60_a_second() {
+        let mut w = world();
+        w.game_speed = 2;
+        w.objects.units.objects.insert(*b"hfoo", w3_game::objects::Object { id: *b"hfoo", ..Default::default() });
+        let h = w3_game::natives::units::create_unit(&mut w, 0, *b"hfoo", 0.0, 0.0, 0.0);
+        let mut wpm = b"MP3W".to_vec();
+        for v in [0u32, 1, 1] { wpm.extend(v.to_le_bytes()); }
+        wpm.push(0);
+        w.pathing = w3_game::pathing::PathingMap::parse(&wpm, [0.0, 0.0]);
+        let moving = Mover { vx: 10.0f32.to_bits(), ..Default::default() };
+        w.unit_mut(h).unwrap().extra.mover = Some(moving);
+        let before = Snapshot::capture(&w);
+        w.game_ms = 100;
+        w.time = 0.1;
+        w.render_walks.insert(h, vec![(0, 0, moving)]);
+        w.tick_clocks = (0, (0..=20).map(|i| (i as f32 * 0.005).to_bits()).collect());
+        w.tick_wraps = vec![0; 21];
+        let mut view = Presentation::default();
+        view.turn(before, &w, 0.1);
+        let xs: Vec<f32> = (0..=6).map(|frame| {
+            view.elapsed = frame as f32 / 60.0;
+            view.unit(&w, w.unit(h).unwrap()).0.x
+        }).collect();
+        // 10 cells a second, 32 to a cell: 5.33 a frame, where the 25 ms portions gave 0 or 8.
+        for pair in xs.windows(2) {
+            assert!((pair[1] - pair[0] - 320.0 / 60.0).abs() < 0.01, "{xs:?}");
+        }
     }
 
     #[test]

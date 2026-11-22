@@ -207,22 +207,30 @@ function play(name) {
   src.buffer = buf; src.connect(ctx.destination); src.start();
 }
 // One death cry per life lost: lives lost together play one after another, each cry of an
-// unbroken run faster than the one before (by DEATH_SPEEDUP, up to DEATH_FASTEST times) and
-// starting sooner after the last (its sped-up length, shrunk by DEATH_SPEEDUP again per cry,
-// so later cries overlap, down to DEATH_MIN_GAP apart). The run's pace starts over once
-// every cry has finished.
-const DEATH_SPEEDUP = 1.25, DEATH_FASTEST = 4, DEATH_MIN_GAP = 0.05;
+// unbroken run faster than the one before, by a quadratic (the k-th 1 + k²/DEATH_CURVE
+// times, at most DEATH_FASTEST), and starting sooner after the last (its sped-up length,
+// shrunk by the same uncapped factor, so later cries overlap, down to DEATH_MIN_GAP
+// apart).  The run's pace starts over once every cry has finished.
+// A cry sped up keeps its pitch: an audio element's playback rate with preservesPitch
+// stretches time alone, where a Web Audio source's would raise the pitch with the speed.
+const DEATH_CURVE = 16, DEATH_FASTEST = 4, DEATH_MIN_GAP = 0.05;
+const deathCry = new Audio(`/sound/${SOUNDS.death}`);
+deathCry.preload = "auto";
 let deathsNext = 0, deathsEnd = 0, deathRun = 0;
 function playDeaths(n) {
-  const buf = buffers.death;
-  if (!buf) return;
+  const now = () => performance.now() / 1000;
+  const length = buffers.death ? buffers.death.duration : deathCry.duration || 1.25;
   for (let i = 0; i < n; i++) {
-    if (ctx.currentTime >= deathsEnd) deathRun = 0;
-    const k = deathRun++, rate = Math.min(DEATH_SPEEDUP ** k, DEATH_FASTEST), len = buf.duration / rate;
-    const src = ctx.createBufferSource(), at = Math.max(ctx.currentTime, deathsNext);
-    src.buffer = buf; src.playbackRate.value = rate; src.connect(ctx.destination); src.start(at);
+    if (now() >= deathsEnd) deathRun = 0;
+    const k = deathRun++, speedup = 1 + k * k / DEATH_CURVE, rate = Math.min(speedup, DEATH_FASTEST), len = length / rate;
+    const at = Math.max(now(), deathsNext);
+    const cry = deathCry.cloneNode();
+    cry.preservesPitch = cry.mozPreservesPitch = cry.webkitPreservesPitch = true;
+    // (Loading resets the rate to the default rate: both are set.)
+    cry.defaultPlaybackRate = cry.playbackRate = rate;
+    setTimeout(() => cry.play().catch(() => {}), Math.max(0, (at - now()) * 1000));
     deathsEnd = Math.max(deathsEnd, at + len);
-    deathsNext = at + Math.max(len / DEATH_SPEEDUP ** k, DEATH_MIN_GAP);
+    deathsNext = at + Math.max(len / speedup, DEATH_MIN_GAP);
   }
 }
 // Falling under 10 lives: a tactical nuke incoming.  The host's own file if it gave one,

@@ -336,9 +336,19 @@ impl UnitView {
         self.inst.set_sequence(Some(s));
     }
 
+    /// Whether `pick` finds the model a sequence for the name, short of falling back to
+    /// stand ("decay bone" is a Marine's "Decay").
+    fn has(&self, name: &str) -> bool {
+        let mdx = &self.inst.model.mdx;
+        if !w3_render::anim::sequences_named(mdx, name).is_empty() || !w3_render::anim::sequences_containing(mdx, name).is_empty() {
+            return true;
+        }
+        name.rsplit_once(' ').is_some_and(|(base, _)| self.has(base))
+    }
+
     /// Follows the game's animation requests; returns to stand variants when a one-shot
     /// animation ends, and lets corpses decay.
-    fn update(&mut self, anim: &str, serial: u32, queue: &[String]) {
+    fn update(&mut self, anim: &str, serial: u32, queue: &[String], hero: bool) {
         if serial != self.serial || anim != self.requested {
             self.serial = serial;
             self.requested = anim.to_string();
@@ -359,11 +369,15 @@ impl UnitView {
             let again = self.requested.starts_with("stand").then(|| self.requested.clone());
             let next = match self.anim.as_str() {
                 // A hero's body dissipates once its death has played (the original shows
-                // its Dissipate before it is gone, DissipateTime after its death).
-                "death" if !w3_render::anim::sequences_named(&self.inst.model.mdx, "dissipate").is_empty() => Some("dissipate".to_string()),
+                // its Dissipate before it is gone, DissipateTime after its death).  Only
+                // a hero's: another unit on a hero's model (Mafarazzo TD's Forest
+                // Sentinel, on Malfurion's) lies as a corpse, and rose in the Dissipate.
+                "death" if hero && !w3_render::anim::sequences_named(&self.inst.model.mdx, "dissipate").is_empty() => Some("dissipate".to_string()),
                 "dissipate" => None,
-                "death" => Some("decay flesh".to_string()),
-                "decay flesh" => Some("decay bone".to_string()),
+                // A corpse whose model has no decay keeps the pose its death left it in
+                // (it stood up again, falling back to stand, as the Sentinel's did).
+                "death" => Some("decay flesh".to_string()).filter(|n| self.has(n)),
+                "decay flesh" => Some("decay bone".to_string()).filter(|n| self.has(n)),
                 "decay bone" => None,
                 _ => Some(again.unwrap_or_else(|| "stand".to_string())),
             };
@@ -4714,7 +4728,7 @@ impl Scene {
                     .collect();
                 let inst = ModelInstance::new(model);
                 let mut view = UnitView { inst, type_id: shown, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h, queued: 0 };
-                view.update(&u.anim, u.anim_serial, &u.extra.anim_queue);
+                view.update(&u.anim, u.anim_serial, &u.extra.anim_queue, u.is_hero);
                 self.units.insert(h, view);
             }
             let (position, facing) = self.unit_pose(w, u);
@@ -4751,7 +4765,7 @@ impl Scene {
                     anim.push_str(&p);
                 }
             }
-            view.update(&anim, u.anim_serial, &u.extra.anim_queue);
+            view.update(&anim, u.anim_serial, &u.extra.anim_queue, u.is_hero);
             // Structures under construction show their birth animation in step with progress.
             if let (Some(left), Some(seq)) = (u.constructing, view.inst.sequence.and_then(|s| view.inst.model.mdx.sequences.get(s))) {
                 let len = (seq.end - seq.start) as f32;

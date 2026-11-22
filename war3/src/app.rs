@@ -82,6 +82,28 @@ const IDLE_STEP: std::time::Duration = std::time::Duration::from_millis(50);
 const HIDDEN_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 const HIDDEN_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// A frame this slow while a game runs is logged with where its time went: the window
+/// system's events wait unread meanwhile, and a compositor whose queue to the game fills
+/// drops it (Mutter: "WL: error in client communication", the game's "Connection reset
+/// by peer").
+const SLOW_FRAME: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Logs a frame that took `SLOW_FRAME` or longer from `start`, with its drawing's
+/// `phases` when it was drawn.
+fn slow_frame(r: &Running, start: Instant, phases: Option<crate::perf::Phases>) {
+    let took = start.elapsed();
+    if took < SLOW_FRAME {
+        return;
+    }
+    let Some(s) = r.scene.as_ref() else { return };
+    let time = s.game.as_ref().map_or(0.0, |g| g.world.time);
+    let ms = |x: f32| x * 1000.0;
+    match phases {
+        Some(p) => log::warn!("slow frame: {:.0} ms at game time {time:.2} (step {:.0}, acquire {:.0}, render {:.0}, present {:.0} ms)", ms(took.as_secs_f32()), ms(p.update), ms(p.acquire), ms(p.render), ms(p.present)),
+        None => log::warn!("slow step: {:.0} ms at game time {time:.2}", ms(took.as_secs_f32())),
+    }
+}
+
 /// Whether W, A, S, and D pan the camera (as the arrow keys do) rather than type or press
 /// the command card's hotkeys: not while chat, a save's name, or the game menu takes the
 /// keyboard, and not with Ctrl or Alt held, whose shortcuts (Ctrl+S, Alt+S) keep them.
@@ -881,6 +903,7 @@ impl ApplicationHandler for App {
                     }
                 }
                 if !draw {
+                    slow_frame(r, now, None);
                     return;
                 }
                 let mut phases = crate::perf::Phases { update: now.elapsed().as_secs_f32(), ..Default::default() };
@@ -980,6 +1003,7 @@ impl ApplicationHandler for App {
                 r.gpu.queue.present(frame);
                 phases.present = presenting.elapsed().as_secs_f32();
                 r.perf.frame(now, phases);
+                slow_frame(r, now, Some(phases));
             }
             _ => {}
         }

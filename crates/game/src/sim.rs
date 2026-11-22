@@ -471,7 +471,11 @@ impl World {
         let name = crate::natives::basic::order_name(order).unwrap_or_default();
         let toggle = self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.objects.abilities.get(a).is_some_and(|o| o.str("Orderon").eq_ignore_ascii_case(name) || o.str("Orderoff").eq_ignore_ascii_case(name))));
         let no_gold = name == "autoharvestgold" && self.ability_with_code(h, codes::ability::HARVEST).is_none();
-        if !toggle && !no_gold {
+        // (Nor a structure's right click, taken as its rally point: a tower so clicked
+        // forgot the target it took up, and with it its looks for a better one,
+        // `World::structure_look`.)
+        let rally = (name == "smart" || name == "setrally") && self.unit(h).is_some_and(|u| u.is_building) && self.ability_for_order(h, order).is_none();
+        if !toggle && !no_gold && !rally {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.acquired = 0;
                 u.acquire_timer = 0.0;
@@ -6199,7 +6203,16 @@ impl World {
 
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return };
-        let Some((wn, wp)) = weapon_for(self, u, t) else { return };
+        let Some((wn, wp)) = weapon_for(self, u, t) else {
+            // A structure gives up a target it can no longer hit (hidden, invulnerable, a
+            // locust) at its try, as one out of its reach; it had waited on it for good,
+            // shooting nothing else, unless its look found a better one.
+            if !stationary && u.is_building && !u.extra.uprooted && u.cooldown <= STEP_SLACK {
+                let at = u.extra.first_swing_at.unwrap_or(self.time_exact + u.cooldown.min(0.0) as f64);
+                self.structure_gives_up(h, at);
+            }
+            return;
+        };
         let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
         let ub = self.upgrade_bonus(u.owner, u.type_id);
@@ -6222,13 +6235,9 @@ impl World {
             // 40, without its Root): it gives up a target it took up as its try finds it
             // out of reach (`FUN_6f495180`; its look takes up none past it).
             if stationary || (u.is_building && !u.extra.uprooted) {
-                if !stationary && !u.extra.attack_tasks.is_empty() && u.cooldown <= STEP_SLACK {
+                if !stationary && u.cooldown <= STEP_SLACK {
                     let at = first.unwrap_or(self.time_exact + u.cooldown.min(0.0) as f64);
-                    self.attack_given_up(h, at);
-                    if let Some(u) = self.unit_mut(h) {
-                        u.action = Action::Idle;
-                        set_anim(u, "stand");
-                    }
+                    self.structure_gives_up(h, at);
                 }
                 return;
             }
@@ -6269,6 +6278,27 @@ impl World {
             // The target is attacked (GetAttacker is the attacker).
             self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
         } else if u.anim == "walk" {
+            set_anim(u, "stand");
+        }
+    }
+
+    /// A structure lets its target go at its try at `at` and is idle, looking again: one
+    /// it took up gives it up (`World::attack_given_up`); one it was ordered to attack
+    /// has no tasks to free, and its order is done (it had kept its attack on a target
+    /// out of reach for good, shooting nothing else).
+    fn structure_gives_up(&mut self, h: u32, at: f64) {
+        let ordered = self.unit(h).is_some_and(|u| u.extra.attack_tasks.is_empty());
+        if !ordered {
+            self.attack_given_up(h, at);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            if ordered {
+                u.extra.acquired = 0;
+                u.extra.first_swing_at = None;
+                u.acquire_timer = 0.0;
+                u.order = Order::default();
+            }
+            u.action = Action::Idle;
             set_anim(u, "stand");
         }
     }

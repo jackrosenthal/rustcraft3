@@ -874,6 +874,14 @@ pub fn remove_unit(w: &mut World, h: u32) {
         for camp in w.creep_camps.iter_mut() {
             camp.retain(|c| *c != h);
         }
+        // So do the units that took it up (a tower on a creep that leaked and burst):
+        // the next unit given its handle was otherwise taken as already taken up, its
+        // attack's tasks and first try never made, its acquired event never sent.
+        for a in w.unit_order.clone() {
+            if let Some(u) = w.unit_mut(a).filter(|u| u.extra.acquired == h) {
+                u.extra.acquired = 0;
+            }
+        }
         for id in w.handles.ids() {
             if let Some(Obj::Group(g)) = w.handles.get_mut(id) {
                 g.units.retain(|u| *u != h);

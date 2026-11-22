@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mafarazzo TD Live</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+/* Left: the level being fought, the next one (with its warning), dangers ahead, and the
+   players' kills.  Right: the 40 levels as a command card, past ones dimmed.  One dark
+   look after the Warcraft III console, as the static level sheet. */
+:root{color-scheme:dark;
+--bg:#07090c;--stone:#12161c;--panel:#0b0e13;--fg:#f2efe4;--muted:#a59f8e;
+--gold:#fcd20d;--trim:#b08a2e;--trim-dark:#4a3810;--bevel:#2b313b;
+--air:#63c8ff;--boss:#ff4b3a;--fan:#49e04f;
+--display:"Cinzel","Palatino Linotype",Palatino,Georgia,serif;--body:"Alegreya Sans","Trebuchet MS","Segoe UI",sans-serif;
+font-size:min(1.48vh,0.833vw)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(120% 90% at 50% 0%,#1a212b 0%,var(--bg) 70%) var(--bg);color:var(--fg);font:500 1rem/1.25 var(--body);font-variant-numeric:lining-nums}
+.wrap{height:100%;padding-block:1rem;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-rows:auto minmax(0,1fr);gap:.8rem}
+header{display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;border-bottom:.15rem solid var(--trim);box-shadow:0 .15rem 0 var(--trim-dark);padding:0 .4rem .5rem}
+h1{font:900 2.5rem/1 var(--display);margin:0;color:var(--gold);letter-spacing:.03em;text-shadow:0 .12rem 0 #000,0 0 1rem rgba(252,210,13,.25)}
+header .map{color:var(--muted);font-size:1.15rem;flex:1;min-width:0}
+.status{font:700 .95rem var(--body);letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border:.1rem solid currentColor;background:#000}
+.status.live{color:var(--fan)} .status.paused{color:var(--gold)} .status.down{color:var(--boss)}
+button{font:700 1.05rem var(--body);color:var(--fg);background:linear-gradient(180deg,#2a303a,#11151b);border:.14rem solid var(--trim);padding:.35rem .8rem;cursor:pointer}
+button:hover{border-color:var(--gold)} button[aria-pressed="true"]{color:var(--gold);box-shadow:inset 0 0 .6rem rgba(252,210,13,.35)}
+main{display:grid;grid-template-columns:minmax(0,34fr) minmax(0,66fr);gap:.9rem;min-height:0}
+.side{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:.7rem;min-height:0}
+.box{background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 30%) var(--panel);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 1.2rem #000;padding:.7rem .9rem;min-width:0;min-height:0;display:flex;flex-direction:column;gap:.45rem}
+h2{font:700 1.2rem/1 var(--display);letter-spacing:.09em;text-transform:uppercase;margin:0;color:var(--gold);text-shadow:0 .08rem 0 #000}
+.lvl{display:flex;gap:1rem;align-items:center}
+.big{font:900 5rem/.85 var(--display);color:#cfd5df;text-shadow:0 .15rem 0 #000;min-width:3.2ch;text-align:center}
+.lvl .info{min-width:0;flex:1;display:flex;flex-direction:column;gap:.25rem}
+.unit{font:700 1.7rem/1.05 var(--body)}
+.line{color:var(--muted);font-size:1.15rem}
+.line b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums}
+.stats{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:1.1rem;color:var(--muted)}
+.stats b{color:var(--fg);font-variant-numeric:tabular-nums lining-nums} .stats .gold b{color:var(--gold)}
+.tags{display:flex;gap:.3rem;flex-wrap:wrap}
+.tag{font:700 .85rem/1 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:.2rem .35rem;background:#000;border:.07rem solid currentColor}
+.air{color:var(--air)} .boss{color:var(--boss)} .fan{color:var(--fan)}
+.big.air{color:var(--air)} .big.boss{color:var(--boss)} .big.fan{color:var(--fan)}
+.count{font:900 3rem/1 var(--display);color:var(--gold);font-variant-numeric:tabular-nums lining-nums}
+.warn{display:none;align-items:center;gap:.8rem;padding:.55rem .8rem;border:.14rem solid currentColor;background:#000;font:900 1.5rem/1.05 var(--display);letter-spacing:.05em;text-transform:uppercase}
+.warn.on{display:flex} .warn small{font:600 1rem var(--body);letter-spacing:0;text-transform:none;color:var(--muted);display:block}
+.warn.boss{color:var(--boss);box-shadow:0 0 1.4rem rgba(255,75,58,.45),inset 0 0 1rem rgba(255,75,58,.3)}
+.warn.air{color:var(--air);box-shadow:0 0 1.4rem rgba(99,200,255,.4),inset 0 0 1rem rgba(99,200,255,.25)}
+.warn.urgent{animation:pulse .8s ease-in-out infinite}
+@keyframes pulse{50%{filter:brightness(1.6)}}
+@media (prefers-reduced-motion:reduce){.warn.urgent,.cell.next{animation:none}}
+.ahead{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+.ahead div{background:#000;border:.1rem solid currentColor;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.15rem}
+.ahead span{font:700 .8rem var(--body);letter-spacing:.1em;text-transform:uppercase}
+.ahead b{font:900 1.7rem/1 var(--display);font-variant-numeric:lining-nums}
+.ahead em{font-style:normal;color:var(--muted);font-size:.95rem}
+table{border-collapse:collapse;width:100%;font-size:1.12rem}
+th{font:700 .8rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .4rem .15rem}
+td{padding:.2rem .4rem;border-top:.07rem solid var(--bevel)}
+.n{text-align:right;font-variant-numeric:tabular-nums lining-nums} th.n{text-align:right}
+.sw{display:inline-block;width:.8rem;height:.8rem;margin-right:.5rem;border:.07rem solid #000;vertical-align:-.05rem}
+.scroll{overflow:auto;min-height:0}
+.grid{list-style:none;margin:0;padding:.55rem;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:.45rem;min-height:0;
+background:var(--stone);border:.14rem solid var(--trim);outline:.07rem solid #000;box-shadow:inset 0 0 0 .07rem var(--trim-dark),inset 0 0 2rem #000}
+.cell{position:relative;background:linear-gradient(160deg,#1c222b,#0b0e12 60%);border:.14rem solid var(--bevel);border-top-color:#444c59;border-left-color:#444c59;border-bottom-color:#06080a;border-right-color:#06080a;padding:.45rem .55rem;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden}
+.cell .top{display:flex;justify-content:space-between;align-items:flex-start;gap:.3rem}
+.cell b{font:900 2.3rem/.9 var(--display);color:#7d8697;text-shadow:0 .1rem 0 #000}
+.marks{display:flex;flex-direction:column;align-items:flex-end;gap:.2rem}
+.cell .name{font:700 1.08rem/1.05 var(--body);color:var(--fg)}
+dl{margin:0;display:grid;font-size:.95rem;line-height:1.15}
+dl div{display:flex;justify-content:space-between;gap:.4rem}
+dt{color:var(--muted)} dd{margin:0;font-variant-numeric:tabular-nums lining-nums} dd.gold{color:var(--gold)}
+.cell.air{border-color:var(--air);box-shadow:inset 0 0 1.1rem rgba(99,200,255,.28)}
+.cell.fan{border-color:var(--fan);box-shadow:inset 0 0 1.1rem rgba(73,224,79,.25)}
+.cell.air.fan{border-color:var(--fan) var(--air) var(--air) var(--fan)}
+.cell.boss{border-color:var(--boss);box-shadow:inset 0 0 1.4rem rgba(255,75,58,.4)}
+.cell.air b{color:var(--air)} .cell.fan b{color:var(--fan)} .cell.air.fan b{color:var(--air)} .cell.boss b{color:var(--boss)}
+.cell.done{opacity:.32;filter:saturate(.4)}
+.cell.now{outline:.22rem solid var(--gold);outline-offset:-.05rem;box-shadow:0 0 1.4rem rgba(252,210,13,.55),inset 0 0 1.2rem rgba(252,210,13,.25)}
+/* Now and Next sit as a badge on the cell's bottom edge, clear of its tags and numbers. */
+.cell.now::after,.cell.next::after{position:absolute;bottom:0;left:50%;transform:translateX(-50%);font:700 .75rem/1 var(--display);letter-spacing:.1em;text-transform:uppercase;padding:.15rem .4rem .2rem}
+.cell.now::after{content:"Now";background:var(--gold);color:#000}
+.cell.next{animation:nextglow 1.6s ease-in-out infinite}
+.cell.next::after{content:"Next";background:var(--fg);color:#000}
+@keyframes nextglow{50%{filter:brightness(1.35)}}
+.empty{color:var(--muted)} .gone{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.08em;margin-left:.3rem}
+/* Portrait and small screens: stack and scroll instead of fitting one screen. */
+@media (max-aspect-ratio:5/4),(max-width:820px){
+:root{font-size:14px} html,body{height:auto} .wrap{height:auto;display:flex;flex-direction:column}
+main{display:flex;flex-direction:column} .side{display:flex;flex-direction:column}
+.grid{grid-template-columns:repeat(auto-fill,minmax(8.6rem,1fr));grid-template-rows:none} .cell{gap:.5rem;min-height:8rem}
+.big{font-size:4rem}
+header .map{order:5;flex-basis:100%} header .status{margin-left:auto}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Mafarazzo TD</h1>
+  <span class="map" id="map">Connecting…</span>
+  <span class="status down" id="status">Offline</span>
+  <button id="sound" aria-pressed="false" title="Sound warnings before air and boss levels">Sound: off</button>
+  <button id="test" title="Play the boss and air warnings">Test</button>
+</header>
+<main>
+<div class="side">
+  <section class="box">
+    <h2 id="nowTitle">Level</h2>
+    <div class="lvl"><div class="big" id="nowN">–</div><div class="info">
+      <div class="unit" id="nowName">Waiting for the game</div>
+      <div class="tags" id="nowTags"></div>
+      <div class="line" id="nowLine"></div>
+    </div></div>
+  </section>
+  <section class="box">
+    <h2>Next</h2>
+    <div class="warn" id="warn"></div>
+    <div class="lvl"><div class="big" id="nextN">–</div><div class="info">
+      <div class="unit" id="nextName"></div>
+      <div class="tags" id="nextTags"></div>
+      <div class="stats" id="nextStats"></div>
+    </div><div class="count" id="count"></div></div>
+  </section>
+  <section class="box">
+    <h2>Ahead</h2>
+    <div class="ahead" id="ahead"></div>
+  </section>
+  <section class="box">
+    <h2>Kills</h2>
+    <div class="scroll"><table><thead><tr><th>Player</th><th class="n">Kills</th></tr></thead><tbody id="players"></tbody></table></div>
+  </section>
+</div>
+<ol class="grid" id="grid"></ol>
+</main>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+// The game's player colors, by color index.
+const COLORS = ["#ff0303","#0042ff","#1ce6b9","#540081","#fffc01","#fe8a0e","#20c000","#e55bb0","#959697","#7ebff1","#106246","#4e2a04"];
+const fmt = n => n >= 10000 ? (Math.round(n / 1000) + "k") : n.toLocaleString();
+const goldText = g => g[0] === g[1] ? fmt(g[0]) : `${fmt(g[0])}–${fmt(g[1])}`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const kinds = l => [l.boss && "boss", l.air && "air", l.fantas && "fan"].filter(Boolean);
+const tagsHtml = l => (l.fantas ? '<span class="tag fan">Fantas</span>' : "") + (l.air ? '<span class="tag air">Air</span>' : "") + (l.boss ? '<span class="tag boss">Boss</span>' : "");
+const danger = l => l && (l.boss ? "boss" : l.air ? "air" : null);
+
+// ---- Sound: synthesized, so it needs no files; browsers allow it only after a click.
+let ctx = null, soundOn = false;
+try { soundOn = localStorage.getItem("tddash.sound") === "1"; } catch (e) {}
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+function tone(t, f0, f1, dur, type, vol) {
+  const a = audio(), o = a.createOscillator(), g = a.createGain(), lp = a.createBiquadFilter();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  lp.type = "lowpass"; lp.frequency.value = type === "sawtooth" ? 900 : 6000;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(lp).connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+// Boss: two low war-horn blasts.  Air: rising whistles.  Tick: a short click for the last seconds.
+function play(kind) {
+  if (!soundOn) return;
+  const t = audio().currentTime + 0.02;
+  if (kind === "boss") { tone(t, 98, 92, 0.7, "sawtooth", 0.5); tone(t, 147, 138, 0.7, "sawtooth", 0.25); tone(t + 0.85, 98, 82, 1.1, "sawtooth", 0.5); tone(t + 0.85, 147, 123, 1.1, "sawtooth", 0.25); }
+  else if (kind === "air") { for (let i = 0; i < 3; i++) tone(t + i * 0.28, 700, 1600, 0.24, "sine", 0.3); }
+  else if (kind === "boss-tick") tone(t, 220, 200, 0.18, "square", 0.18);
+  else if (kind === "air-tick") tone(t, 1320, 1320, 0.12, "sine", 0.22);
+  else if (kind === "soft") { tone(t, 660, 660, 0.25, "triangle", 0.25); tone(t + 0.3, 880, 880, 0.35, "triangle", 0.25); }
+}
+function say(text) {
+  if (!soundOn || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function showSound() { $("sound").textContent = "Sound: " + (soundOn ? "on" : "off"); $("sound").setAttribute("aria-pressed", soundOn); }
+$("sound").onclick = () => { soundOn = !soundOn; try { localStorage.setItem("tddash.sound", soundOn ? "1" : "0"); } catch (e) {} if (soundOn) { audio(); play("soft"); } showSound(); };
+$("test").onclick = () => { const was = soundOn; soundOn = true; audio(); play("boss"); setTimeout(() => play("air"), 2200); soundOn = was; };
+showSound();
+
+// ---- Warnings: each said once per level and stage, however often the state comes.
+const warned = new Set();
+function warnOnce(key, fn) { if (!warned.has(key)) { warned.add(key); fn(); } }
+function alerts(s, next) {
+  const kind = danger(next);
+  if (!kind) return;
+  const what = kind === "boss" ? `Boss level ${next.n}, ${next.name}` : `Air level ${next.n}, ${next.name}`;
+  // While the level before is still being fought: a first heads-up.
+  if (s.fight && s.level === next.n - 1) warnOnce(next.n + ":early", () => { play("soft"); setTimeout(() => say(`${what}, is next`), 700); });
+  if (!s.fight && s.countdown != null) {
+    const secs = Math.ceil(s.countdown);
+    warnOnce(next.n + ":count", () => { play(kind); setTimeout(() => say(`${what}, in ${secs} seconds`), kind === "boss" ? 2100 : 1000); });
+    if (secs <= 3 && secs >= 1) warnOnce(next.n + ":tick" + secs, () => play(kind + "-tick"));
+  }
+}
+
+// ---- Rendering.
+let gridKey = "";
+function renderGrid(s) {
+  const key = JSON.stringify(s.levels);
+  if (key !== gridKey) {
+    gridKey = key;
+    $("grid").innerHTML = s.levels.map(l => `<li class="cell ${kinds(l).join(" ")}" id="c${l.n}"><div class="top"><b>${l.n}</b><span class="marks">${tagsHtml(l)}</span></div><div class="name">${esc(l.name || "?")}</div><dl><div><dt>Count</dt><dd>${l.count} &times; ${l.spawns}</dd></div><div><dt>HP</dt><dd>${fmt(l.hp)}</dd></div><div><dt>Gold</dt><dd class="gold">${goldText(l.gold)}</dd></div></dl></li>`).join("");
+  }
+  const upcoming = s.fight ? s.level + 1 : s.level + 1;
+  for (const l of s.levels) {
+    const c = $("c" + l.n);
+    c.classList.toggle("done", l.n < s.level || (l.n === s.level && !s.fight));
+    c.classList.toggle("now", l.n === s.level && s.fight);
+    c.classList.toggle("next", l.n === upcoming);
+  }
+}
+function render(s) {
+  $("map").textContent = s.map;
+  const lv = s.levels, cur = lv[s.level - 1], next = lv[s.level];
+  // The level panel: the one being fought, or the last one cleared.
+  if (!cur) {
+    $("nowTitle").textContent = "Level"; $("nowN").textContent = "0"; $("nowN").className = "big";
+    $("nowName").textContent = "Building phase"; $("nowTags").innerHTML = "";
+  } else {
+    $("nowTitle").textContent = s.fight ? "Fighting" : "Cleared";
+    $("nowN").textContent = cur.n; $("nowN").className = "big " + kinds(cur).join(" ");
+    $("nowName").textContent = cur.name; $("nowTags").innerHTML = tagsHtml(cur);
+  }
+  const total = cur ? cur.count * cur.spawns : 0;
+  $("nowLine").innerHTML = (s.fight ? `<b>${s.creeps}</b> of ${total} creeps left · ` : "") + `<b>${s.lives}</b> lives`;
+  // The next level, its countdown, and its warning.
+  if (!next) {
+    $("nextN").textContent = "–"; $("nextN").className = "big"; $("nextName").textContent = s.level >= lv.length && !s.fight ? "All levels cleared" : "Last level";
+    $("nextTags").innerHTML = ""; $("nextStats").innerHTML = ""; $("count").textContent = ""; $("warn").className = "warn";
+  } else {
+    $("nextN").textContent = next.n; $("nextN").className = "big " + kinds(next).join(" ");
+    $("nextName").textContent = next.name; $("nextTags").innerHTML = tagsHtml(next);
+    $("nextStats").innerHTML = `<span>Count <b>${next.count} &times; ${next.spawns}</b></span><span>HP <b>${fmt(next.hp)}</b></span><span class="gold">Gold <b>${goldText(next.gold)}</b></span>`;
+    $("count").textContent = !s.fight && s.countdown != null ? Math.ceil(s.countdown) + "s" : "";
+    const kind = danger(next), w = $("warn");
+    if (kind) {
+      const soon = !s.fight && s.countdown != null;
+      const title = kind === "boss" ? "Boss incoming" : "Air incoming";
+      const sub = kind === "boss" ? `${next.count * next.spawns} &times; ${esc(next.name)}, ${fmt(next.hp)} HP each` : "Only anti-air towers can hit them";
+      w.innerHTML = `<div>${title}${soon ? ` in ${Math.ceil(s.countdown)}s` : ""}<small>${sub}</small></div>`;
+      w.className = `warn on ${kind}${soon ? " urgent" : ""}`;
+    } else w.className = "warn";
+  }
+  // The next air, boss, and fantas levels after the one being fought.
+  const from = s.level + 1;
+  $("ahead").innerHTML = [["air", "Next air", l => l.air], ["boss", "Next boss", l => l.boss], ["fan", "Next fantas", l => l.fantas]].map(([cls, label, f]) => {
+    const l = lv.find(l => l.n >= from && f(l));
+    return `<div class="${cls}"><span>${label}</span>${l ? `<b>${l.n}</b><em>${l.n === from ? "next level" : `in ${l.n - s.level} levels`}</em>` : `<b>–</b><em>none left</em>`}</div>`;
+  }).join("");
+  $("players").innerHTML = s.players.length ? s.players.slice().sort((a, b) => b.kills - a.kills).map(p => `<tr><td><span class="sw" style="background:${COLORS[p.color] || "#888"}"></span>${esc(p.name)}${p.left ? ' <span class="gone">left</span>' : ""}</td><td class="n">${p.kills.toLocaleString()}</td></tr>`).join("") : `<tr><td class="empty" colspan="2">No players</td></tr>`;
+  renderGrid(s);
+  alerts(s, next);
+}
+
+// ---- Live state over a WebSocket, pushed by the game four times a second.  A game time
+// that stops moving is a paused game; no message at all for a while, a stalled one.  The
+// socket comes back on its own (the server goes with each game and returns with the next).
+function setStatus(text, cls) { $("status").textContent = text; $("status").className = "status " + cls; }
+let lastTime = null, lastMove = 0, lastMsg = 0, retry = 500;
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { retry = 500; };
+  ws.onmessage = ev => {
+    let s;
+    try { s = JSON.parse(ev.data); } catch (e) { return; }
+    if (!s.levels) return;
+    const now = performance.now();
+    lastMsg = now;
+    if (s.time !== lastTime) { lastTime = s.time; lastMove = now; }
+    const paused = now - lastMove > 1500;
+    setStatus(paused ? "Paused" : "Live", paused ? "paused" : "live");
+    render(s);
+  };
+  ws.onclose = () => {
+    setStatus("Offline", "down");
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 5000);
+  };
+}
+setInterval(() => { if (lastMsg && performance.now() - lastMsg > 3000 && $("status").className.includes("live")) setStatus("Stalled", "paused"); }, 1000);
+connect();
+</script>
+</body>
+</html>

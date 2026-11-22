@@ -1123,6 +1123,18 @@ impl Vm {
         Some(self.var_value(v))
     }
 
+    /// A global array's element as the host sees it; an element never set reads as its
+    /// type's zero, as a script's read of it would.  None for a scalar global.
+    pub fn global_elem(&self, name: &str, k: usize) -> Option<Value> {
+        let g = *self.module.global_index.get(name)?;
+        let v = self.vars.get(g as usize)?;
+        if v.decl <= ty::BOOLEAN {
+            return None;
+        }
+        let value = v.array.as_ref().and_then(|x| x.get(k).copied()).unwrap_or(0);
+        Some(self.var_value(&Var { kind: v.decl - 5, value, ..Default::default() }))
+    }
+
     fn var_value(&self, v: &Var) -> Value {
         if v.kind == 0 {
             return Value::Uninit;

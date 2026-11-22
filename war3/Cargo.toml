@@ -27,6 +27,7 @@ serde.workspace = true
 serde_json.workspace = true
 postcard.workspace = true
 dirs.workspace = true
+tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 
 [dev-dependencies]
 pollster.workspace = true

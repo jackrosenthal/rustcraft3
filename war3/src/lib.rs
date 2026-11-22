@@ -31,4 +31,5 @@ pub mod quests;
 pub mod msglog;
 pub mod net;
 pub mod netdialog;
+pub mod tddash;
 mod presentation;

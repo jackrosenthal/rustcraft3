@@ -54,6 +54,14 @@ struct Running {
     fit: Option<(Option<u32>, Option<u32>)>,
 }
 
+/// Whether W, A, S, and D pan the camera (as the arrow keys do) rather than type or press
+/// the command card's hotkeys: not while chat, a save's name, or the game menu takes the
+/// keyboard, and not with Ctrl or Alt held, whose shortcuts (Ctrl+S, Alt+S) keep them.
+fn wasd_pans(scene: &Scene) -> bool {
+    let typing = scene.hud.as_ref().is_some_and(|h| h.chat.is_some() || h.save_panel.is_some() || h.menu.is_some());
+    !typing && !scene.alt_held && !scene.ctrl_held
+}
+
 impl Running {
     /// Starts the loaded game: the music stops, the menus are kept for afterwards.
     fn start_ready(r: &mut Running) {
@@ -227,9 +235,13 @@ impl ApplicationHandler for App {
                 }
                 if event.state == ElementState::Pressed {
                     if let (Some(scene), Some(text)) = (r.scene.as_mut(), event.text.as_ref()) {
-                        // Escape comes through its key code below.
-                        for c in text.chars().filter(|&c| c != '\u{1b}') {
-                            scene.key(c);
+                        // W, A, S, and D pan the camera instead of reaching the command card.
+                        let wasd = matches!(event.physical_key, PhysicalKey::Code(KeyCode::KeyW | KeyCode::KeyA | KeyCode::KeyS | KeyCode::KeyD));
+                        if !(wasd && wasd_pans(scene)) {
+                            // Escape comes through its key code below.
+                            for c in text.chars().filter(|&c| c != '\u{1b}') {
+                                scene.key(c);
+                            }
                         }
                     }
                     if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
@@ -468,6 +480,10 @@ impl ApplicationHandler for App {
                     let key = |c: KeyCode| r.keys.contains(&c);
                     k.x += key(KeyCode::ArrowRight) as i32 as f32 - key(KeyCode::ArrowLeft) as i32 as f32;
                     k.y += key(KeyCode::ArrowUp) as i32 as f32 - key(KeyCode::ArrowDown) as i32 as f32;
+                    if wasd_pans(scene) {
+                        k.x += key(KeyCode::KeyD) as i32 as f32 - key(KeyCode::KeyA) as i32 as f32;
+                        k.y += key(KeyCode::KeyW) as i32 as f32 - key(KeyCode::KeyS) as i32 as f32;
+                    }
                     if edges {
                         m.x += (r.cursor.x >= w - 1.0 - edge) as i32 as f32 - (r.cursor.x <= edge) as i32 as f32;
                         m.y += (r.cursor.y <= edge) as i32 as f32 - (r.cursor.y >= h - 1.0 - edge) as i32 as f32;

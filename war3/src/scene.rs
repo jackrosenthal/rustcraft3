@@ -5006,7 +5006,8 @@ impl Scene {
 
     /// Starts Mafarazzo TD's dashboard on the first update of a game of it this computer
     /// hosts or plays alone (not a replay: its host already had one), telling the player
-    /// where to find it; then keeps it current.
+    /// where to find it; then keeps it current.  A hosted game takes over the server its
+    /// lobby opened, the pages open on it following the game.
     fn update_tddash(&mut self, dt: f32) {
         let Some(g) = self.game.as_ref() else { return };
         if !std::mem::replace(&mut self.tddash_checked, true) {
@@ -5023,6 +5024,8 @@ impl Scene {
                     Err(e) => log::warn!("Mafarazzo TD dashboard: port {}: {e}", crate::tddash::DEFAULT_PORT),
                 }
             }
+            // A lobby's dashboard this game did not take over stops.
+            crate::tddash::close_lobby();
         }
         if let Some(d) = self.tddash.as_mut() {
             d.update(g, dt);

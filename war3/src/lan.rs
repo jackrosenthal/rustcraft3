@@ -112,6 +112,8 @@ pub struct Lan {
     pub sounds: Vec<String>,
     /// The people the host turned out, by id and name, until they are gone.
     kicked: Vec<(u8, String)>,
+    /// The map's name, while the host's lobby serves Mafarazzo TD's dashboard.
+    tddash: Option<String>,
 }
 
 impl Lan {
@@ -144,6 +146,7 @@ impl Lan {
             countdown: None,
             sounds: Vec::new(),
             kicked: Vec::new(),
+            tddash: None,
         }
     }
 
@@ -260,7 +263,9 @@ impl Lan {
             }
         }
         if self.host.is_some() {
-            return self.host_update(db);
+            let e = self.host_update(db);
+            self.publish_tddash(false);
+            return e;
         }
         if self.client.is_some() {
             return self.client_update(db);
@@ -413,6 +418,19 @@ impl Lan {
         self.chat_first = None;
         self.cursor_clock = std::time::Instant::now();
         self.rebuild = true;
+        // Mafarazzo TD's dashboard serves from the lobby on; its game takes it over.
+        self.tddash = None;
+        let script = archive.read("war3map.j").or_else(|_| archive.read("Scripts\\war3map.j")).unwrap_or_default();
+        if crate::tddash::is_mafarazzo_script(&script) {
+            match crate::tddash::open_lobby(chain, crate::tddash::DEFAULT_PORT) {
+                Ok(url) => {
+                    log::info!("Mafarazzo TD dashboard at {url}");
+                    self.chat.push(format!("|cffffcc00Level dashboard:|r {url}"));
+                    self.tddash = Some(summary.text(&summary.info.name));
+                }
+                Err(e) => log::warn!("Mafarazzo TD dashboard: port {}: {e}", crate::tddash::DEFAULT_PORT),
+            }
+        }
         Ok(())
     }
 
@@ -525,6 +543,9 @@ impl Lan {
     pub fn leave(&mut self) {
         if let Some(mut h) = self.host.take() {
             h.close();
+        }
+        if self.tddash.take().is_some() {
+            crate::tddash::close_lobby();
         }
         if let Some(mut c) = self.client.take() {
             c.leave(leave::LOBBY);
@@ -828,8 +849,22 @@ impl Lan {
             .collect()
     }
 
+    /// Mafarazzo TD's dashboard, while the lobby serves it: the lobby as it stands, or
+    /// its game loading.
+    fn publish_tddash(&self, loading: bool) {
+        let Some(map) = self.tddash.clone() else { return };
+        let players = self.setup.slots.iter().filter(|s| matches!(s.holder, Holder::Human(_))).map(|s| (s.name.clone(), s.color)).collect();
+        let countdown = self.countdown.map(|t| (6.0 - t).ceil().max(1.0) as u32);
+        crate::tddash::lobby_update(&crate::tddash::LobbyState { map, players, countdown, loading });
+    }
+
     /// The host starts the game.
     pub fn start(&mut self) -> Option<Event> {
+        // The dashboard's server stays, for the game to take over.
+        if self.host.is_some() {
+            self.publish_tddash(true);
+            self.tddash = None;
+        }
         let mut h = self.host.take()?;
         h.end_countdown();
         let seed = h.slots.seed;

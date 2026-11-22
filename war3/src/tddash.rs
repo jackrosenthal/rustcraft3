@@ -8,6 +8,10 @@
 //! (the 2.x originals, the RELAXED versions with their larger counts) all read right:
 //! the level table is the script's own `udg_RoundEnemy`/`udg_RoundAmount`, its creeps'
 //! names, life, bounty, and movement from the map's object data.
+//!
+//! The host's lobby of the map serves the page already (`open_lobby`), showing who is
+//! in it; the game takes that server over as it begins, so a page opened in the lobby
+//! follows the game on the same connection.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, UdpSocket};
@@ -52,9 +56,18 @@ const FANTAS: &[(u32, &[u8; 4])] = &[(2, b"h010"), (19, b"h011"), (28, b"h012"),
 /// How often the page's state is remade, in real seconds.
 const PUBLISH_EVERY: f32 = 0.25;
 
+/// The script's globals that make a map Mafarazzo TD: the level table and round timer.
+const GLOBALS: [&str; 6] = ["udg_RoundEnemy", "udg_RoundAmount", "udg_Level", "udg_NewRound", "udg_Lives", "udg_Fight"];
+
 /// Whether a game is of Mafarazzo TD: its script has the level table and round timer.
 pub fn is_mafarazzo(g: &Game) -> bool {
-    ["udg_RoundEnemy", "udg_RoundAmount", "udg_Level", "udg_NewRound", "udg_Lives", "udg_Fight"].iter().all(|n| g.vm.global(n).is_some())
+    GLOBALS.iter().all(|n| g.vm.global(n).is_some())
+}
+
+/// Whether a map's script (its `war3map.j`, before a game of it runs) is Mafarazzo TD's.
+pub fn is_mafarazzo_script(script: &[u8]) -> bool {
+    let script = String::from_utf8_lossy(script);
+    GLOBALS.iter().all(|n| script.contains(n))
 }
 
 /// What the game thread shares with the server's: the state as last published with its
@@ -101,6 +114,96 @@ fn nuke_sound() -> Option<(&'static str, Arc<[u8]>)> {
 /// The HSBC (all the map's edits), whose finishing the page cheers with gold's ring.
 const HSBC: &[u8; 4] = b"o008";
 
+/// Reads the page's sounds from the game's archives (and `NUKE_FILE`).
+fn read_sounds(chain: &w3_mpq::Chain) -> Vec<(&'static str, Arc<[u8]>)> {
+    SOUNDS
+        .iter()
+        .filter_map(|&(name, file)| match chain.read(file) {
+            Ok(b) => Some((name, Arc::from(b))),
+            Err(e) => {
+                log::warn!("tddash: {file}: {e}");
+                None
+            }
+        })
+        .chain(nuke_sound())
+        .collect()
+}
+
+/// Binds the port and serves the page from a thread of its own, until `stop`; with the
+/// link to show.
+fn serve_on(port: u16, sounds: Vec<(&'static str, Arc<[u8]>)>) -> std::io::Result<(Arc<Shared>, String)> {
+    let listener = TcpListener::bind(("0.0.0.0", port))?;
+    listener.set_nonblocking(true)?;
+    let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false), sounds });
+    {
+        let shared = shared.clone();
+        std::thread::Builder::new().name("tddash".into()).spawn(move || serve(listener, shared))?;
+    }
+    Ok((shared, format!("http://{}:{port}/", lan_address().unwrap_or_else(|| "localhost".into()))))
+}
+
+/// The server a lobby opened, until its game takes it (`Dashboard::start`) or the lobby
+/// closes.
+struct Lobby {
+    shared: Arc<Shared>,
+    url: String,
+    port: u16,
+}
+
+static LOBBY: Mutex<Option<Lobby>> = Mutex::new(None);
+
+/// Serves the page for a lobby of the map this computer hosts, its sounds from the
+/// game's archives; the link to show.  A server a lobby already opened is kept.
+pub fn open_lobby(chain: &w3_mpq::Chain, port: u16) -> std::io::Result<String> {
+    let mut lobby = LOBBY.lock().unwrap();
+    if let Some(l) = lobby.as_ref().filter(|l| l.port == port) {
+        return Ok(l.url.clone());
+    }
+    close(lobby.take());
+    let (shared, url) = serve_on(port, read_sounds(chain))?;
+    *lobby = Some(Lobby { shared, url: url.clone(), port });
+    Ok(url)
+}
+
+/// Stops the lobby's server, unless its game took it.
+pub fn close_lobby() {
+    close(LOBBY.lock().unwrap().take());
+}
+
+fn close(lobby: Option<Lobby>) {
+    if let Some(l) = lobby {
+        l.shared.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// What the page shows of the lobby: its map, its people, and the countdown to the start
+/// (or that the game is loading).
+#[derive(Serialize, PartialEq)]
+pub struct LobbyState {
+    pub map: String,
+    /// Each person's name and color.
+    pub players: Vec<(String, i32)>,
+    /// Whole seconds until the game starts, while the countdown runs.
+    pub countdown: Option<u32>,
+    /// The countdown is over and the game loads.
+    pub loading: bool,
+}
+
+/// Pushes the lobby's state to the pages connected, if it changed.
+pub fn lobby_update(state: &LobbyState) {
+    let lobby = LOBBY.lock().unwrap();
+    let Some(l) = lobby.as_ref() else { return };
+    #[derive(Serialize)]
+    struct Message<'a> {
+        lobby: &'a LobbyState,
+    }
+    let Ok(json) = serde_json::to_string(&Message { lobby: state }) else { return };
+    let mut s = l.shared.state.lock().unwrap();
+    if *s.1 != *json {
+        *s = (s.0 + 1, Arc::from(json));
+    }
+}
+
 /// The running server.  Dropping it stops its threads and frees the port, for the next
 /// game to bind.
 pub struct Dashboard {
@@ -130,26 +233,17 @@ impl Drop for Dashboard {
 }
 
 impl Dashboard {
+    /// Serves the page for a game, taking over the server its lobby opened on the port
+    /// (the pages open on it go on to the game), or binding the port.
     pub fn start(g: &Game, port: u16) -> std::io::Result<Dashboard> {
-        let listener = TcpListener::bind(("0.0.0.0", port))?;
-        listener.set_nonblocking(true)?;
-        let sounds = SOUNDS
-            .iter()
-            .filter_map(|&(name, file)| match g.world.chain.read(file) {
-                Ok(b) => Some((name, Arc::from(b))),
-                Err(e) => {
-                    log::warn!("tddash: {file}: {e}");
-                    None
-                }
-            })
-            .chain(nuke_sound())
-            .collect();
-        let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false), sounds });
-        {
-            let shared = shared.clone();
-            std::thread::Builder::new().name("tddash".into()).spawn(move || serve(listener, shared))?;
-        }
-        let url = format!("http://{}:{port}/", lan_address().unwrap_or_else(|| "localhost".into()));
+        let lobby = LOBBY.lock().unwrap().take();
+        let (shared, url) = match lobby {
+            Some(l) if l.port == port => (l.shared, l.url),
+            other => {
+                close(other);
+                serve_on(port, read_sounds(&g.world.chain))?
+            }
+        };
         let (boss, fantas) = tagged_levels(g);
         let (tech, unlocks) = tech_tree(g);
         let mut d = Dashboard { shared, url, since: PUBLISH_EVERY, boss, fantas, lives_max: 0, unlocks, tech, hsbcs: Vec::new(), hsbc: Hsbc::default() };

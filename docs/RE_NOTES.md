@@ -2732,6 +2732,13 @@ these are the findings behind them.
   tower's collision 144; no stop at `FUN_6f495180`, at its reach test
   `FUN_6f05b580` (from 0x6f4952e1), or at `FUN_6f49a240` from 49.7 to 50.13
   seconds.  The upgrade games now agree to turn 507 (from 480), the trace to 506.
+  A walk into range whose search (its first step, or the one after its blocked count)
+  finds the target within its weapon's reach arrives at once (0xd0196): its task
+  popped, its path and cluster let go as a walk's end's, and its attack pushed, trying
+  by that step's agent clock (`World::reach_walk_arrived`).  Without it the port's
+  Towers of Vengence never fired.  Provisional: the arrival is not traced (the
+  captures read had the target out of reach at each search), nor its objects; the
+  upgrade captures were not run again with it.
 - A structure's take-up's last block, run at once, goes as its main tick ends: freed
   by the next step's timed frees, or with the turn's releases after the steps
   (`World::free_as_tick_ends`; traced: the upgrade game's Arrow-kind tower's take-up

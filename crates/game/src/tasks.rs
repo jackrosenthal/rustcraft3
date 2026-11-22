@@ -214,6 +214,15 @@ impl World {
     pub(crate) fn reach_walk_step(&mut self, h: u32, k: usize) -> bool {
         use crate::efloat as ef;
         let Some(ReachWalk::Walk { mut steps, path }) = self.unit(h).and_then(|u| u.extra.reach_walk.clone()) else { return false };
+        // A search that finds its target within its weapon's reach arrives at once
+        // (CAbilityMove's 0xd0196): the attack's try then (`FUN_6f499310` →
+        // `FUN_6f495180`).  Without it a Tower of Vengence only ever took up, reacted,
+        // held, and gave up, and never fired.  (Provisional: read only out of reach; the
+        // arrival's objects are not traced.)
+        if (steps == 0 || steps == 1) && self.reach_arrives(h, k) {
+            self.reach_walk_arrived(h, k, path);
+            return true;
+        }
         // Its first step searches and finds it blocked: its count, 7 or 8, is drawn
         // then on the main generator (`FUN_6f167290` → `FUN_6f1689d0`,
         // `FUN_6f1d62b0(2)`), and it holds the count's steps, then the one it searches
@@ -263,6 +272,45 @@ impl World {
             u.extra.look_timer = Some((n, due, LOOK_AFTER_DROP));
         }
         true
+    }
+
+    /// Whether a structure walking into range reaches the target it took up in movement
+    /// step `k` (as its try judges it, `World::first_try`).
+    fn reach_arrives(&self, h: u32, k: usize) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let crate::types::Action::Attack { target } = u.action else { return false };
+        if u.extra.acquired != target {
+            return false;
+        }
+        let Some(t) = self.unit(target).filter(|t| !t.dead) else { return false };
+        let Some((_, wp)) = crate::sim::weapon_for(self, u, t) else { return false };
+        let reach = wp.range + self.upgrade_bonus(u.owner, u.type_id).range;
+        let at = self.step_abs(k).map_or(self.time_exact, |s| s.1);
+        let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
+        self.reaches_walker(h, target, reach, at).unwrap_or(d <= reach)
+    }
+
+    /// A structure's walk into range arrives in movement step `k`, its target within
+    /// reach: the walk's task popped and freed as the step ends, its path and cluster at
+    /// the next step (`Tags::walk_ended`), and its attack pushed, trying at once, by the
+    /// step's agent clock; its swing begins with the units' logic (`World::try_attack`),
+    /// and its next try as its cooldown runs out (`World::first_try`).
+    fn reach_walk_arrived(&mut self, h: u32, k: usize, path: [u32; 2]) {
+        let Some(u) = self.unit_mut(h) else { return };
+        u.extra.reach_walk = None;
+        let serial = u.extra.walk_serial;
+        let walk = if u.extra.attack_tasks.last().is_some_and(|t| t.1 == MOVE_TO) { u.extra.attack_tasks.pop() } else { None };
+        if let Some((s, _)) = walk {
+            self.tags.release_in_step(s);
+        }
+        self.tags.walk_ended(path, serial);
+        let attack = self.tags.take(codes::class::TASK_T);
+        let at = self.step_abs(k).map_or(self.time_exact, |s| s.1);
+        log::trace!("{h} arrives in range at step {k} ({at:.6})");
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.attack_tasks.push((attack, ATTACK));
+            u.extra.first_swing_at = Some(at);
+        }
     }
 
     /// The attack's own tasks popped (`FUN_6f497190`): the attack, its reaction wait

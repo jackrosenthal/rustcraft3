@@ -526,6 +526,7 @@ impl Lan {
             Chat::Color(c) if !fixed => s.color = (c as i32).min(11),
             Chat::Race(bits) if !fixed => s.race = [0x20u8, 0x01, 0x02, 0x08, 0x04].iter().position(|&r| bits & r != 0).unwrap_or(0),
             Chat::Handicap(h) => s.handicap = (100u8.saturating_sub(h) / 10).min(5) as usize,
+            Chat::Slot(k) => take_slot(&mut self.setup, Holder::Human(pid), k as usize),
             _ => {}
         }
     }
@@ -849,14 +850,22 @@ impl Lan {
                 h => {
                     // An observer's slot is open or closed, never a computer's.
                     let keys: &[&str] = if observer { &["OPEN", "CLOSED"] } else { &["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"] };
-                    let items = keys.iter().map(|k| db.string(k)).collect();
+                    let mut items: Vec<String> = keys.iter().map(|k| db.string(k)).collect();
                     let sel = match h {
                         Holder::Closed => 1,
                         Holder::Computer(d) => 2 + d.clamp(0, 2) as usize,
                         _ => 0,
                     };
+                    // An open slot can be taken: a joined player's with a click, the host's
+                    // by choosing their own name, after the menu's other entries.
+                    let me = self.setup.slots.iter().find(|o| o.holder == Holder::Human(self.me) && !o.locked);
+                    let take = h == Holder::Open && !self.setup.saved && !s.locked && me.is_some();
+                    if let (true, true, Some(me)) = (host, take, me) {
+                        items.push(me.name.clone());
+                    }
                     tree.set_items(&name_menu, items, sel);
-                    tree.set_enabled(&name_menu, host && !self.setup.saved && !s.locked);
+                    tree.set_enabled(&name_menu, (host || take) && !self.setup.saved && !s.locked);
+                    tree.set_press_only(&name_menu, !host && take);
                 }
             }
             tree.set_selected(&format!("RaceMenu{scope}"), s.race);
@@ -949,7 +958,14 @@ impl Lan {
         let Some(s) = self.setup.slots.get_mut(k) else { return };
         let mine = !s.locked && (s.holder == Holder::Human(me) || (host && matches!(s.holder, Holder::Computer(_))));
         let mut kick = None;
+        let mut take = None;
+        // The entry past an open slot's choices is the host's own name.
+        let host_take = if s.team == OBSERVERS { 2 } else { 5 };
         match part {
+            "NameMenu" if s.holder == Holder::Open && !saved && !s.locked && (!host || chosen == host_take) => {
+                take = Some(k);
+                choice = Chat::Slot(k as u8);
+            }
             "NameMenu" if host && !saved && !s.locked && !matches!(s.holder, Holder::Human(_)) => {
                 s.holder = match chosen {
                     0 => Holder::Open,
@@ -995,6 +1011,10 @@ impl Lan {
         }
         if let Some((holder, team)) = move_to {
             choose_team(&mut self.setup, holder, team);
+        }
+        // A joined player's request is the host's to grant.
+        if let (Some(to), true) = (take, host) {
+            take_slot(&mut self.setup, Holder::Human(me), to);
         }
         if let (Some((pid, name)), Some(h)) = (kick, self.host.as_mut()) {
             h.kick(pid, leave::LOBBY);
@@ -1088,7 +1108,24 @@ fn choose_team(setup: &mut net::Setup, holder: Holder, team: i32) {
         return;
     }
     let to = setup.slots.iter().position(|s| s.holder == Holder::Open && if forces { s.team == team } else { (s.team == OBSERVERS) == (team == OBSERVERS) });
-    let Some(to) = to else { return };
+    if let Some(to) = to {
+        move_to(setup, k, to);
+    }
+}
+
+/// A person takes an open slot they chose, keeping their race (unless the map fixes it)
+/// and handicap; the slot keeps its team and color.  A loaded game's slots and a locked
+/// slot stay as they are.
+fn take_slot(setup: &mut net::Setup, holder: Holder, to: usize) {
+    let Some(k) = setup.slots.iter().position(|s| s.holder == holder) else { return };
+    if setup.saved || setup.slots.get(to).is_none_or(|s| s.holder != Holder::Open || s.locked) || setup.slots[k].locked {
+        return;
+    }
+    move_to(setup, k, to);
+}
+
+/// Moves slot `k`'s person to the open slot `to`, leaving `k` open.
+fn move_to(setup: &mut net::Setup, k: usize, to: usize) {
     let old = setup.slots[k].clone();
     let slot = &mut setup.slots[to];
     slot.holder = old.holder;
@@ -1109,6 +1146,28 @@ mod tests {
 
     fn slot(player: u8, holder: Holder, team: i32) -> NetSlot {
         NetSlot { player, holder, name: if let Holder::Human(_) = holder { format!("p{player}") } else { String::new() }, race: 1, team, color: player as i32, handicap: 0, locked: false }
+    }
+
+    #[test]
+    fn a_player_takes_the_open_slot_they_chose() {
+        let mut setup = net::Setup { slots: vec![slot(0, Holder::Human(0), 0), slot(1, Holder::Human(5), 1), slot(2, Holder::Open, 2), slot(3, Holder::Open, 3)], ..Default::default() };
+        setup.slots[1].handicap = 2;
+        take_slot(&mut setup, Holder::Human(5), 3);
+        assert_eq!(setup.slots[1].holder, Holder::Open);
+        assert!(setup.slots[1].name.is_empty());
+        assert_eq!((setup.slots[3].holder, setup.slots[3].name.as_str(), setup.slots[3].handicap), (Holder::Human(5), "p1", 2));
+        // The slot keeps its own team and color.
+        assert_eq!((setup.slots[3].team, setup.slots[3].color), (3, 3));
+        // A slot someone holds, or a locked one, is not taken.
+        take_slot(&mut setup, Holder::Human(5), 0);
+        assert_eq!(setup.slots[0].holder, Holder::Human(0));
+        setup.slots[2].locked = true;
+        take_slot(&mut setup, Holder::Human(5), 2);
+        assert_eq!(setup.slots[3].holder, Holder::Human(5));
+        // Nor any of a loaded game's.
+        setup.saved = true;
+        take_slot(&mut setup, Holder::Human(5), 1);
+        assert_eq!(setup.slots[3].holder, Holder::Human(5));
     }
 
     #[test]

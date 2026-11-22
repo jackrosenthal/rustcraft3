@@ -45,6 +45,9 @@ pub enum Chat {
     Color(u8),
     Race(u8),
     Handicap(u8),
+    /// A joined player asking for an open slot by its number (flag 0x15).  rustcraft3's
+    /// own: the original's lobby has no way to ask for one, and its host does not know it.
+    Slot(u8),
     /// A line in the game (flag 0x20): to all (0), allies (1), observers (2), or a
     /// player (3 + the player).
     Game { scope: u32, text: String },
@@ -200,6 +203,7 @@ fn write_chat(w: &mut Writer, to: &[u8], from: u8, chat: &Chat) {
         Chat::Color(v) => w.u8(0x12).u8(*v),
         Chat::Race(v) => w.u8(0x13).u8(*v),
         Chat::Handicap(v) => w.u8(0x14).u8(*v),
+        Chat::Slot(v) => w.u8(0x15).u8(*v),
         Chat::Game { scope, text } => w.u8(0x20).u32(*scope).cstr(text),
     };
 }
@@ -214,6 +218,7 @@ fn read_chat(r: &mut Reader) -> Result<(Vec<u8>, u8, Chat), Error> {
         0x12 => Chat::Color(r.u8()?),
         0x13 => Chat::Race(r.u8()?),
         0x14 => Chat::Handicap(r.u8()?),
+        0x15 => Chat::Slot(r.u8()?),
         0x20 => Chat::Game { scope: r.u32()?, text: r.cstr()? },
         f => return Err(Error::Bad(format!("chat flag {f:#x}"))),
     };

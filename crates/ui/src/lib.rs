@@ -294,6 +294,9 @@ pub struct Frame {
     pub pulldown: Option<usize>,
     /// A list's rows drawn as these images (CTeamColorData's swatches) in place of text.
     pub item_images: Vec<String>,
+    /// A popup menu pressed like a button: a click reports it in place of opening its
+    /// list (a joined player's open lobby slot, taken with a click).
+    pub press_only: bool,
     /// A text frame given its text's width (fit_text_widths), which its text fills.
     pub fitted: bool,
     /// A scroll bar's range and step as its list sets them (CMapList sets its maximum to
@@ -374,6 +377,7 @@ impl FrameTree {
             color: None,
             pulldown: None,
             item_images: Vec::new(),
+            press_only: false,
             fitted: false,
             range: None,
         });
@@ -441,6 +445,7 @@ impl FrameTree {
             color: None,
             pulldown: None,
             item_images: Vec::new(),
+            press_only: false,
             fitted: false,
             range: None,
         });
@@ -877,6 +882,12 @@ impl FrameTree {
         }
     }
 
+    pub fn set_press_only(&mut self, name: &str, v: bool) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].press_only = v;
+        }
+    }
+
     pub fn set_selected(&mut self, name: &str, selected: usize) {
         if let Some(i) = self.get(name) {
             self.frames[i].selected = selected;
@@ -1050,7 +1061,7 @@ impl FrameTree {
         if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX" | "SIMPLECHECKBOX") {
             self.frames[i].checked = !self.frames[i].checked;
         }
-        if (self.is_popup(i) || self.frames[i].pulldown.is_some()) && !self.frames[i].items.is_empty() {
+        if (self.is_popup(i) || self.frames[i].pulldown.is_some()) && !self.frames[i].items.is_empty() && !self.frames[i].press_only {
             self.frames[i].open = true;
             return None;
         }

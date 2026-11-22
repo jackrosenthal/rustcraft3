@@ -5874,7 +5874,10 @@ impl World {
                 continue;
             }
             let at = self.time_exact - ((elapsed - point).max(0.0) / speed) as f64;
-            if until.is_none_or(|t| at < t) {
+            // (`until` is the main clock's, which falls behind the game's time: by half a
+            // second at 300, where a point taken by the game's time waited for a step
+            // that far on, its swing over and the next begun before it ever landed.)
+            if until.is_none_or(|t| self.bullet_clock(at) < t) {
                 due.push((at, h));
             }
         }

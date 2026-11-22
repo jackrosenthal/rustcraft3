@@ -34,8 +34,6 @@ header .map{color:var(--muted);font-size:1.3rem;flex:1;min-width:0}
 @keyframes hit{0%{box-shadow:0 0 1.6rem .3rem var(--boss);border-color:var(--boss)}100%{box-shadow:none}}
 .status{font:700 1.05rem var(--body);letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border:.1rem solid currentColor;background:#000}
 .status.live{color:var(--fan)} .status.paused{color:var(--gold)} .status.down{color:var(--boss)} .status.lobby{color:var(--air)}
-button{font:700 1.05rem var(--body);color:var(--fg);background:linear-gradient(180deg,#2a303a,#11151b);border:.14rem solid var(--trim);padding:.35rem .8rem;cursor:pointer}
-button:hover{border-color:var(--gold)} button[aria-pressed="true"]{color:var(--gold);box-shadow:inset 0 0 .6rem rgba(252,210,13,.35)}
 main{display:grid;grid-template-columns:minmax(0,34fr) minmax(0,66fr);gap:.9rem;min-height:0}
 .side{display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:.6rem;min-height:0;overflow-y:auto}
 /* The panels above the tech tree keep their content's height; the tree takes what is left
@@ -141,8 +139,6 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
     <span class="hl">Health</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">–</b>
   </div>
   <span class="status down" id="status">Offline</span>
-  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, as lives are lost, at the end, when an HSBC is built, and on falling under 10 lives">Sound: off</button>
-  <button id="test" title="Play the boss, air, countdown, life-lost, HSBC, and under-10-lives sounds">Test</button>
 </header>
 <main>
 <div class="side">
@@ -178,23 +174,20 @@ const tagsHtml = l => (l.fantas ? '<span class="tag fan">Fantas</span>' : "") + 
 const danger = l => l && (l.boss ? "boss" : l.air ? "air" : null);
 
 // ---- Sound: the game's own files, served by the game (/sound/<file>), fetched and
-// decoded as the page loads.  Browsers start the audio only after a click or key on the
-// page, so a page reopened with sound on starts it on the first one anywhere.
+// decoded as the page loads, and always on.  Browsers start the audio only after a click
+// or key on the page, so it starts on the first one anywhere.
 const SOUNDS = { "heads-up": "heads-up.wav", boss: "boss.wav", air: "air.wav", tick: "tick.wav", death: "death.wav", victory: "victory.mp3", defeat: "defeat.mp3", kaching: "kaching.wav", nuke: "nuke.mp3" };
-let soundOn = false;
-try { soundOn = localStorage.getItem("tddash.sound") === "1"; } catch (e) {}
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
 const buffers = {};
-const loaded = Object.fromEntries(Object.entries(SOUNDS).map(([name, file]) => [name,
+for (const [name, file] of Object.entries(SOUNDS)) {
   fetch(`/sound/${file}`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
     .then(b => ctx.decodeAudioData(b)).then(buf => (buffers[name] = buf))
     // The nuke's file is the host's own and may be missing: nukeSiren stands in.
-    .catch(e => name !== "nuke" && console.warn("sound", name, e))]));
-function unlock() { if (ctx.state !== "running") ctx.resume().then(showSound, () => {}); }
+    .catch(e => name !== "nuke" && console.warn("sound", name, e));
+}
+function unlock() { if (ctx.state !== "running") ctx.resume().catch(() => {}); }
 for (const ev of ["pointerdown", "keydown", "touchend"]) document.addEventListener(ev, unlock, { capture: true });
-ctx.onstatechange = () => showSound();
-function play(name, force) {
-  if (!soundOn && !force) return;
+function play(name) {
   const buf = buffers[name];
   if (!buf) return;
   const src = ctx.createBufferSource();
@@ -207,8 +200,7 @@ function play(name, force) {
 // every cry has finished.
 const DEATH_SPEEDUP = 1.25, DEATH_FASTEST = 4, DEATH_MIN_GAP = 0.05;
 let deathsNext = 0, deathsEnd = 0, deathRun = 0;
-function playDeaths(n, force) {
-  if (!soundOn && !force) return;
+function playDeaths(n) {
   const buf = buffers.death;
   if (!buf) return;
   for (let i = 0; i < n; i++) {
@@ -249,30 +241,9 @@ function nukeSiren(a) {
     setTimeout(() => speechSynthesis.speak(u), WAIL * 1000);
   }
 }
-function playNuke(force) {
-  if (!soundOn && !force) return;
-  if (buffers.nuke) play("nuke", force); else nukeSiren(ctx);
+function playNuke() {
+  if (buffers.nuke) play("nuke"); else nukeSiren(ctx);
 }
-function showSound() {
-  const blocked = soundOn && ctx.state !== "running";
-  $("sound").textContent = "Sound: " + (!soundOn ? "off" : blocked ? "click to start" : "on");
-  $("sound").setAttribute("aria-pressed", soundOn);
-}
-$("sound").onclick = () => {
-  soundOn = !soundOn;
-  try { localStorage.setItem("tddash.sound", soundOn ? "1" : "0"); } catch (e) {}
-  if (soundOn) loaded["heads-up"].then(() => play("heads-up"));
-  showSound();
-};
-$("test").onclick = () => {
-  Promise.all(Object.values(loaded)).then(() => {
-    [["boss", 0], ["air", 2300], ["tick", 4000]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
-    setTimeout(() => playDeaths(6, true), 4700);
-    setTimeout(() => play("kaching", true), 9000);
-    setTimeout(() => playNuke(true), 10200);
-  });
-};
-showSound();
 
 // ---- Warnings: each sounded once per level and stage, however often the state comes
 // (a new game reloads the page, starting them over).

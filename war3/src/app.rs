@@ -64,6 +64,9 @@ struct Running {
     update_only: bool,
     /// The performance overlay (F7).
     perf: crate::perf::Perf,
+    /// The last step's time (`last`) and when the loop first waited after it: the idle
+    /// time is counted from then (`about_to_wait`).
+    idle: (Instant, Instant),
 }
 
 /// The longest the game goes without a step.  Redraws stop while the window is hidden
@@ -217,6 +220,7 @@ impl App {
             draw_after: None,
             update_only: false,
             perf,
+            idle: (Instant::now(), Instant::now()),
         });
         Ok(())
     }
@@ -952,7 +956,13 @@ impl ApplicationHandler for App {
             r.gpu.resize(s.width, s.height);
         }
         // No redraw for `IDLE_STEP`: the window is hidden, and the game steps undrawn.
-        if r.last.elapsed() >= IDLE_STEP {
+        // Counted from the loop's first wait after a step, not from the step's start: a
+        // shown window's frame that takes longer than `IDLE_STEP` is no idle time, and a
+        // step after each such frame would double a slow game's work.
+        if r.idle.0 != r.last {
+            r.idle = (r.last, Instant::now());
+        }
+        if r.idle.1.elapsed() >= IDLE_STEP {
             r.update_only = true;
             let id = r.window.id();
             self.window_event(el, id, WindowEvent::RedrawRequested);

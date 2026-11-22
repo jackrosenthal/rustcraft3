@@ -228,6 +228,36 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => r.gpu.resize(s.width, s.height),
+            // Keys let go while the window was away never reach it (Alt+Tab leaves Alt
+            // down here, every click then a ping and every hotkey ignored): on losing
+            // focus every key is let go, the arrow and turning keys with their events.
+            WindowEvent::Focused(false) => {
+                if let Some(scene) = r.scene.as_mut() {
+                    for (k, code) in [KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowDown, KeyCode::ArrowUp].into_iter().enumerate() {
+                        if r.keys.contains(&code) {
+                            scene.arrow_key(k, false);
+                        }
+                    }
+                    for (n, code) in [(1, KeyCode::Insert), (2, KeyCode::Delete)] {
+                        if r.keys.contains(&code) {
+                            scene.rotate_key(n, false);
+                        }
+                    }
+                }
+                r.keys.clear();
+            }
+            // The system's word on the modifiers outranks the presses seen, which miss
+            // any let go elsewhere.
+            WindowEvent::ModifiersChanged(m) => {
+                let m = m.state();
+                for (down, codes) in [(m.alt_key(), [KeyCode::AltLeft, KeyCode::AltRight]), (m.control_key(), [KeyCode::ControlLeft, KeyCode::ControlRight]), (m.shift_key(), [KeyCode::ShiftLeft, KeyCode::ShiftRight])] {
+                    if !down {
+                        for c in codes {
+                            r.keys.remove(&c);
+                        }
+                    }
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed && r.ready.is_some() {
                     Running::start_ready(r);

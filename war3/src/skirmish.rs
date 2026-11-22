@@ -102,6 +102,10 @@ pub struct MapSummary {
     pub info: MapInfo,
     pub strings: HashMap<u32, String>,
     pub preview: Option<w3_formats::blp::Image>,
+    /// war3map.mmp's icons, read with the preview: kind (0 gold mine, 1 neutral
+    /// building, 2 start location, 3 and 4 creep camps), x and y on the preview's
+    /// pixels from its top left, and color (B, G, R, A).
+    pub icons: Vec<(i32, i32, i32, [u8; 4])>,
     /// The map carries a strong signature (the 'NGIS' block after the archive, as
     /// Blizzard's maps do), for the pane's AuthIcon.  The original also checks the
     /// signature against Blizzard's key; this takes its presence.
@@ -1018,8 +1022,60 @@ pub fn strongly_signed(path: &Path) -> bool {
 fn summarize_archive(ar: &w3_mpq::Archive, preview: bool) -> Option<MapSummary> {
     let info = MapInfo::parse(&ar.read("war3map.w3i").ok()?).ok()?;
     let strings = ar.read("war3map.wts").ok().map(|b| w3_formats::map::parse_wts(&String::from_utf8_lossy(&b))).unwrap_or_default();
+    let icons = if preview { ar.read("war3map.mmp").map(|b| parse_mmp(&b)).unwrap_or_default() } else { Vec::new() };
     let preview = if preview { ar.read("war3mapMap.blp").ok().and_then(|b| w3_formats::blp::decode_texture("war3mapMap.blp", &b).ok()).and_then(|m| m.into_iter().next()) } else { None };
-    Some(MapSummary { info, strings, preview, signed: false })
+    Some(MapSummary { info, strings, preview, icons, signed: false })
+}
+
+/// war3map.mmp: a version, a count, then each icon's kind, x, y, and color.
+fn parse_mmp(b: &[u8]) -> Vec<(i32, i32, i32, [u8; 4])> {
+    let int = |o: usize| b.get(o..o + 4).map(|s| i32::from_le_bytes(s.try_into().unwrap()));
+    let n = int(4).unwrap_or(0).max(0) as usize;
+    (0..n).map_while(|i| Some((int(8 + i * 16)?, int(12 + i * 16)?, int(16 + i * 16)?, b.get(20 + i * 16..24 + i * 16)?.try_into().ok()?))).collect()
+}
+
+/// WorldEditData [WorldEditArt]'s minimap icon for each war3map.mmp kind
+/// (FUN_6f70f090).
+const PREVIEW_ICON_KEYS: [&str; 5] = ["MinimapIconGold", "MinimapIconNeutralBuilding", "MinimapIconStartLoc", "MinimapIconCreepCampSmall", "MinimapIconCreepCampLarge"];
+
+/// The preview with the map's icons stamped on it, as the original loads a map's
+/// preview (FUN_6f7069a0, FUN_6f70bb20, FUN_6f70ee70): each icon's texture taken at 16
+/// by 16 (FUN_6f7259f0), tinted by its color unless white, and blended by its alpha over
+/// the 16 pixels from 8 left of and above its point (that corner held inside the
+/// image), so each start location shows in its player's color.
+pub fn stamp_preview(image: &mut w3_formats::blp::Image, icons: &[(i32, i32, i32, [u8; 4])], world_edit: &w3_formats::profile::Profile, chain: &w3_mpq::Chain) {
+    let mut textures: [Option<Vec<[u8; 4]>>; 5] = Default::default();
+    for (k, t) in textures.iter_mut().enumerate() {
+        let Some(path) = world_edit.get_str("WorldEditArt", PREVIEW_ICON_KEYS[k]) else { continue };
+        let Some(m) = chain.read(&path).ok().and_then(|b| w3_formats::blp::decode_texture(&path, &b).ok()).and_then(|m| m.into_iter().next()) else { continue };
+        if m.width == 0 || m.height == 0 {
+            continue;
+        }
+        // (Gold mines' and neutral buildings' are 8 by 8, each texel taken twice.)
+        *t = Some((0..256).map(|i| {
+            let (x, y) = ((i % 16) as u32 * m.width / 16, (i / 16) as u32 * m.height / 16);
+            let o = ((y * m.width + x) * 4) as usize;
+            m.rgba[o..o + 4].try_into().unwrap()
+        }).collect());
+    }
+    let (w, h) = (image.width as i32, image.height as i32);
+    for &(kind, x, y, [b, g, r, a]) in icons {
+        let Some(tex) = usize::try_from(kind).ok().and_then(|k| textures.get(k)).and_then(|t| t.as_ref()) else { continue };
+        let (x0, y0) = ((x - 8).min(w).max(0), (y - 8).min(h).max(0));
+        let white = [b, g, r, a] == [0xff; 4];
+        for (i, t) in tex.iter().enumerate() {
+            let (px, py) = (x0 + (i % 16) as i32, y0 + (i / 16) as i32);
+            if px >= w || py >= h {
+                continue;
+            }
+            let t = if white { *t } else { [(t[0] as u32 * r as u32 / 255) as u8, (t[1] as u32 * g as u32 / 255) as u8, (t[2] as u32 * b as u32 / 255) as u8, (t[3] as u32 * a as u32 / 255) as u8] };
+            let alpha = t[3] as f32 / 255.0;
+            let o = ((py * w + px) * 4) as usize;
+            for c in 0..3 {
+                image.rgba[o + c] = (t[c] as f32 * alpha + image.rgba[o + c] as f32 * (1.0 - alpha)) as u8;
+            }
+        }
+    }
 }
 
 /// The run-time texture holding the selected map's preview.

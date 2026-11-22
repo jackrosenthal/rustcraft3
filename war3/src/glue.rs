@@ -1835,7 +1835,9 @@ impl Glue {
         }
         if self.skirmish.preview_dirty {
             self.skirmish.preview_dirty = false;
-            if let Some(img) = self.skirmish.summary.as_ref().and_then(|s| s.preview.as_ref()) {
+            if let Some(s) = self.skirmish.summary.as_ref().filter(|s| s.preview.is_some()) {
+                let mut img = s.preview.clone().unwrap();
+                crate::skirmish::stamp_preview(&mut img, &s.icons, &self.skirmish.world_edit, &self.chain);
                 assets.textures.set_dynamic(device, queue, crate::skirmish::MAP_PREVIEW, img.width, img.height, &img.rgba);
             }
         }

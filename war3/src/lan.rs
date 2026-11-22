@@ -78,6 +78,8 @@ pub struct Lan {
     /// Direct Connect's host, while its game is awaited, and since when.
     connecting: Option<(SocketAddr, Instant)>,
     pub selected: Option<usize>,
+    /// The game list's row last clicked and when, for double clicks.
+    last_click: Option<(usize, Instant)>,
     list: Option<Rect>,
     /// The lobby: as host, or joined to one; this computer's player id in it.
     host: Option<Box<Host>>,
@@ -122,6 +124,7 @@ impl Lan {
             direct: Vec::new(),
             connecting: None,
             selected: None,
+            last_click: None,
             list: None,
             host: None,
             client: None,
@@ -287,18 +290,26 @@ impl Lan {
         true
     }
 
-    /// A click in the game list chooses a game.
-    pub fn click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) {
-        let Some(r) = self.list else { return };
+    /// A click in the game list chooses a game; a second on it within 0.4 s (as the
+    /// game's double click on a unit) returns true: the game is to be joined.
+    pub fn click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) -> bool {
+        let Some(r) = self.list else { return false };
         if !r.contains(x, y) {
-            return;
+            return false;
         }
         let k = ((r.y1 - y) / ROW) as usize;
-        if k < self.games().len() {
-            self.selected = Some(k);
-            self.summary_due = Some(self.map_path(&self.games()[k].1.stat.map_path));
-            self.sync_join(tree, db);
+        if k >= self.games().len() {
+            return false;
         }
+        let now = Instant::now();
+        if self.last_click.take().is_some_and(|(row, t)| row == k && now - t < Duration::from_millis(400)) {
+            return true;
+        }
+        self.last_click = Some((k, now));
+        self.selected = Some(k);
+        self.summary_due = Some(self.map_path(&self.games()[k].1.stat.map_path));
+        self.sync_join(tree, db);
+        false
     }
 
     /// The map's slots for the setup, in its player order: its users' open, its

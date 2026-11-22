@@ -887,9 +887,13 @@ impl Glue {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::LanJoin {
-            self.lan.click(&mut self.tree, &assets.frames, x, y);
+            let join = self.lan.click(&mut self.tree, &assets.frames, x, y);
             if let Some(map) = self.lan.summary_due.take() {
                 self.skirmish.show_map(&mut self.tree, &assets.frames, Some(&map));
+            }
+            // A game double-clicked is joined, as Join Game joins it.
+            if join {
+                self.button("JoinButton", assets);
             }
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {

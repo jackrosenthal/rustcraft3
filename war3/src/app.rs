@@ -52,7 +52,30 @@ struct Running {
     capture: crate::screenshot::Capture,
     /// The window's sides still to take from its display (`fit_window`).
     fit: Option<(Option<u32>, Option<u32>)>,
+    /// The window is hidden (behind others, minimized; as the platform says): the game
+    /// goes on undrawn.
+    occluded: bool,
+    /// The window has the keyboard.
+    focused: bool,
+    /// A frame kept the game waiting while the window was away (`HIDDEN_WAIT`): it is
+    /// drawn again from then, or as it shows or takes the keyboard.
+    draw_after: Option<Instant>,
+    /// The next RedrawRequested only steps the game and the menus (`about_to_wait`).
+    update_only: bool,
 }
+
+/// The longest the game goes without a step.  Redraws stop while the window is hidden
+/// (Wayland sends no frame callbacks then; a surface's frame can take a second to come),
+/// but a network game must go on: its turns, keepalives, and the host's waits on players
+/// all run on the game's steps, so a game left behind an Alt+Tab stalls everyone and is
+/// dropped.
+const IDLE_STEP: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// A frame this slow to come to a window without the keyboard is a hidden window's (X11
+/// gives a minimized one a frame a second, saying nothing of its hiding): drawing stops
+/// for `HIDDEN_RETRY`, the game stepping undrawn.
+const HIDDEN_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+const HIDDEN_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Whether W, A, S, and D pan the camera (as the arrow keys do) rather than type or press
 /// the command card's hotkeys: not while chat, a save's name, or the game menu takes the
@@ -63,6 +86,11 @@ fn wasd_pans(scene: &Scene) -> bool {
 }
 
 impl Running {
+    /// Whether the window is not drawn now (`occluded`, `draw_after`).
+    fn hidden(&self) -> bool {
+        self.occluded || self.draw_after.is_some_and(|t| Instant::now() < t)
+    }
+
     /// Starts the loaded game: the music stops, the menus are kept for afterwards.
     fn start_ready(r: &mut Running) {
         let Some(mut s) = r.ready.take() else { return };
@@ -93,8 +121,9 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     log::info!("game data: {} ({:?})", dir.display(), data.version);
     let event_loop = EventLoop::new()?;
     // Each frame asks for the next (about_to_wait), so the loop sleeps until the display
-    // wants one.  Polling instead spins a core wherever redraws wait on the compositor
-    // (Wayland's frame callbacks) rather than on the presentation.
+    // wants one, or until the game's next step is due (`IDLE_STEP`).  Polling instead spins
+    // a core wherever redraws wait on the compositor (Wayland's frame callbacks) rather
+    // than on the presentation.
     event_loop.set_control_flow(ControlFlow::Wait);
     crate::lan::set_direct(args.connect.clone());
     let mut app = App { args, data, running: None, error: None };
@@ -184,6 +213,10 @@ impl App {
             cursor_known: false,
             cursor_hidden: false, capture: Default::default(),
             fit,
+            occluded: false,
+            focused: true,
+            draw_after: None,
+            update_only: false,
         });
         Ok(())
     }
@@ -228,10 +261,21 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => r.gpu.resize(s.width, s.height),
+            WindowEvent::Occluded(hidden) => {
+                r.occluded = hidden;
+                if !hidden {
+                    r.draw_after = None;
+                }
+            }
+            WindowEvent::Focused(true) => {
+                r.focused = true;
+                r.draw_after = None;
+            }
             // Keys let go while the window was away never reach it (Alt+Tab leaves Alt
             // down here, every click then a ping and every hotkey ignored): on losing
             // focus every key is let go, the arrow and turning keys with their events.
             WindowEvent::Focused(false) => {
+                r.focused = false;
                 if let Some(scene) = r.scene.as_mut() {
                     for (k, code) in [KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowDown, KeyCode::ArrowUp].into_iter().enumerate() {
                         if r.keys.contains(&code) {
@@ -486,6 +530,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let draw = !std::mem::take(&mut r.update_only) && !r.hidden();
                 // The game and the menus draw their own cursor.
                 let hide = r.scene.is_some() || r.glue.is_some();
                 if hide != r.cursor_hidden {
@@ -645,15 +690,6 @@ impl ApplicationHandler for App {
                     scene.sync_destructables(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                     scene.sync_items(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                 }
-                let frame = match r.gpu.surface.get_current_texture() {
-                    wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    _ => {
-                        r.gpu.resize(r.gpu.config.width, r.gpu.config.height);
-                        return;
-                    }
-                };
-                let view = frame.texture.create_view(&Default::default());
-                let mut enc = r.gpu.device.create_command_encoder(&Default::default());
                 let size = (r.gpu.config.width, r.gpu.config.height);
                 // The glue's requests: quitting or starting a game.
                 if let Some(glue) = r.glue.as_mut() {
@@ -801,6 +837,28 @@ impl ApplicationHandler for App {
                         None => {}
                     }
                 }
+                if !draw {
+                    return;
+                }
+                let asked = Instant::now();
+                let frame = match r.gpu.surface.get_current_texture() {
+                    wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    // A hidden window's frame: none, the surface as it is, and no more
+                    // tries for a while.
+                    wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                        r.draw_after = Some(Instant::now() + HIDDEN_RETRY);
+                        return;
+                    }
+                    _ => {
+                        r.gpu.resize(r.gpu.config.width, r.gpu.config.height);
+                        return;
+                    }
+                };
+                if !r.focused && asked.elapsed() >= HIDDEN_WAIT {
+                    r.draw_after = Some(Instant::now() + HIDDEN_RETRY);
+                }
+                let view = frame.texture.create_view(&Default::default());
+                let mut enc = r.gpu.device.create_command_encoder(&Default::default());
                 let overlay: Vec<w3_ui::Draw> = r.capture.overlay(&r.assets.frames).into_iter().collect();
                 if let Some(glue) = r.glue.as_mut() {
                     glue.overlay = overlay;
@@ -864,12 +922,22 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
-        if let Some(r) = self.running.as_mut() {
-            if let Some(s) = fit_window(&r.window, &mut r.fit) {
-                r.gpu.resize(s.width, s.height);
-            }
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        let Some(r) = self.running.as_mut() else { return };
+        if let Some(s) = fit_window(&r.window, &mut r.fit) {
+            r.gpu.resize(s.width, s.height);
+        }
+        // No redraw for `IDLE_STEP`: the window is hidden, and the game steps undrawn.
+        if r.last.elapsed() >= IDLE_STEP {
+            r.update_only = true;
+            let id = r.window.id();
+            self.window_event(el, id, WindowEvent::RedrawRequested);
+        }
+        let Some(r) = self.running.as_mut() else { return };
+        // A hidden window's redraws would come at once, unthrottled by its display.
+        if !r.hidden() {
             r.window.request_redraw();
         }
+        el.set_control_flow(ControlFlow::WaitUntil(r.last + IDLE_STEP));
     }
 }

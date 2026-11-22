@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use rodio::{Decoder, Player, Source};
 
+pub mod clip;
 pub mod midi;
 pub mod reverb;
 use w3_formats::slk::Table;
@@ -76,10 +77,17 @@ fn parse_defs(t: &Table, out: &mut HashMap<String, SoundDef>) {
     }
 }
 
+/// Where a voice sounds: in the sound effects' own mix (`clip::Mix`), or on a player
+/// of its own (a MIDI piece, a sound too long to keep).
+enum Out {
+    Mixed(clip::Mix, u64),
+    Player(Player),
+}
+
 /// A playing sound.
 struct Voice {
     id: u64,
-    player: Player,
+    out: Out,
     /// World position for 3D sounds.
     position: Option<[f32; 3]>,
     volume: f32,
@@ -94,7 +102,30 @@ struct Voice {
     cone: Option<(f32, f32, f32, [f32; 3])>,
 }
 
+impl Drop for Voice {
+    fn drop(&mut self) {
+        // A player stops as it is dropped; the mix is told.
+        if let Out::Mixed(m, h) = &self.out {
+            m.stop(*h);
+        }
+    }
+}
+
 impl Voice {
+    fn set_volume(&self, volume: f32) {
+        match &self.out {
+            Out::Mixed(m, h) => m.set_gain(*h, volume),
+            Out::Player(p) => p.set_volume(volume),
+        }
+    }
+
+    fn done(&self) -> bool {
+        match &self.out {
+            Out::Mixed(m, h) => !m.playing(*h),
+            Out::Player(p) => p.empty(),
+        }
+    }
+
     fn fade_level(&self) -> f32 {
         match self.fade {
             Some((start, secs, from, to)) => {
@@ -113,6 +144,13 @@ pub struct Audio {
     /// Model event codes (e.g. FBCL) to sound labels, from AnimLookups.slk.
     pub anim_lookups: HashMap<String, String>,
     files: HashMap<String, Option<Arc<[u8]>>>,
+    /// The sound effects' mix, playing on the output.
+    mix: Option<clip::Mix>,
+    /// Sounds decoded at the output's rate and channels (`clip`), by file; None for a
+    /// file that streams instead.  Emptied past `CLIPS_BUDGET` bytes (a voice holds its
+    /// own clip's samples).
+    clips: HashMap<String, Option<Arc<clip::Clip>>>,
+    clip_bytes: usize,
     voices: Vec<Voice>,
     next_id: u64,
     listener: [f32; 3],
@@ -210,12 +248,20 @@ impl Audio {
                 }
             }
         }
+        let mix = sink.as_ref().map(|s| {
+            let (mix, src) = clip::Mix::new(s.config().channel_count().get(), s.config().sample_rate().get());
+            s.mixer().add(src);
+            mix
+        });
         Audio {
             sink,
             chain,
             defs,
             anim_lookups,
             files: HashMap::new(),
+            mix,
+            clips: HashMap::new(),
+            clip_bytes: 0,
             voices: Vec::new(),
             next_id: 1,
             listener: [0.0; 3],
@@ -243,12 +289,47 @@ impl Audio {
     /// NewSoundEnvironment: the environment 3D sounds reverberate in from now on.
     pub fn set_environment(&mut self, name: &str) {
         self.environment_name = name.to_ascii_lowercase();
-        self.environment = self.environments.get(&self.environment_name).copied();
+        let env = self.environments.get(&self.environment_name).copied();
+        if env != self.environment {
+            self.environment = env;
+            self.update_room();
+        }
     }
 
     /// The Environmental Effects option.
     pub fn set_environmental_effects(&mut self, on: bool) {
-        self.environmental_effects = on;
+        if on != self.environmental_effects {
+            self.environmental_effects = on;
+            self.update_room();
+        }
+    }
+
+    /// The mix's reverberation follows the environment and the option.
+    fn update_room(&self) {
+        if let Some(m) = self.mix.as_ref() {
+            m.set_room(self.environment.filter(|_| self.environmental_effects));
+        }
+    }
+
+    /// A file's sound decoded at the output's rate and channels (`clip::Clip`), once.
+    fn clip(&mut self, path: &str) -> Option<Arc<clip::Clip>> {
+        const CLIPS_BUDGET: usize = 192 << 20;
+        let key = path.to_ascii_lowercase();
+        if let Some(c) = self.clips.get(&key) {
+            return c.clone();
+        }
+        let (channels, rate) = self.mix.as_ref().map(|m| (m.channels(), m.rate()))?;
+        let data = self.file(path)?;
+        let c = clip::Clip::decode(data, channels, rate).map(Arc::new);
+        if let Some(c) = c.as_ref() {
+            if self.clip_bytes + c.bytes() > CLIPS_BUDGET {
+                self.clips.clear();
+                self.clip_bytes = 0;
+            }
+            self.clip_bytes += c.bytes();
+        }
+        self.clips.insert(key, c.clone());
+        c
     }
 
     pub fn enabled(&self) -> bool {
@@ -359,7 +440,7 @@ impl Audio {
         let gain = self.voices.iter().find(|v| v.id == id).map(|v| self.gain_at(v.position, v.distances)).unwrap_or(1.0);
         if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
             v.channel = ch;
-            v.player.set_volume(v.volume * gain * v.fade_level() * sound * level);
+            v.set_volume(v.volume * gain * v.fade_level() * sound * level);
         }
         Some(id)
     }
@@ -377,7 +458,7 @@ impl Audio {
             let v = &self.voices[i];
             let g = if v.position.is_some() { self.gain_at(v.position, v.distances) } else { 1.0 };
             let v = &self.voices[i];
-            v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume * gains[v.channel]);
+            v.set_volume(v.volume * g * v.fade_level() * self.sound_volume * gains[v.channel]);
         }
     }
 
@@ -406,7 +487,7 @@ impl Audio {
         player.append(midi::Player::new(bank, song, 1.0));
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None, channel: 0, cone: None });
+        self.voices.push(Voice { id, out: Out::Player(player), position: None, volume, distances: (0.0, 0.0, 0.0), fade: None, channel: 0, cone: None });
         Some(id)
     }
 
@@ -424,27 +505,35 @@ impl Audio {
             return None;
         }
         let mixer = sink.mixer().clone();
-        let data = self.file(path)?;
-        let decoder = match Decoder::new(Cursor::new(data)) {
-            Ok(d) => d,
-            Err(e) => {
-                log::warn!("sound {path}: {e}");
-                return None;
+        let volume_now = volume * gain * self.sound_volume;
+        let out = if let Some((clip, mix)) = self.clip(path).zip(self.mix.clone()) {
+            // A 3D sound sends to the environment's reverberation, at its send level.
+            let reverberates = self.environmental_effects && self.environment.is_some() && position.is_some();
+            let send = send.filter(|_| reverberates).map_or(0.0, reverb::level);
+            Out::Mixed(mix.clone(), mix.play(&clip, pitch, looping, volume_now, send))
+        } else {
+            // Too long to keep: streamed from its file, at its own rate, unreverberated.
+            let player = Player::connect_new(&mixer);
+            let data = self.file(path)?;
+            let decoder = match Decoder::new(Cursor::new(data)) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::warn!("sound {path}: {e}");
+                    return None;
+                }
+            };
+            player.set_speed(pitch.max(0.01));
+            player.set_volume(volume_now);
+            if looping {
+                player.append(decoder.repeat_infinite());
+            } else {
+                player.append(decoder);
             }
+            Out::Player(player)
         };
-        let player = Player::connect_new(&mixer);
-        player.set_speed(pitch.max(0.01));
-        player.set_volume(volume * gain * self.sound_volume);
-        let env = self.environment.filter(|_| self.environmental_effects && position.is_some());
-        match (env, send, looping) {
-            (Some(env), Some(send), true) => player.append(reverb::Reverb::new(decoder.repeat_infinite(), env, send)),
-            (Some(env), Some(send), false) => player.append(reverb::Reverb::new(decoder, env, send)),
-            (_, _, true) => player.append(decoder.repeat_infinite()),
-            _ => player.append(decoder),
-        }
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position, volume, distances, fade: None, channel: 0, cone: None });
+        self.voices.push(Voice { id, out, position, volume, distances, fade: None, channel: 0, cone: None });
         Some(id)
     }
 
@@ -478,8 +567,14 @@ impl Audio {
     /// can seek).
     pub fn seek(&mut self, id: u64, ms: i32) {
         if let Some(v) = self.voices.iter().find(|v| v.id == id) {
-            if let Err(e) = v.player.try_seek(std::time::Duration::from_millis(ms.max(0) as u64)) {
-                log::debug!("seeking a sound: {e}");
+            let at = std::time::Duration::from_millis(ms.max(0) as u64);
+            match &v.out {
+                Out::Mixed(m, h) => m.seek(*h, at),
+                Out::Player(p) => {
+                    if let Err(e) = p.try_seek(at) {
+                        log::debug!("seeking a sound: {e}");
+                    }
+                }
             }
         }
     }
@@ -516,7 +611,7 @@ impl Audio {
     }
 
     pub fn is_playing(&self, id: u64) -> bool {
-        self.voices.iter().any(|v| v.id == id && !v.player.empty())
+        self.voices.iter().any(|v| v.id == id && !v.done())
     }
 
     pub fn set_position(&mut self, id: u64, position: [f32; 3]) {
@@ -626,20 +721,20 @@ impl Audio {
             let v = &self.voices[i];
             let g = if v.position.is_some() { self.gain_at(v.position, v.distances) } else { 1.0 };
             let v = &self.voices[i];
-            v.player.set_volume(v.volume * g * v.fade_level() * sound * self.channel_gain[v.channel.min(15)]);
+            v.set_volume(v.volume * g * v.fade_level() * sound * self.channel_gain[v.channel.min(15)]);
         }
     }
 
     /// Moves the listener, updates 3D volumes, and advances the playlist.
     pub fn update(&mut self, listener: [f32; 3]) {
         self.listener = listener;
-        self.voices.retain(|v| !v.player.empty() && !v.fade.is_some_and(|(start, secs, _, to)| to == 0.0 && start.elapsed().as_secs_f32() >= secs));
+        self.voices.retain(|v| !v.done() && !v.fade.is_some_and(|(start, secs, _, to)| to == 0.0 && start.elapsed().as_secs_f32() >= secs));
         for i in 0..self.voices.len() {
             let v = &self.voices[i];
             if v.position.is_some() || v.fade.is_some() {
                 let g = self.gain_at(v.position, v.distances) * self.cone_gain(v);
                 let v = &self.voices[i];
-                v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume * self.channel_gain[v.channel.min(15)]);
+                v.set_volume(v.volume * g * v.fade_level() * self.sound_volume * self.channel_gain[v.channel.min(15)]);
             }
         }
         if self.music.as_ref().is_some_and(|m| m.empty()) && !self.playlist.is_empty() {

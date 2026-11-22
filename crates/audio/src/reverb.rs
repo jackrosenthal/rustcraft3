@@ -6,6 +6,10 @@
 //! Without EAX hardware the reverberation is rendered here: an early reflection after
 //! ReflectionsDelay and a late tail of comb and all-pass filters after ReverbDelay more,
 //! decaying by 60 dB over DecayTime.
+//!
+//! As with EAX there is one reverberation, the environment's (`Room`): the sounds'
+//! sends are mixed and reverberate together (`clip::Mix`), so thirty missiles at once
+//! cost one reverberation, not thirty each ringing on after its sound.
 
 use std::time::Duration;
 
@@ -25,7 +29,8 @@ pub struct Environment {
     pub reverb_delay: f32,
 }
 
-fn level(mb: f32) -> f32 {
+/// A level in millibels as a gain (none above 0).
+pub fn level(mb: f32) -> f32 {
     10f32.powf(mb.min(0.0) / 2000.0)
 }
 
@@ -39,30 +44,29 @@ struct Channel {
     allpasses: Vec<(Vec<f32>, usize)>,
 }
 
-/// A source with its reverberation added, which goes on for the decay time after the
-/// source ends.
-pub struct Reverb<S: Source> {
-    inner: S,
-    channels: u16,
-    rate: u32,
+/// An environment's reverberation: interleaved samples in, its reverberation of them out
+/// (no dry signal).
+pub struct Room {
+    channels: usize,
     chans: Vec<Channel>,
     pos: usize,
+    channel: usize,
     early_at: usize,
     late_at: usize,
     early: f32,
     late: f32,
     feedback: Vec<f32>,
     damp: f32,
-    channel: usize,
-    /// Samples left of the tail once the source has ended.
-    tail: Option<usize>,
+    /// Samples of silence in a row: once past `ring` the filters have nothing left to
+    /// sound and are skipped until something comes.
+    quiet: usize,
+    /// How long the reverberation sounds after its last input, in samples.
+    ring: usize,
 }
 
-impl<S: Source> Reverb<S> {
-    /// `send` is the sound's level into the environment, in millibels.
-    pub fn new(inner: S, env: Environment, send: f32) -> Reverb<S> {
-        let channels = inner.channels().get();
-        let rate = inner.sample_rate().get();
+impl Room {
+    /// `send` scales what comes in, in millibels.
+    pub fn new(channels: u16, rate: u32, env: Environment, send: f32) -> Room {
         let scale = rate as f32 / 44100.0;
         let early_at = (env.reflections_delay.max(0.0) * rate as f32) as usize;
         let late_at = ((env.reflections_delay + env.reverb_delay).max(0.0) * rate as f32) as usize;
@@ -74,7 +78,7 @@ impl<S: Source> Reverb<S> {
                 if env.decay_time > 0.0 { 10f32.powf(-3.0 * secs / env.decay_time) } else { 0.0 }
             })
             .collect();
-        let chans = (0..channels)
+        let chans = (0..channels.max(1))
             .map(|_| Channel {
                 delay: vec![0.0; size],
                 combs: COMBS.iter().map(|&n| (vec![0.0; ((n as f32 * scale) as usize).max(1)], 0, 0.0, 0.0)).collect(),
@@ -82,12 +86,15 @@ impl<S: Source> Reverb<S> {
             })
             .collect();
         let send = level(send);
-        Reverb {
-            inner,
-            channels,
-            rate,
+        // The tail lasts until the combs have fallen 60 dB (10^-3), at most 10 seconds.
+        let g = feedback.iter().cloned().fold(0.0, f32::max);
+        let comb = COMBS[COMBS.len() - 1] as f32 / 44100.0;
+        let decay = if g <= 0.0 { 0.0 } else { (comb * (-3.0 / g.log10())).min(10.0) };
+        Room {
+            channels: channels.max(1) as usize,
             chans,
             pos: 0,
+            channel: 0,
             early_at,
             late_at,
             early: send * level(env.room + env.reflections),
@@ -95,9 +102,26 @@ impl<S: Source> Reverb<S> {
             feedback,
             // High frequencies decay faster as DecayHFRatio falls below one.
             damp: (1.0 - env.decay_hf_ratio).clamp(0.0, 0.9),
-            channel: 0,
-            tail: None,
+            quiet: 0,
+            ring: (late_at + (decay * rate as f32) as usize + 1) * channels.max(1) as usize,
         }
+    }
+
+    /// Samples the reverberation goes on for after its input ends.
+    pub fn ring(&self) -> usize {
+        self.ring
+    }
+
+    /// The next sample's reverberation, for the next input sample.
+    pub fn next(&mut self, input: f32) -> f32 {
+        self.quiet = if input == 0.0 { self.quiet + 1 } else { 0 };
+        let wet = if self.quiet > self.ring { 0.0 } else { self.process(input) };
+        self.channel += 1;
+        if self.channel >= self.channels {
+            self.channel = 0;
+            self.pos += 1;
+        }
+        wet
     }
 
     fn process(&mut self, input: f32) -> f32 {
@@ -126,6 +150,25 @@ impl<S: Source> Reverb<S> {
     }
 }
 
+/// A source's reverberation alone, which goes on for the decay time after the source
+/// ends.
+pub struct Reverb<S: Source> {
+    inner: S,
+    channels: u16,
+    rate: u32,
+    room: Room,
+    /// Samples left of the tail once the source has ended.
+    tail: Option<usize>,
+}
+
+impl<S: Source> Reverb<S> {
+    /// `send` is the sound's level into the environment, in millibels.
+    pub fn new(inner: S, env: Environment, send: f32) -> Reverb<S> {
+        let (channels, rate) = (inner.channels().get(), inner.sample_rate().get());
+        Reverb { inner, channels, rate, room: Room::new(channels, rate, env, send), tail: None }
+    }
+}
+
 impl<S: Source> Iterator for Reverb<S> {
     type Item = f32;
 
@@ -134,9 +177,7 @@ impl<S: Source> Iterator for Reverb<S> {
             None => match self.inner.next() {
                 Some(s) => s,
                 None => {
-                    // The tail: the delay and the decay, in samples for each channel.
-                    let len = (self.late_at + (self.decay_secs() * self.rate as f32) as usize) * self.channels as usize;
-                    self.tail = Some(len);
+                    self.tail = Some(self.room.ring());
                     0.0
                 }
             },
@@ -146,26 +187,7 @@ impl<S: Source> Iterator for Reverb<S> {
                 0.0
             }
         };
-        let wet = self.process(dry);
-        self.channel += 1;
-        if self.channel >= self.channels as usize {
-            self.channel = 0;
-            self.pos += 1;
-        }
-        Some(dry + wet)
-    }
-}
-
-impl<S: Source> Reverb<S> {
-    /// How long the tail rings: until the combs have fallen 60 dB.
-    fn decay_secs(&self) -> f32 {
-        let g = self.feedback.iter().cloned().fold(0.0, f32::max);
-        if g <= 0.0 {
-            return 0.0;
-        }
-        // g per comb length; 60 dB is 10^-3.
-        let comb = COMBS[COMBS.len() - 1] as f32 / 44100.0;
-        (comb * (-3.0 / g.log10())).min(10.0)
+        Some(self.room.next(dry))
     }
 }
 

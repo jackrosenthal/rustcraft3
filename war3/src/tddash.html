@@ -117,8 +117,8 @@ header .map{order:5;flex-basis:100%} .health{order:6;flex-basis:100%} header .st
     <span class="hl">Health</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">–</b>
   </div>
   <span class="status down" id="status">Offline</span>
-  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, when a life is lost, and when an HSBC is built">Sound: off</button>
-  <button id="test" title="Play the boss, air, countdown, life-lost, and HSBC sounds">Test</button>
+  <button id="sound" aria-pressed="false" title="Sounds before air and boss levels, when a life is lost, when an HSBC is built, and on falling under 10 lives">Sound: off</button>
+  <button id="test" title="Play the boss, air, countdown, life-lost, HSBC, and under-10-lives sounds">Test</button>
 </header>
 <main>
 <div class="side">
@@ -177,6 +177,10 @@ function audio() {
         .then(b => ctx.decodeAudioData(b)).then(buf => { buffers[name] = buf; })
         .catch(e => console.warn("sound", name, e));
     }
+    // The nuke: the host's file (war3/sounds/nuke.mp3), if any; else nukeSiren's.
+    fetch("/sound/nuke").then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+      .then(b => ctx.decodeAudioData(b)).then(buf => { buffers.nuke = buf; })
+      .catch(() => {});
   }
   if (ctx.state === "suspended") ctx.resume();
   return ctx;
@@ -201,6 +205,40 @@ function playDeaths(n) {
     deathsEnd = at + buf.duration;
   }
 }
+// Falling under 10 lives: a tactical nuke incoming.  The host's own file if it gave one,
+// or a made one: an air-raid klaxon wailing up and down three times under a spoken
+// warning.
+function nukeSiren(a) {
+  const t0 = a.currentTime + 0.05, out = a.createGain(), shape = a.createWaveShaper(), lp = a.createBiquadFilter();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i++) { const x = i / 511.5 - 1; curve[i] = Math.tanh(3 * x); }
+  shape.curve = curve; lp.type = "lowpass"; lp.frequency.value = 2600;
+  shape.connect(lp); lp.connect(out); out.connect(a.destination);
+  const WAIL = 1.4, N = 3, end = t0 + WAIL * N;
+  out.gain.setValueAtTime(0, t0); out.gain.linearRampToValueAtTime(0.32, t0 + 0.08);
+  out.gain.setValueAtTime(0.32, end - 0.3); out.gain.linearRampToValueAtTime(0, end);
+  for (const detune of [0, 7]) {
+    const o = a.createOscillator();
+    o.type = "sawtooth"; o.detune.value = detune * 100 / 12;
+    for (let i = 0; i < N; i++) {
+      const t = t0 + i * WAIL;
+      o.frequency.setValueAtTime(260, t);
+      o.frequency.exponentialRampToValueAtTime(820, t + WAIL * 0.55);
+      o.frequency.exponentialRampToValueAtTime(260, t + WAIL);
+    }
+    o.connect(shape); o.start(t0); o.stop(end);
+  }
+  if (window.speechSynthesis) {
+    const u = new SpeechSynthesisUtterance("Tactical nuke, incoming!");
+    u.rate = 0.9; u.pitch = 0.4; u.volume = 1;
+    setTimeout(() => speechSynthesis.speak(u), WAIL * 1000);
+  }
+}
+function playNuke(force) {
+  if (!soundOn && !force) return;
+  const a = audio();
+  if (buffers.nuke) play("nuke", force); else nukeSiren(a);
+}
 function showSound() { $("sound").textContent = "Sound: " + (soundOn ? "on" : "off"); $("sound").setAttribute("aria-pressed", soundOn); }
 $("sound").onclick = () => {
   soundOn = !soundOn;
@@ -211,6 +249,7 @@ $("sound").onclick = () => {
 $("test").onclick = () => {
   audio();
   [["boss", 300], ["air", 2600], ["tick", 4300], ["death", 5000], ["kaching", 6200]].forEach(([n, ms]) => setTimeout(() => play(n, true), ms));
+  setTimeout(() => playNuke(true), 7400);
 };
 showSound();
 
@@ -247,6 +286,7 @@ function renderGrid(s) {
 }
 // The header's health bar; a lost life flashes it.
 let lastLives = null;
+const NUKE_AT = 10;
 function renderHealth(s) {
   const max = Math.max(s.lives_max, s.lives, 1), pct = Math.max(0, s.lives) / max, h = $("health");
   $("hpFill").style.width = (pct * 100) + "%";
@@ -256,6 +296,8 @@ function renderHealth(s) {
   if (lastLives !== null && s.lives < lastLives) {
     h.classList.remove("hit"); void h.offsetWidth; h.classList.add("hit");
     playDeaths(lastLives - s.lives);
+    // Under 10 lives: once each time the lives fall through it.
+    if (lastLives >= NUKE_AT && s.lives < NUKE_AT) playNuke();
   }
   lastLives = s.lives;
 }

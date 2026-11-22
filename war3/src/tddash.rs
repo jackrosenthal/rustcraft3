@@ -63,9 +63,9 @@ pub fn is_mafarazzo(g: &Game) -> bool {
 struct Shared {
     state: Mutex<(u64, Arc<str>)>,
     stop: AtomicBool,
-    /// The page's sounds, by the name it asks for them under, read from the game's
-    /// archives at the start.
-    sounds: Vec<(&'static str, Arc<[u8]>)>,
+    /// The page's sounds, by the name it asks for them under, with their media type:
+    /// read from the game's archives (and `NUKE_FILE`) at the start.
+    sounds: Vec<(&'static str, &'static str, Arc<[u8]>)>,
 }
 
 /// The page's sounds, all the game's own (PCM WAV, which browsers play as is): the name
@@ -84,6 +84,15 @@ const SOUNDS: &[(&str, &str)] = &[
     // An HSBC finished: gold received.
     ("kaching", "Sound\\Interface\\ReceiveGold.wav"),
 ];
+
+/// The sound for falling under 10 lives, which the game has none fit for: MW2's tactical
+/// nuke alarm, kept beside the source.  Without it the page makes its own siren.
+const NUKE_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/sounds/nuke.mp3");
+
+/// `NUKE_FILE`, as the page's "nuke" sound, if it can be read.
+fn nuke_sound() -> Option<(&'static str, &'static str, Arc<[u8]>)> {
+    std::fs::read(NUKE_FILE).ok().map(|b| ("nuke", "audio/mpeg", Arc::from(b)))
+}
 
 /// The running server.  Dropping it stops its threads and frees the port, for the next
 /// game to bind.
@@ -116,12 +125,13 @@ impl Dashboard {
         let sounds = SOUNDS
             .iter()
             .filter_map(|&(name, file)| match g.world.chain.read(file) {
-                Ok(b) => Some((name, Arc::from(b))),
+                Ok(b) => Some((name, "audio/wav", Arc::from(b))),
                 Err(e) => {
                     log::warn!("tddash: {file}: {e}");
                     None
                 }
             })
+            .chain(nuke_sound())
             .collect();
         let shared = Arc::new(Shared { state: Mutex::new((0, Arc::from("{}"))), stop: AtomicBool::new(false), sounds });
         {
@@ -390,10 +400,11 @@ fn respond(mut s: TcpStream, shared: &Shared) -> std::io::Result<()> {
         return websocket(s, shared);
     }
     std::io::copy(&mut (&mut s).take(head.len() as u64), &mut std::io::sink())?;
-    let sound = path.strip_prefix("/sound/").and_then(|n| n.strip_suffix(".wav")).and_then(|n| shared.sounds.iter().find(|(k, _)| *k == n));
+    // /sound/<name>, with any extension: the page asks for the nuke by its name alone.
+    let sound = path.strip_prefix("/sound/").map(|n| n.split('.').next().unwrap_or(n)).and_then(|n| shared.sounds.iter().find(|(k, ..)| *k == n));
     // The sounds never change within a game; the page and its state always may.
     let (status, kind, cache, body): (&str, &str, &str, Arc<[u8]>) = match (method, path, sound) {
-        ("GET", _, Some((_, b))) => ("200 OK", "audio/wav", "max-age=3600", b.clone()),
+        ("GET", _, Some((_, t, b))) => ("200 OK", *t, "max-age=3600", b.clone()),
         ("GET", "/" | "/index.html", _) => ("200 OK", "text/html; charset=utf-8", "no-store", Arc::from(PAGE.as_bytes())),
         ("GET", "/state", _) => ("200 OK", "application/json", "no-store", Arc::from(shared.state.lock().unwrap().1.as_bytes())),
         ("GET", _, _) => ("404 Not Found", "text/plain", "no-store", Arc::from(&b"not found"[..])),

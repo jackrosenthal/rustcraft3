@@ -362,7 +362,11 @@ impl Codec {
                         Action::OrderTarget { flags: 0x46, ability: 852462, target, .. } => out.push(Command::Awaken { player, tavern: first, hero: w.by_oid(target.object).unwrap_or(0) }),
                         Action::Order { flags: 0x46, ability, .. } => out.push(Command::Research { building: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability: 851976, .. } => out.push(Command::CancelLast { building: first }),
-                        Action::Order { flags: 0x40, ability, .. } if w.unit(first).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|s| crate::objects::id_from_str(s.trim()) == id(ability))) => out.push(Command::Upgrade { building: first, id: id(ability) }),
+                        // An upgrade: one of the structure's Upgrade list, or, while it
+                        // upgrades (its type the new one at once), its old type's or the
+                        // new type itself, as a second click on the button sends; that
+                        // one the upgrade refuses, never a hire of the tower's type.
+                        Action::Order { flags: 0x40, ability, .. } if upgrade_order(w, first, id(ability)) => out.push(Command::Upgrade { building: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } if w.objects.units.get(id(ability)).is_some() => out.push(Command::HireUnit { player, shop: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } => out.push(Command::BuyItem { player, shop: first, id: id(ability) }),
                         Action::Order { flags: 0x42, ability, .. } if w.objects.abilities.get(id(ability)).is_some() => out.push(Command::LearnSkill { hero: first, id: id(ability) }),
@@ -440,6 +444,14 @@ impl Codec {
         flush(&mut changed, &sel, &mut out);
         Ok(out)
     }
+}
+
+/// Whether an Order with flags 0x40 to `h` is a structure upgrade to `id`: one of its
+/// type's Upgrade list, or while it upgrades, of the type it was or the one it becomes.
+fn upgrade_order(w: &World, h: u32, id: crate::objects::Id) -> bool {
+    let Some(u) = w.unit(h) else { return false };
+    let lists = |t: crate::objects::Id| w.objects.units.get(t).is_some_and(|o| o.list("Upgrade").iter().any(|s| crate::objects::id_from_str(s.trim()) == id));
+    lists(u.type_id) || u.extra.upgrading.as_ref().is_some_and(|g| g.to == id || lists(g.from))
 }
 
 /// The commands a network game's save under way leaves undone (`world::SaveWait`):

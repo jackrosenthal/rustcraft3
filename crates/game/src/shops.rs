@@ -204,7 +204,8 @@ impl World {
         if self.shopper(player, shop).is_none() && self.unit(shop).is_none_or(|u| u.owner != player) {
             return Err("Notinrange");
         }
-        if self.stock(shop, id).count <= 0 {
+        // Only what the shop sells (a structure's own type is not a hire from it).
+        if !self.shop_goods(shop).1.contains(&id) || self.stock(shop, id).count <= 0 {
             return Err("");
         }
         // Its requirements at the hero level, and the hero limits (code 0xb7 of

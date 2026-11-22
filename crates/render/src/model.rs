@@ -303,10 +303,7 @@ struct DrawUniform {
     uv_mat: [f32; 4],
     /// Where the instance stands, for its fog of war.
     origin: [f32; 4],
-    _pad: [u32; 44],
 }
-
-const DRAW_ALIGN: u64 = 256;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct ParticleVertex {
@@ -381,6 +378,31 @@ struct Draw {
     depth: f32,
     priority: i32,
     order: usize,
+}
+
+impl Draw {
+    /// Whether the draw may move among the opaque draws of its priority to join others
+    /// like it: it is opaque, and tests and writes depth.
+    fn groupable(&self) -> bool {
+        let p = self.pipeline;
+        p.filter < filter::BLEND && p.depth_test && p.depth_write
+    }
+
+    /// What draws alike share: model, geoset, pipeline, and texture.
+    fn batch_key(&self) -> (usize, usize, u32, bool, bool, bool, usize, bool, bool) {
+        let p = self.pipeline;
+        (
+            Arc::as_ptr(&self.model) as usize,
+            self.geoset,
+            p.filter,
+            p.two_sided,
+            p.depth_test,
+            p.depth_write,
+            Arc::as_ptr(&self.texture) as usize,
+            self.wrap.0,
+            self.wrap.1,
+        )
+    }
 }
 
 pub struct ModelRenderer {
@@ -469,8 +491,8 @@ impl ModelRenderer {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
                     min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<DrawUniform>() as u64),
                 },
                 count: None,
@@ -736,7 +758,6 @@ impl ModelRenderer {
                         _pad0: [0; 3],
                         uv_mat,
                         origin: inst.transform.w_axis.to_array(),
-                        _pad: [0; 44],
                     },
                     depth: if blended { depth } else { 0.0 },
                     priority: mat.priority_plane * 16 + li as i32,
@@ -850,7 +871,10 @@ impl ModelRenderer {
             self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog, &self.lights);
         }
         queue.write_buffer(&self.bones_buf, 0, bytemuck::cast_slice(&self.bones));
-        // Opaque first, then blended back to front.
+        // Opaque first, then blended back to front.  Within a priority, the opaque draws
+        // that test and write depth come first, grouped by what they draw so that copies
+        // of one model draw as one instanced call; their order among themselves shows
+        // only where two meet at exactly the same depth.
         let mut draws = std::mem::take(&mut self.draws);
         draws.sort_by(|a, b| {
             let ab = a.pipeline.filter >= filter::BLEND;
@@ -858,6 +882,10 @@ impl ModelRenderer {
             ab.cmp(&bb)
                 .then(b.depth.total_cmp(&a.depth))
                 .then(a.priority.cmp(&b.priority))
+                .then_with(|| match (a.groupable(), b.groupable()) {
+                    (true, true) => a.batch_key().cmp(&b.batch_key()),
+                    (x, y) => y.cmp(&x),
+                })
                 .then(a.order.cmp(&b.order))
         });
         if draws.len() > self.draws_cap {
@@ -877,20 +905,32 @@ impl ModelRenderer {
             }
         }
         pass.set_bind_group(0, &self.globals_bg, &[]);
-        let mut last_model: Option<*const ModelGpu> = None;
-        for (i, d) in draws.iter().enumerate() {
-            let pipeline = &self.pipelines[&d.pipeline];
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(1, &self.draws_bg, &[(i as u64 * DRAW_ALIGN) as u32]);
-            let key = (Arc::as_ptr(&d.texture) as usize, d.wrap.0, d.wrap.1);
-            pass.set_bind_group(2, &self.texture_bgs[&key], &[]);
+        pass.set_bind_group(1, &self.draws_bg, &[]);
+        // Each run of draws alike but for their uniforms is one instanced call, its
+        // instances reading their uniforms by index.
+        let (mut last_model, mut last_pipeline, mut last_texture) = (None, None, None);
+        let mut i = 0;
+        while i < draws.len() {
+            let d = &draws[i];
+            let key = d.batch_key();
+            let n = draws[i..].iter().take_while(|e| e.batch_key() == key).count();
+            if last_pipeline != Some(d.pipeline) {
+                pass.set_pipeline(&self.pipelines[&d.pipeline]);
+                last_pipeline = Some(d.pipeline);
+            }
+            let tex = (Arc::as_ptr(&d.texture) as usize, d.wrap.0, d.wrap.1);
+            if last_texture != Some(tex) {
+                pass.set_bind_group(2, &self.texture_bgs[&tex], &[]);
+                last_texture = Some(tex);
+            }
             if last_model != Some(Arc::as_ptr(&d.model)) {
                 pass.set_vertex_buffer(0, d.model.vertices.slice(..));
                 pass.set_index_buffer(d.model.indices.slice(..), wgpu::IndexFormat::Uint16);
                 last_model = Some(Arc::as_ptr(&d.model));
             }
             let g = &d.model.geosets[d.geoset];
-            pass.draw_indexed(g.first_index..g.first_index + g.index_count, g.base_vertex, 0..1);
+            pass.draw_indexed(g.first_index..g.first_index + g.index_count, g.base_vertex, i as u32..(i + n) as u32);
+            i += n;
         }
         self.bones.clear();
         // Keep textures alive until the next frame's draws replace them.
@@ -998,8 +1038,8 @@ fn bones_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
 fn draws_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("model draws"),
-        size: cap as u64 * DRAW_ALIGN,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        size: (cap * std::mem::size_of::<DrawUniform>()) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
 }
@@ -1030,14 +1070,7 @@ fn draws_bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: 
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("model draws"),
         layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                buffer: buf,
-                offset: 0,
-                size: wgpu::BufferSize::new(std::mem::size_of::<DrawUniform>() as u64),
-            }),
-        }],
+        entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }],
     })
 }
 

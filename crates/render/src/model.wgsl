@@ -50,14 +50,14 @@ struct Light {
 // The lights of the instance's cell (see lights.rs): the day/night light, or a model's
 // light, Direct3D's way: its ambient plus its diffuse by the angle, a point light's under
 // 1 / (1 + 0.0005 d^2) out to 10000.
-fn lighting(n: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+fn lighting(n: vec3<f32>, world: vec3<f32>, light_cell: u32) -> vec3<f32> {
     let sun = globals.ambient.rgb + globals.light_color.rgb * max(dot(n, -normalize(globals.light_dir.xyz)), 0.0);
-    if (globals.light_grid.z <= 0.0 || draw.light_cell == 0xffffffffu) {
+    if (globals.light_grid.z <= 0.0 || light_cell == 0xffffffffu) {
         return clamp(sun, vec3<f32>(0.0), vec3<f32>(1.0));
     }
     var sum = vec3<f32>(0.0);
     for (var k = 0u; k < 8u; k++) {
-        let i = light_cells[draw.light_cell * 8u + k];
+        let i = light_cells[light_cell * 8u + k];
         if (i == 0xffffffffu) {
             break;
         }
@@ -79,7 +79,8 @@ fn lighting(n: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     }
     return clamp(sum, vec3<f32>(0.0), vec3<f32>(1.0));
 }
-@group(1) @binding(0) var<uniform> draw: Draw;
+// One per instance of a draw call: instance_index picks it.
+@group(1) @binding(0) var<storage, read> draws: array<Draw>;
 @group(2) @binding(0) var tex: texture_2d<f32>;
 @group(2) @binding(1) var samp: sampler;
 
@@ -96,6 +97,7 @@ struct VsOut {
     @location(0) uv: vec2<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) world: vec3<f32>,
+    @location(3) @interpolate(flat) draw: u32,
 };
 
 // Direct3D's fog modes as game.dll sets them (style 0 linear from start to end, 1
@@ -113,7 +115,8 @@ fn fog_amount(d: f32) -> f32 {
 }
 
 @vertex
-fn vs_main(v: VsIn) -> VsOut {
+fn vs_main(v: VsIn, @builtin(instance_index) id: u32) -> VsOut {
+    let draw = draws[id];
     var p = vec4<f32>(0.0);
     var n = vec3<f32>(0.0);
     let count = max(v.bone_count, 1u);
@@ -128,11 +131,13 @@ fn vs_main(v: VsIn) -> VsOut {
     out.uv = mat2x2<f32>(draw.uv_mat.xy, draw.uv_mat.zw) * v.uv + draw.uv_offset;
     out.normal = normalize(n);
     out.world = p.xyz;
+    out.draw = id;
     return out;
 }
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let draw = draws[in.draw];
     let t = textureSample(tex, samp, in.uv);
     var c = t * draw.color;
     // Alpha testing looks at the texture; fading (geoset or instance alpha) blends.
@@ -140,7 +145,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         discard;
     }
     if ((draw.flags & 1u) == 0u) {
-        c = vec4<f32>(c.rgb * lighting(in.normal, in.world), c.a);
+        c = vec4<f32>(c.rgb * lighting(in.normal, in.world, draw.light_cell), c.a);
     }
     if (globals.fow_extent.z > 0.0) {
         // Fogged objects take FoggedObject's color, masked ones the masked color, the

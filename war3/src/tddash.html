@@ -200,21 +200,24 @@ function play(name, force) {
   const src = ctx.createBufferSource();
   src.buffer = buf; src.connect(ctx.destination); src.start();
 }
-// One death cry per life lost, each starting as the last ends: lives lost together play
-// back to back, each cry of an unbroken run faster than the one before (by DEATH_SPEEDUP,
-// up to DEATH_FASTEST times), the run's pace starting over once the cries have caught up.
-const DEATH_SPEEDUP = 1.25, DEATH_FASTEST = 4;
-let deathsEnd = 0, deathRun = 0;
+// One death cry per life lost: lives lost together play one after another, each cry of an
+// unbroken run faster than the one before (by DEATH_SPEEDUP, up to DEATH_FASTEST times) and
+// starting sooner after the last (its sped-up length, shrunk by DEATH_SPEEDUP again per cry,
+// so later cries overlap, down to DEATH_MIN_GAP apart). The run's pace starts over once
+// every cry has finished.
+const DEATH_SPEEDUP = 1.25, DEATH_FASTEST = 4, DEATH_MIN_GAP = 0.05;
+let deathsNext = 0, deathsEnd = 0, deathRun = 0;
 function playDeaths(n, force) {
   if (!soundOn && !force) return;
   const buf = buffers.death;
   if (!buf) return;
   for (let i = 0; i < n; i++) {
     if (ctx.currentTime >= deathsEnd) deathRun = 0;
-    const rate = Math.min(DEATH_SPEEDUP ** deathRun++, DEATH_FASTEST);
-    const src = ctx.createBufferSource(), at = Math.max(ctx.currentTime, deathsEnd);
+    const k = deathRun++, rate = Math.min(DEATH_SPEEDUP ** k, DEATH_FASTEST), len = buf.duration / rate;
+    const src = ctx.createBufferSource(), at = Math.max(ctx.currentTime, deathsNext);
     src.buffer = buf; src.playbackRate.value = rate; src.connect(ctx.destination); src.start(at);
-    deathsEnd = at + buf.duration / rate;
+    deathsEnd = Math.max(deathsEnd, at + len);
+    deathsNext = at + Math.max(len / DEATH_SPEEDUP ** k, DEATH_MIN_GAP);
   }
 }
 // Falling under 10 lives: a tactical nuke incoming.  The host's own file if it gave one,

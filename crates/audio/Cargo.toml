@@ -10,3 +10,6 @@ w3-mpq.workspace = true
 w3-formats.workspace = true
 log.workspace = true
 rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "wav"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cpal = "0.18.2"
